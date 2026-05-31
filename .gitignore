@@ -1,0 +1,23 @@
+# dependencies
+node_modules/
+
+# next/build output
+.next/
+dist/
+out/
+
+# local env/secrets
+.env
+.env.*
+!.env.example
+
+# local data/runtime
+data/
+logs/
+public/generated/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+*.log
+

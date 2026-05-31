@@ -1,0 +1,40 @@
+{
+  "name": "trlab",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -H 0.0.0.0 -p 5173",
+    "build": "next build",
+    "start": "next start -H 0.0.0.0 -p 5173",
+    "worker": "node scripts/collector.js",
+    "worker:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-worker.ps1",
+    "worker:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop-worker.ps1",
+    "worker:restart": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/restart-worker.ps1",
+    "worker:test": "set COLLECTOR_TEST=1&& node scripts/collector.js",
+    "db:reset": "node scripts/reset-db.js"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.5.0",
+    "postcss": "^8.5.15",
+    "tailwindcss": "^3.4.17"
+  },
+  "dependencies": {
+    "@radix-ui/react-scroll-area": "^1.2.10",
+    "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-slot": "^1.2.4",
+    "@radix-ui/react-tabs": "^1.1.13",
+    "better-sqlite3": "^12.10.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "eslint-config-next": "^16.2.6",
+    "lucide-react": "^1.17.0",
+    "next": "^16.2.6",
+    "playwright-core": "^1.60.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "shadcn": "^4.8.3",
+    "tailwind-merge": "^3.6.0",
+    "tailwindcss-animate": "^1.0.7"
+  }
+}
