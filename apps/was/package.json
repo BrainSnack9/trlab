@@ -1,0 +1,34 @@
+{
+  "name": "@trlab/was",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "imports": {
+    "#trlab/*": "./src/core/trlab/*.js"
+  },
+  "scripts": {
+    "dev": "node src/server.js",
+    "start": "node src/server.js",
+    "worker": "node src/core/trlab/scripts/collector.js",
+    "worker:mac": "bash src/core/trlab/scripts/start-worker.sh",
+    "worker:stop:mac": "bash src/core/trlab/scripts/stop-worker.sh",
+    "worker:restart:mac": "bash src/core/trlab/scripts/restart-worker.sh",
+    "worker:win": "powershell -NoProfile -ExecutionPolicy Bypass -File src/core/trlab/scripts/start-worker.ps1",
+    "worker:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File src/core/trlab/scripts/stop-worker.ps1",
+    "worker:restart": "powershell -NoProfile -ExecutionPolicy Bypass -File src/core/trlab/scripts/restart-worker.ps1",
+    "worker:test": "set COLLECTOR_TEST=1&& node src/core/trlab/scripts/collector.js",
+    "db:reset": "node src/core/trlab/scripts/reset-db.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.106.2",
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.45.2",
+    "node-cron": "^4.2.1",
+    "pino": "^10.3.1",
+    "pino-pretty": "^13.1.3",
+    "playwright-core": "^1.60.0",
+    "postgres": "^3.4.9",
+    "sql.js": "^1.14.1",
+    "zod": "^4.4.3"
+  }
+}

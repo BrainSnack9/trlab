@@ -1,0 +1,16 @@
+{
+  "pool_name": "viral_pool",
+  "type": "multi-author 카드뉴스 풀",
+  "source": "20+ 해시태그 Top 탭 + 좋아요 1000+ carousel 필터",
+  "총_게시물": 89,
+  "고유_작성자수": 65,
+  "수집일": "2026-05-07",
+  "ER_threshold_고가치": 5.0,
+  "고가치_게시물수": 22,
+  "관련_분석파일": [
+    "STRUCTURE.md",
+    "CONTENT.md",
+    "analysis.csv",
+    "trend_correlation.json"
+  ]
+}

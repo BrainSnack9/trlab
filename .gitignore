@@ -3,6 +3,7 @@ node_modules/
 
 # next/build output
 .next/
+**/.next/
 dist/
 out/
 
@@ -13,11 +14,13 @@ out/
 
 # local data/runtime
 data/
+**/data/
 logs/
+**/logs/
 public/generated/
+**/public/generated/
 
 # OS/editor
 .DS_Store
 Thumbs.db
 *.log
-
