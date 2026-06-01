@@ -55,7 +55,9 @@ describe('card image generator prompts and local fallback', () => {
     expect(prompt).toContain('반도체 제외');
     expect(prompt).toContain('외국인 수급');
     expect(prompt).toContain('data card');
-    expect(prompt).toContain('show the extracted numbers prominently above bars');
+    expect(prompt).toContain('blank bars and panels');
+    expect(prompt).toContain('Do not render any Korean text');
+    expect(prompt).toContain('exact SVG text afterward');
     expect(prompt).not.toMatch(/근거:|해석:|실행:/);
   });
 
@@ -76,7 +78,7 @@ describe('card image generator prompts and local fallback', () => {
     expect(coverPrompt).toContain('hook-first poster');
     expect(coverPrompt).toContain('huge title');
     expect(checklistPrompt).toContain('save-worthy closing card');
-    expect(checklistPrompt).toContain('저장해두고 볼 기준');
+    expect(checklistPrompt).toContain('blank checklist rows');
   });
 
   it('renders a 4:5 local svg with visual labels instead of internal layout names', () => {

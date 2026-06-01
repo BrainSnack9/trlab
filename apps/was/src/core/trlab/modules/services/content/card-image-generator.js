@@ -4,15 +4,17 @@ import { cardTextLines } from './card-text.js';
 import { tryGenerateRemoteImage } from './image-provider-clients.js';
 
 const outputDir = path.join(process.cwd(), 'public', 'generated', 'cardnews');
+const exactTextWarning = 'Korean copy is rendered by TrLab exact-text SVG, not by an image model, to prevent broken Hangul.';
+const FONT_STACK = 'Pretendard, Apple SD Gothic Neo, Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif';
 
 export async function generateCardNewsImage({ studio, plan, card, style, index }) {
   const prompt = makeImagePrompt({ studio, plan, card, style });
-  const { image, errors } = await tryGenerateRemoteImage(prompt);
-  const finalImage = image ?? generateLocalCard({ studio, card, style }, errors);
+  const { image: remoteVisual, errors } = await tryGenerateRemoteImage(prompt);
+  const finalImage = generateLocalCard({ studio, card, style, remoteVisual }, errors);
   await mkdir(outputDir, { recursive: true });
   const filename = `${safeName(studio?.label)}-${String((index ?? 0) + 1).padStart(2, '0')}-${Date.now()}.${finalImage.ext}`;
   await writeFile(path.join(outputDir, filename), finalImage.buffer);
-  return { provider: finalImage.provider, model: finalImage.model, prompt, url: `/generated/cardnews/${filename}`, warnings: errors };
+  return { provider: finalImage.provider, model: finalImage.model, prompt, url: `/generated/cardnews/${filename}`, warnings: [exactTextWarning, ...errors] }; 
 }
 
 export function makeImagePrompt({ studio, plan, card, style }) {
@@ -22,7 +24,7 @@ export function makeImagePrompt({ studio, plan, card, style }) {
   const structure = structureInstruction(card);
   const guide = referenceVisualGuide(plan?.referenceStyle);
   return [
-    'Create a premium 4:5 Instagram information carousel card in Korean.',
+    'Create a premium 4:5 Instagram information carousel visual backplate for a Korean-market card.',
     'Compose for a 4:5 final crop with generous safe margins; TrLab exports every card as a 1080x1350 vertical image.',
     'Design like Korean viral information carousel references: bold hook cover, short copy, one visual idea per card, editorial poster quality.',
     'Keep Korean typography crisp and legible. If text rendering is uncertain, leave clean blank panels for text overlay.',
@@ -37,14 +39,15 @@ export function makeImagePrompt({ studio, plan, card, style }) {
     `Body: ${card?.body ?? ''}.`,
     `Emphasis: ${card?.emphasis ?? ''}.`,
     `Visual idea: ${card?.visualPrompt ?? ''}.`,
-    `Visual labels/items to show as chart labels, comparison cells, or checklist rows: ${items.join(' | ')}.`,
+    `Semantic visual concepts for the illustration only, not text labels: ${items.join(' | ')}.`,
     `Role-specific composition: ${structure}.`,
-    'Do not render visible planning prefixes such as evidence, interpretation, or action labels inside the card.',
-    'Avoid watermarks, fake UI chrome, random English filler, and generic stock-photo composition.'
+    'Do not render any Korean text, English text, numbers, labels, logos, watermarks, captions, UI chrome, or handwritten words inside the generated image.',
+    'Create a clean visual backplate only; TrLab will overlay every Korean character, number, and label as exact SVG text afterward.',
+    'Avoid fake UI chrome, random English filler, and generic stock-photo composition.'
   ].filter(Boolean).join('\n');
 }
 
-export function generateLocalCard({ studio, card, style }, errors) {
+export function generateLocalCard({ studio, card, style, remoteVisual }, errors) {
   const s = style ?? { bg: '#f8fafc', ink: '#0f172a', accent: '#dc2626', sub: '#2563eb' };
   const body = cardTextLines(card?.body, 24, 5);
   const role = visibleRole(card?.role, card?.layout);
@@ -60,25 +63,28 @@ export function generateLocalCard({ studio, card, style }, errors) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350">
 <rect width="1080" height="1350" fill="${s.bg}"/>
 <rect x="44" y="44" width="992" height="1262" rx="26" fill="#fff" stroke="#0f172a" stroke-width="5"/>
-<text x="80" y="118" font-family="Pretendard, Arial" font-size="28" font-weight="900" fill="${s.sub}">@trlab.insight #${card?.page ?? 1}</text>
-<text x="80" y="214" font-family="Pretendard, Arial" font-size="72" font-weight="900" fill="${s.ink}">${esc(card?.title)}</text>
+<text x="80" y="118" font-family="${FONT_STACK}" font-size="28" font-weight="900" fill="${s.sub}">@trlab.insight #${card?.page ?? 1}</text>
+<text x="80" y="214" font-family="${FONT_STACK}" font-size="72" font-weight="900" fill="${s.ink}">${esc(card?.title)}</text>
 <rect x="80" y="255" width="210" height="14" rx="7" fill="${s.accent}"/>
+<defs><clipPath id="visualClip"><rect x="80" y="330" width="920" height="390"/></clipPath></defs>
 <rect x="80" y="330" width="920" height="390" fill="#f1f5f9" stroke="#0f172a" stroke-width="3"/>
-<text x="118" y="410" font-family="Pretendard, Arial" font-size="34" font-weight="900" fill="${s.sub}">${esc(role)}</text>
-<text x="118" y="480" font-family="Pretendard, Arial" font-size="52" font-weight="900" fill="${s.accent}">${esc(card?.emphasis ?? studio?.label)}</text>
+${remoteVisual ? `<image x="80" y="330" width="920" height="390" preserveAspectRatio="xMidYMid slice" clip-path="url(#visualClip)" opacity="0.28" href="data:${mimeForExt(remoteVisual.ext)};base64,${remoteVisual.buffer.toString('base64')}"/>` : ''}
+<rect x="80" y="330" width="920" height="390" fill="#f8fafc" opacity="0.68"/>
+<text x="118" y="410" font-family="${FONT_STACK}" font-size="34" font-weight="900" fill="${s.sub}">${esc(role)}</text>
+<text x="118" y="480" font-family="${FONT_STACK}" font-size="52" font-weight="900" fill="${s.accent}">${esc(card?.emphasis ?? studio?.label)}</text>
 ${items.map((item, i) => {
   const x = 118 + (i % 2) * 420;
   const y = 535 + Math.floor(i / 2) * 94;
   return `<rect x="${x}" y="${y}" width="374" height="64" rx="18" fill="#fff" stroke="#cbd5e1" stroke-width="2"/>
-<text x="${x + 24}" y="${y + 42}" font-family="Pretendard, Arial" font-size="27" font-weight="900" fill="${s.ink}">${esc(trimLabel(item, 13))}</text>`;
+<text x="${x + 24}" y="${y + 42}" font-family="${FONT_STACK}" font-size="27" font-weight="900" fill="${s.ink}">${esc(trimLabel(item, 13))}</text>`;
 }).join('')}
-${body.map((line, i) => `<text x="90" y="${825 + i * 62}" font-family="Pretendard, Arial" font-size="38" font-weight="800" fill="${s.ink}">${esc(line)}</text>`).join('')}
+${body.map((line, i) => `<text x="90" y="${825 + i * 62}" font-family="${FONT_STACK}" font-size="38" font-weight="800" fill="${s.ink}">${esc(line)}</text>`).join('')}
 <rect x="80" y="1118" width="920" height="118" rx="22" fill="#fff" stroke="#cbd5e1" stroke-width="3"/>
-<text x="116" y="1160" font-family="Pretendard, Arial" font-size="20" font-weight="900" fill="${s.sub}">${esc(footerLabel)}</text>
-<text x="116" y="1204" font-family="Pretendard, Arial" font-size="28" font-weight="900" fill="${s.ink}">${esc(trimLabel(closingCopy, 34))}</text>
-<text x="80" y="1260" font-family="Pretendard, Arial" font-size="18" font-weight="700" fill="#64748b">${errors?.length ? 'Remote image unavailable · exact-text render' : 'Exact-text render'}</text>
+<text x="116" y="1160" font-family="${FONT_STACK}" font-size="20" font-weight="900" fill="${s.sub}">${esc(footerLabel)}</text>
+<text x="116" y="1204" font-family="${FONT_STACK}" font-size="28" font-weight="900" fill="${s.ink}">${esc(trimLabel(closingCopy, 34))}</text>
+<text x="80" y="1260" font-family="${FONT_STACK}" font-size="18" font-weight="700" fill="#64748b">${errors?.length ? 'Remote image unavailable · exact-text render' : 'Exact-text render'}</text>
 </svg>`;
-  return { provider: 'trlab', model: 'exact-text-svg', buffer: Buffer.from(svg), ext: 'svg' };
+  return { provider: remoteVisual ? `trlab+${remoteVisual.provider}` : 'trlab', model: remoteVisual ? `exact-text-svg+${remoteVisual.model}` : 'exact-text-svg', buffer: Buffer.from(svg), ext: 'svg' };
 }
 
 function structureInstruction(card) {
@@ -88,13 +94,13 @@ function structureInstruction(card) {
     return 'hook-first poster: top account mark, small emphasis pill, huge title, one short promise line, 2-3 small visual chips at the bottom. Do not show source paragraphs on the cover.';
   }
   if (role === 'comparison' || layout === 'comparison_board') {
-    return 'comparison board: two-by-two comparison cells labeled 기준, 상대, 확인, 저장; short body below the board.';
+    return 'comparison board: two-by-two empty comparison cells and visual separators; TrLab will overlay all labels afterward.';
   }
   if (role === 'data_scene' || layout === 'data_chart') {
-    return 'data card: one large chart or numeric visual, show the extracted numbers prominently above bars, labels below bars, short interpretation at the bottom.';
+    return 'data card: one large chart-like or numeric visual with blank bars and panels; TrLab will overlay all numbers and labels afterward.';
   }
   if (role === 'checklist' || layout === 'checklist') {
-    return 'save-worthy closing card: header says 저장해두고 볼 기준, 3 checklist rows in the center, final note about saving source, comparison 기준, and one number.';
+    return 'save-worthy closing card: 3 blank checklist rows in the center with clean space for exact text overlay.';
   }
   if (role === 'community_signal' || role === 'misconception' || layout === 'quote_card') {
     return 'quote/reaction card: one big quote-like claim in a white panel, no long article summary.';
@@ -194,3 +200,11 @@ function visibleRole(role, layout) {
 
 const safeName = (value) => `${value ?? 'cardnews'}`.replace(/[\\/:*?"<>|]/g, '').slice(0, 32);
 const esc = (value) => `${value ?? ''}`.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[char]));
+
+function mimeForExt(ext) {
+  const value = `${ext ?? ''}`.toLowerCase();
+  if (value === 'jpg' || value === 'jpeg') return 'image/jpeg';
+  if (value === 'webp') return 'image/webp';
+  if (value === 'svg') return 'image/svg+xml';
+  return 'image/png';
+}
