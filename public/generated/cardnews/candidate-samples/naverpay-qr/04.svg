@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350">
+<defs>
+  <linearGradient id="fadeBottom" x1="0" x2="0" y1="0" y2="1">
+    <stop offset="0%" stop-color="#000000" stop-opacity="0"/>
+    <stop offset="58%" stop-color="#000000" stop-opacity=".12"/>
+    <stop offset="100%" stop-color="#000000" stop-opacity=".82"/>
+  </linearGradient>
+  <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+    <feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#020617" flood-opacity="0.18"/>
+  </filter>
+</defs>
+<rect width="1080" height="1350" fill="#f5fbf7"/>
+<rect width="1080" height="160" fill="#062418"/>
+<g transform="translate(60 120) rotate(-18)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#05c46b" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(250 120) rotate(-9)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#2563eb" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(440 120) rotate(0)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#ffffff" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(630 120) rotate(9)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#05c46b" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(820 120) rotate(18)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#2563eb" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(1010 120) rotate(-18)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#ffffff" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(102 270) rotate(-9)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#05c46b" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(292 270) rotate(0)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#2563eb" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(482 270) rotate(9)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#ffffff" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(672 270) rotate(18)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#05c46b" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(862 270) rotate(-18)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#2563eb" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(1052 270) rotate(-9)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#ffffff" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(60 420) rotate(0)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#05c46b" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(250 420) rotate(9)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#2563eb" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(440 420) rotate(18)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#ffffff" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(630 420) rotate(-18)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#05c46b" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(820 420) rotate(-9)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#2563eb" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(1010 420) rotate(0)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#ffffff" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(102 570) rotate(9)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#05c46b" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(292 570) rotate(18)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#2563eb" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(482 570) rotate(-18)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#ffffff" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(672 570) rotate(-9)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#05c46b" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(862 570) rotate(0)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#2563eb" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(1052 570) rotate(9)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#ffffff" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(60 720) rotate(18)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#05c46b" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(250 720) rotate(-18)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#2563eb" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(440 720) rotate(-9)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#ffffff" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(630 720) rotate(0)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#05c46b" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(820 720) rotate(9)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#2563eb" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g><g transform="translate(1010 720) rotate(18)" opacity="0.18">
+  <rect x="-48" y="-34" width="96" height="68" rx="18" fill="#ffffff" opacity=".72"/>
+  <circle cx="-18" cy="0" r="13" fill="#fff" opacity=".8"/>
+  <circle cx="20" cy="0" r="13" fill="#fff" opacity=".8"/>
+</g>
+<path d="M0 142 C250 96 380 172 620 126 S900 105 1080 150 L1080 0 L0 0 Z" fill="#ffffff18"/>
+
+<text x="72" y="92" font-family="Pretendard, Noto Sans KR, Apple SD Gothic Neo, Malgun Gothic, Arial, sans-serif" font-size="24" font-weight="900" fill="#ffffffd9">@trlab.insight · 04</text>
+<text x="72" y="184" font-family="Pretendard, Noto Sans KR, Apple SD Gothic Neo, Malgun Gothic, Arial, sans-serif" font-size="25" font-weight="900" fill="#05c46b">DATA SIGNAL</text>
+<text x="72" y="318" font-family="Pretendard, Noto Sans KR, Apple SD Gothic Neo, Malgun Gothic, Arial, sans-serif" font-size="68" font-weight="900" fill="#101828">신호는</text><text x="72" y="402" font-family="Pretendard, Noto Sans KR, Apple SD Gothic Neo, Malgun Gothic, Arial, sans-serif" font-size="68" font-weight="900" fill="#101828">세 군데서 같이</text><text x="72" y="486" font-family="Pretendard, Noto Sans KR, Apple SD Gothic Neo, Malgun Gothic, Arial, sans-serif" font-size="68" font-weight="900" fill="#101828">보입니다</text>
+<rect x="72" y="545" width="936" height="430" rx="18" fill="#fff" stroke="#e5e7eb" stroke-width="2" filter="url(#softShadow)"/>
+<text x="118" y="618" font-family="Pretendard, Noto Sans KR, Apple SD Gothic Neo, Malgun Gothic, Arial, sans-serif" font-size="30" font-weight="900" fill="#05c46b">확산 신호</text>
+<line x1="140" y1="870" x2="940" y2="870" stroke="#101828" stroke-width="4"/>
+<rect x="216" y="677" width="116" height="193" rx="3" fill="#05c46b"/>
+<text x="274" y="655" font-family="Pretendard, Noto Sans KR, Apple SD Gothic Neo, Malgun Gothic, Arial, sans-serif" font-size="27" text-anchor="middle" font-weight="900" fill="#05c46b">72</text>
+<text x="274" y="922" font-family="Pretendard, Noto Sans KR, Apple SD Gothic Neo, Malgun Gothic, Arial, sans-serif" font-size="22" text-anchor="middle" font-weight="900" fill="#101828">기사 반복</text><rect x="446" y="640" width="116" height="230" rx="3" fill="#2563eb"/>
+<text x="504" y="618" font-family="Pretendard, Noto Sans KR, Apple SD Gothic Neo, Malgun Gothic, Arial, sans-serif" font-size="27" text-anchor="middle" font-weight="900" fill="#2563eb">86</text>
+<text x="504" y="922" font-family="Pretendard, Noto Sans KR, Apple SD Gothic Neo, Malgun Gothic, Arial, sans-serif" font-size="22" text-anchor="middle" font-weight="900" fill="#101828">관광 협업</text><rect x="676" y="699" width="116" height="171" rx="3" fill="#05c46b"/>
+<text x="734" y="677" font-family="Pretendard, Noto Sans KR, Apple SD Gothic Neo, Malgun Gothic, Arial, sans-serif" font-size="27" text-anchor="middle" font-weight="900" fill="#05c46b">64</text>
+<text x="734" y="922" font-family="Pretendard, Noto Sans KR, Apple SD Gothic Neo, Malgun Gothic, Arial, sans-serif" font-size="22" text-anchor="middle" font-weight="900" fill="#101828">사용 경험</text>
+<rect x="72" y="1022" width="936" height="226" rx="18" fill="#062418"/>
+<text x="114" y="1106" font-family="Pretendard, Noto Sans KR, Apple SD Gothic Neo, Malgun Gothic, Arial, sans-serif" font-size="34" font-weight="900" fill="#fff">해외 결제는 단순 기능이 아니라</text><text x="114" y="1156" font-family="Pretendard, Noto Sans KR, Apple SD Gothic Neo, Malgun Gothic, Arial, sans-serif" font-size="34" font-weight="900" fill="#fff">여행 전후의 브랜드 접점을 넓히는</text><text x="114" y="1206" font-family="Pretendard, Noto Sans KR, Apple SD Gothic Neo, Malgun Gothic, Arial, sans-serif" font-size="34" font-weight="900" fill="#fff">장치입니다.</text>
+</svg>

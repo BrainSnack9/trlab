@@ -1,0 +1,41 @@
+[
+  {
+    "slug": "naverpay-qr",
+    "title": "네이버페이, 해외 QR 결제 확장",
+    "rationale": "마카오 관광청 협업으로 보는 여행 결제 전쟁",
+    "contact": "C:\\Project\\TrLab\\public\\generated\\cardnews\\candidate-samples\\naverpay-qr-contact.png",
+    "files": [
+      "C:\\Project\\TrLab\\public\\generated\\cardnews\\candidate-samples\\naverpay-qr\\01.png",
+      "C:\\Project\\TrLab\\public\\generated\\cardnews\\candidate-samples\\naverpay-qr\\02.png",
+      "C:\\Project\\TrLab\\public\\generated\\cardnews\\candidate-samples\\naverpay-qr\\03.png",
+      "C:\\Project\\TrLab\\public\\generated\\cardnews\\candidate-samples\\naverpay-qr\\04.png",
+      "C:\\Project\\TrLab\\public\\generated\\cardnews\\candidate-samples\\naverpay-qr\\05.png"
+    ]
+  },
+  {
+    "slug": "ai-semiconductor",
+    "title": "AI 반도체, 10년짜리 판이 커진다",
+    "rationale": "HBM, 가속기, 장비 공급망으로 번지는 AI 수요",
+    "contact": "C:\\Project\\TrLab\\public\\generated\\cardnews\\candidate-samples\\ai-semiconductor-contact.png",
+    "files": [
+      "C:\\Project\\TrLab\\public\\generated\\cardnews\\candidate-samples\\ai-semiconductor\\01.png",
+      "C:\\Project\\TrLab\\public\\generated\\cardnews\\candidate-samples\\ai-semiconductor\\02.png",
+      "C:\\Project\\TrLab\\public\\generated\\cardnews\\candidate-samples\\ai-semiconductor\\03.png",
+      "C:\\Project\\TrLab\\public\\generated\\cardnews\\candidate-samples\\ai-semiconductor\\04.png",
+      "C:\\Project\\TrLab\\public\\generated\\cardnews\\candidate-samples\\ai-semiconductor\\05.png"
+    ]
+  },
+  {
+    "slug": "enterprise-ai",
+    "title": "기업 AI 도입, 이제 선점 경쟁이다",
+    "rationale": "삼성SDS, LG CNS, 오픈AI 한국 행사까지 이어진 AX 신호",
+    "contact": "C:\\Project\\TrLab\\public\\generated\\cardnews\\candidate-samples\\enterprise-ai-contact.png",
+    "files": [
+      "C:\\Project\\TrLab\\public\\generated\\cardnews\\candidate-samples\\enterprise-ai\\01.png",
+      "C:\\Project\\TrLab\\public\\generated\\cardnews\\candidate-samples\\enterprise-ai\\02.png",
+      "C:\\Project\\TrLab\\public\\generated\\cardnews\\candidate-samples\\enterprise-ai\\03.png",
+      "C:\\Project\\TrLab\\public\\generated\\cardnews\\candidate-samples\\enterprise-ai\\04.png",
+      "C:\\Project\\TrLab\\public\\generated\\cardnews\\candidate-samples\\enterprise-ai\\05.png"
+    ]
+  }
+]

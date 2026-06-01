@@ -84,7 +84,11 @@ export function createContentPlan(payload, { refresh = false } = {}) {
 }
 
 export function generateContentImage(payload) {
-  return api.post('/api/content/image', { json: payload }).json();
+  return api.post(apiPath('/api/content/image'), { json: payload }).json();
+}
+
+export function previewContentImagePrompt(payload) {
+  return api.post(apiPath('/api/content/image'), { json: { ...payload, preview: true } }).json();
 }
 
 function sanitizeContentPlanPayload(payload = {}) {
@@ -107,6 +111,17 @@ function sanitizeContentPlanPayload(payload = {}) {
     sampleTitles: (payload.sampleTitles ?? []).slice(0, 5).map(cleanText),
     sources: payload.sources ?? [],
     summary: cleanText(payload.summary),
+    sourceMode: payload.sourceMode,
+    channelName: cleanText(payload.channelName),
+    manualBrief: payload.manualBrief ? {
+      topic: cleanText(payload.manualBrief.topic),
+      prompt: cleanText(payload.manualBrief.prompt),
+      channelName: cleanText(payload.manualBrief.channelName),
+      audience: cleanText(payload.manualBrief.audience),
+      tone: cleanText(payload.manualBrief.tone),
+      cardCount: Number(payload.manualBrief.cardCount) || undefined
+    } : undefined,
+    cardCount: Number(payload.cardCount) || undefined,
     searchVerification: payload.searchVerification ? {
       query: cleanText(payload.searchVerification.query),
       checkedAt: payload.searchVerification.checkedAt,

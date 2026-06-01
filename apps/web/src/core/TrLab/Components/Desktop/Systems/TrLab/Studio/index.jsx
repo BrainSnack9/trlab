@@ -11,6 +11,7 @@ export default function Studio() {
       queue={workspace.queue}
       studio={workspace.studioTrend}
       setView={workspace.setView}
+      setQueue={workspace.setQueue}
       contentPlans={workspace.contentPlans}
       setContentPlans={workspace.setContentPlans}
     />

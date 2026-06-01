@@ -34,8 +34,9 @@ function findWindowsPids(port) {
   try {
     return execSync(`netstat -ano | findstr :${port}`, { encoding: 'utf8', shell: 'cmd.exe' })
       .split('\n')
+      .filter((line) => line.includes('LISTENING'))
       .map((line) => line.trim().split(/\s+/).at(-1))
-      .filter((pid, index, pids) => pid && pids.indexOf(pid) === index);
+      .filter((pid, index, pids) => pid && pid !== '0' && pids.indexOf(pid) === index);
   } catch {
     return [];
   }

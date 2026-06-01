@@ -13,7 +13,18 @@ export async function createContentPlan(input) {
 }
 
 function buildPrompt(input) {
+  const manual = normalizeManualBrief(input);
+  if (manual) return buildManualPrompt(input, manual);
   return JSON.stringify({
+    manualRequest: manual ? {
+      instruction: '사용자가 트렌드 감지와 무관하게 직접 만들고 싶은 카드뉴스 주제입니다. candidate보다 manualRequest를 우선하고, 사용자가 요청한 컷 수와 방향을 지켜서 설계하세요.',
+      topic: manual.topic,
+      prompt: manual.prompt,
+      audience: manual.audience,
+      tone: manual.tone,
+      cardCount: manual.cardCount,
+      cardCountRule: `${manual.cardCount}컷으로 정확히 구성합니다. cards 배열 길이와 carouselBlueprint 길이를 이 숫자에 맞춥니다.`
+    } : undefined,
     task: '검증된 트렌드 후보를 인스타 카드뉴스 캐러셀 기획안으로 만든다. 최종 목표는 채널 성장과 추후 관련 상품/리포트/템플릿/서비스 판매로 이어질 신뢰 자산을 쌓는 것이다.',
     role: '당신은 커뮤니티 반응을 읽는 데이터 기반 마케팅 에디터다. 뉴스 요약이 아니라, 사람들이 저장하고 공유할 만한 “근거 있는 바이럴 카드뉴스”를 설계한다.',
     referenceStyle: [
@@ -115,8 +126,11 @@ function buildPrompt(input) {
 }
 
 function compactCandidate(input) {
+  const manual = normalizeManualBrief(input);
   return {
     label: input.label ?? input.keyword,
+    sourceMode: input.sourceMode,
+    manualBrief: manual,
     category: input.category,
     production: input.production,
     validation: input.validation,
@@ -132,19 +146,117 @@ function compactCandidate(input) {
   };
 }
 
+function buildManualPrompt(input, manual) {
+  return JSON.stringify({
+    task: '사용자가 직접 입력한 주제로 인스타그램 카드뉴스 콘텐츠 설계안을 만든다. 트렌드 감지 결과나 검색 후보가 아니므로, 아래 manualRequest만 최우선으로 따른다.',
+    manualRequest: {
+      topic: manual.topic,
+      prompt: manual.prompt,
+      audience: manual.audience || '저장할 만한 실용 정보를 찾는 독자',
+      tone: manual.tone || '친근하지만 근거 있는 말투',
+      cardCount: manual.cardCount
+    },
+    rules: [
+      `${manual.cardCount}컷으로 정확히 구성한다. cards 배열 길이는 반드시 ${manual.cardCount}개다.`,
+      '각 카드는 page, role, layout, visualType, title, body, visualPrompt, visualItems, emphasis를 포함한다.',
+      '카드 문구는 사용자가 입력한 주제와 요청 내용에 직접 연결한다. 커뮤니티 반응, 검색 신호, 트렌드 감지 같은 표현을 임의로 넣지 않는다.',
+      '1컷은 강한 후크 표지, 마지막 컷은 저장/실행 체크리스트로 구성한다.',
+      'body는 실제 카드에 들어갈 최종 문구만 1~3줄로 쓴다.',
+      'captionFirstLine, captionBody, captionCTA, hashtags도 함께 만든다.'
+    ],
+    schema: {
+      targetAudience: '독자',
+      coreAngle: '카드뉴스 핵심 각도',
+      referenceStyle: 'handdrawn_research | photo_hook | magazine_story | meme_factcheck',
+      referencePattern: {
+        deckLength: `${manual.cardCount}컷`,
+        coverRhythm: '표지 리듬',
+        bodyRhythm: '본문 전개 리듬',
+        proofRhythm: '근거/주의점 처리 방식',
+        endingRhythm: '마무리 방식'
+      },
+      carouselBlueprint: [`${manual.cardCount}개 단계`],
+      hookTitles: ['후크 제목 후보 3~5개'],
+      captionFirstLine: '게시글 첫 줄',
+      captionBody: '게시글 본문',
+      captionCTA: '저장/공유 유도 문장',
+      hashtags: ['#해시태그'],
+      summary: '기획 요약',
+      riskNotes: ['주의할 표현'],
+      sourceNotes: ['사용자 입력 기반'],
+      cards: [{
+        page: 1,
+        role: 'cover | why_now | comparison | data_scene | misconception | content_angle | checklist | closing',
+        layout: 'cover_photo | cover_text | handwritten_research | comparison_board | data_chart | quote_card | checklist',
+        visualType: 'photo | chart | table | quote | checklist',
+        title: '짧은 카드 제목',
+        body: '실제 카드 문구',
+        visualPrompt: '시각화 지시',
+        visualItems: ['카드에 들어갈 시각 요소'],
+        emphasis: '강조 문구'
+      }]
+    },
+    candidate: compactCandidate(input)
+  });
+}
+
+function normalizeManualBrief(input = {}) {
+  if (input.sourceMode !== 'manual' && !input.manualBrief) return null;
+  const raw = input.manualBrief && typeof input.manualBrief === 'object' ? input.manualBrief : {};
+  const topic = cleanManualText(raw.topic ?? input.topic ?? input.label ?? input.keyword);
+  const prompt = cleanManualText(raw.prompt ?? input.prompt ?? input.summary);
+  if (!topic && !prompt) return null;
+  return {
+    topic: topic || cleanManualText(input.label ?? input.keyword) || '사용자 입력 주제',
+    prompt,
+    audience: cleanManualText(raw.audience ?? input.targetAudience),
+    tone: cleanManualText(raw.tone),
+    cardCount: clampCardCount(raw.cardCount ?? input.cardCount)
+  };
+}
+
+function getDesiredCardCount(input = {}) {
+  const manual = normalizeManualBrief(input);
+  if (manual) return manual.cardCount;
+  return 7;
+}
+
+function clampCardCount(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return 8;
+  return Math.min(12, Math.max(3, Math.round(number)));
+}
+
+function cleanManualText(value) {
+  return `${value ?? ''}`.replace(/\s+/g, ' ').trim().slice(0, 2000);
+}
+
 function normalizePlan(data, input, provider) {
   data = repairDeep(data);
+  const manual = normalizeManualBrief(input);
+  return manual
+    ? normalizeManualPlan(data, input, provider, manual)
+    : normalizeTrendPlan(data, input, provider);
+}
+
+function normalizeTrendPlan(data, input, provider) {
+  const aiCardCount = Array.isArray(data.cards) ? data.cards.length : 0;
+  const desiredCardCount = Math.min(12, Math.max(7, aiCardCount || 7));
   const cards = Array.isArray(data.cards) && data.cards.length ? data.cards : fallbackCards(input);
   const referenceStyle = data.referenceStyle ?? chooseReferenceStyle(input);
-  const rawCards = ensureCarouselCards(cards, input).slice(0, 12);
-  const normalizedCards = rawCards.map((card, index) => normalizeCard(card, input, index, rawCards.length, referenceStyle));
+  const rawCards = ensureTrendCarouselCards(cards, input, desiredCardCount).slice(0, desiredCardCount);
+  const normalizedCards = rawCards.map((card, index) => normalizeTrendCard(card, input, index, rawCards.length, referenceStyle));
+  const finalCards = (isWeakPlan(normalizedCards, input)
+    ? ensureCarouselCards(evidenceBackedCards(input), input, desiredCardCount).slice(0, desiredCardCount)
+    : normalizedCards.map((card, index) => strengthenCard(card, input, index)))
+    .map(enforceCardLength);
   return {
     provider,
     targetAudience: data.targetAudience ?? '트렌드를 실용적으로 이해하고 저장해두려는 20대 후반 여성',
     coreAngle: data.coreAngle ?? input.production?.suggestedAngle ?? input.summary ?? '',
     referenceStyle,
     referencePattern: normalizeReferencePattern(data.referencePattern, referenceStyle),
-    carouselBlueprint: ensureList(data.carouselBlueprint, defaultBlueprint(input)),
+    carouselBlueprint: ensureList(data.carouselBlueprint, defaultBlueprint(input)).slice(0, desiredCardCount),
     hookTitles: ensureList(data.hookTitles, [`${input.label} 지금 봐야 할 변화`, `${input.label}에서 읽어야 할 신호`]).map((title) => compactTitle(title, input, 22)).slice(0, 5),
     captionFirstLine: normalizeCaptionFirstLine(data.captionFirstLine, input),
     captionBody: normalizeCaptionBody(data.captionBody, input),
@@ -153,16 +265,66 @@ function normalizePlan(data, input, provider) {
     summary: data.summary ?? `${input.label}의 배경과 근거, 저장해둘 포인트를 쉽게 풀어봅니다.`,
     riskNotes: ensureList(data.riskNotes, ['근거가 부족한 수치는 단정하지 마세요.']),
     sourceNotes: ensureList(data.sourceNotes, input.searchVerification?.verification?.keyFindings ?? input.sampleTitles ?? []),
-    cards: isWeakPlan(normalizedCards, input) ? evidenceBackedCards(input) : normalizedCards.map((card, index) => strengthenCard(card, input, index))
+    cards: finalCards
   };
 }
 
-function ensureCarouselCards(cards, input) {
+function enforceCardLength(card) {
+  const maxLines = card.role === 'cover' ? 2 : 3;
+  const { _hadExplicitRole, ...cleanCard } = card;
+  return {
+    ...cleanCard,
+    body: `${card.body ?? ''}`.split('\n').filter(Boolean).slice(0, maxLines).join('\n')
+  };
+}
+
+function normalizeManualPlan(data, input, provider, manual) {
+  const desiredCardCount = manual.cardCount;
+  const cards = Array.isArray(data.cards) && data.cards.length ? data.cards : manualFallbackCards(input, desiredCardCount);
+  const referenceStyle = data.referenceStyle ?? 'handdrawn_research';
+  const rawCards = ensureManualCarouselCards(cards, input, desiredCardCount).slice(0, desiredCardCount);
+  const normalizedCards = rawCards.map((card, index) => normalizeManualCard(card, input, index, rawCards.length, referenceStyle));
+  return {
+    provider,
+    targetAudience: data.targetAudience ?? manual.audience ?? '저장할 만한 실용 정보를 찾는 독자',
+    coreAngle: data.coreAngle ?? manual.prompt ?? manual.topic,
+    referenceStyle,
+    referencePattern: normalizeReferencePattern(data.referencePattern, referenceStyle),
+    carouselBlueprint: ensureList(data.carouselBlueprint, defaultBlueprint(input)).slice(0, desiredCardCount),
+    hookTitles: ensureList(data.hookTitles, [manual.topic]).map((title) => compactTitle(title, input, 28)).slice(0, 5),
+    captionFirstLine: normalizeCaptionFirstLine(data.captionFirstLine, input),
+    captionBody: normalizeCaptionBody(data.captionBody, input),
+    captionCTA: normalizeCaptionCTA(data.captionCTA),
+    hashtags: normalizeHashtags(data.hashtags, input),
+    summary: data.summary ?? manual.prompt ?? `${manual.topic} 카드뉴스 기획안`,
+    riskNotes: ensureList(data.riskNotes, ['과장된 단정 표현은 피하세요.']),
+    sourceNotes: ensureList(data.sourceNotes, ['사용자 입력 기반']),
+    cards: normalizedCards
+  };
+}
+
+function ensureCarouselCards(cards, input, desiredCardCount = getDesiredCardCount(input)) {
   const base = Array.isArray(cards) ? cards.filter(Boolean) : [];
-  if (base.length >= 7) return base;
-  const fallback = evidenceBackedCards(input);
+  if (base.length >= desiredCardCount) return base;
+  const fallback = normalizeManualBrief(input) ? manualFallbackCards(input, desiredCardCount) : evidenceBackedCards(input);
   const filled = [...base];
-  for (let index = base.length; index < 7; index += 1) {
+  for (let index = base.length; index < desiredCardCount; index += 1) {
+    const fallbackCard = fallback[index] ?? fallback[fallback.length - 1];
+    filled.push({ ...fallbackCard, page: index + 1 });
+  }
+  return filled;
+}
+
+function ensureTrendCarouselCards(cards, input, desiredCardCount) {
+  return ensureCarouselCards(cards, input, desiredCardCount);
+}
+
+function ensureManualCarouselCards(cards, input, desiredCardCount) {
+  const base = Array.isArray(cards) ? cards.filter(Boolean) : [];
+  if (base.length >= desiredCardCount) return base;
+  const fallback = manualFallbackCards(input, desiredCardCount);
+  const filled = [...base];
+  for (let index = base.length; index < desiredCardCount; index += 1) {
     const fallbackCard = fallback[index] ?? fallback[fallback.length - 1];
     filled.push({ ...fallbackCard, page: index + 1 });
   }
@@ -173,14 +335,15 @@ export function normalizeContentPlanForTest(data, input, provider = 'test') {
   return normalizePlan(data, input, provider);
 }
 
-function normalizeCard(card, input, index, total, referenceStyle) {
+function normalizeTrendCard(card, input, index, total, referenceStyle) {
   const role = canonicalRole(index, total);
   const layout = normalizeLayout(card.layout, role, index, referenceStyle);
-  const title = normalizeCardTitle(card.title, input, index, role);
-  const body = normalizeCardBody(richBody(card, input), role, card);
+  const title = normalizeTrendCardTitle(card.title, input, index, role);
+  const body = normalizeTrendCardBody(richBody(card, input), role, card);
   const sourceLine = normalizeSourceLine(card, input, index, role);
-  return {
+  return normalizeDataCardContract({
     page: card.page ?? index + 1,
+    _hadExplicitRole: Boolean(card.role || card.layout),
     role,
     layout,
     visualType: card.visualType ?? visualTypeForLayout(layout),
@@ -193,7 +356,125 @@ function normalizeCard(card, input, index, total, referenceStyle) {
     visualItems: normalizeVisualItems(card.visualItems, input, role, card),
     sourceLine,
     emphasis: card.emphasis ?? card.dataPoint ?? input.label
+  }, input);
+}
+
+function normalizeManualCard(card, input, index, total, referenceStyle) {
+  const role = canonicalManualRole(index, total, card.role);
+  const layout = normalizeLayout(card.layout, role, index, referenceStyle);
+  const title = normalizeManualCardTitle(card.title, input, index, role);
+  const body = normalizeManualCardBodyFromValue(richManualBody(card), role, card);
+  return normalizeDataCardContract({
+    page: card.page ?? index + 1,
+    role,
+    layout,
+    visualType: card.visualType ?? visualTypeForLayout(layout),
+    title,
+    body: formatCardText(cleanCardBody(cleanAiTone(body))),
+    dataPoint: card.dataPoint ?? '',
+    insight: card.insight ?? '',
+    action: card.action ?? '',
+    visualPrompt: card.visualPrompt ?? `${title}를 한눈에 보여주는 카드`,
+    visualItems: normalizeVisualItems(card.visualItems, input, role, card),
+    sourceLine: cleanCardBody(card.sourceLine ?? ''),
+    emphasis: card.emphasis ?? card.dataPoint ?? title
+  }, input);
+}
+
+function normalizeDataCardContract(card, input) {
+  if (card.role !== 'data_scene' && card.layout !== 'data_chart') return card;
+  const dataText = [card.dataPoint, card.sourceLine, card.body, card.emphasis].filter(Boolean).join(', ');
+  const labels = normalizeVisualItems(card.visualItems, input, 'data_scene', card);
+  const metrics = extractDataCardMetrics(dataText, labels);
+  const story = dataCardStory({ ...card, visualItems: labels }, metrics, input);
+  return {
+    ...card,
+    layout: 'data_chart',
+    visualType: 'chart',
+    dataStory: story || card.dataStory || '',
+    body: story ? normalizeDataStoryBody(story) : card.body,
+    visualPrompt: dataCardVisualPrompt(card, input, story),
+    visualItems: labels.length ? labels : metrics.map((metric) => metric.label).slice(0, 4)
   };
+}
+
+function normalizeDataStoryBody(value) {
+  return `${value ?? ''}`
+    .split('\n')
+    .flatMap((line) => splitReadableLines(line, 40))
+    .filter(Boolean)
+    .slice(0, 3)
+    .join('\n');
+}
+
+function dataCardVisualPrompt(card, input, story) {
+  const topic = [input.label, input.keyword, card.title].filter(Boolean).join(' ');
+  const base = `${topic} 데이터를 보여주는 카드`;
+  const background = /홍콩|hong kong/i.test(`${topic} ${card.body} ${card.dataPoint} ${card.visualPrompt}`)
+    ? '홍콩 야경 고층 아파트와 빅토리아 하버가 보이는 배경'
+    : /강남|서울|아파트|부동산|집값/i.test(`${topic} ${card.body} ${card.dataPoint} ${card.visualPrompt}`)
+      ? '도심 아파트와 야간 스카이라인 배경'
+      : '주제와 직접 연결되는 실제적인 배경';
+  return `${card.visualPrompt || base}. ${background}. 중앙에는 상승/하락 흐름을 한눈에 볼 수 있는 차트 영역, 하단에는 핵심 데이터 스토리 문장이 들어갈 여백. ${story || ''}`.trim();
+}
+
+function dataCardStory(card, metrics, input) {
+  const text = [card.title, card.body, card.dataPoint, card.sourceLine, input.label, input.keyword].filter(Boolean).join(' ');
+  const years = [...text.matchAll(/\b(19\d{2}|20\d{2})\b/g)].map((match) => match[1]);
+  const values = metrics.filter((metric) => /\d/.test(metric.valueLabel));
+  const current = values.find((metric) => /현재|최근|평균|current|latest/i.test(metric.label)) ?? values.at(-1);
+  const firstYear = years[0];
+  const lastYear = years.length > 1 ? years.at(-1) : '';
+  const subject = /홍콩/.test(text) ? '홍콩 부동산' : /강남/.test(text) ? '강남 부동산' : (input.label || input.keyword || '이 지표');
+  const valueName = /집값|부동산|아파트|평균/.test(text) ? '평균 집값' : '현재값';
+  if (firstYear && lastYear && current?.valueLabel) {
+    return `${subject}은 ${firstYear}년부터 ${lastYear}년까지 상승 흐름이 이어졌습니다.\n현재 ${valueName}은 ${current.valueLabel}입니다.`;
+  }
+  if (current?.valueLabel && values.length >= 2) {
+    return `${subject}은 앞선 구간보다 최근 값이 더 중요합니다.\n지금 확인할 기준값은 ${current.valueLabel}입니다.`;
+  }
+  return '';
+}
+
+function extractDataCardMetrics(text, labels = []) {
+  const source = `${text ?? ''}`;
+  const fromLabels = labels.map((label) => {
+    const escaped = escapeRegExp(label);
+    const match = new RegExp(`${escaped}[^\\d-]*(-?\\d+(?:,\\d{3})*(?:\\.\\d+)?)(\\s*[%억조만명건개]?)`, 'i').exec(source);
+    return match ? { label, valueLabel: `${match[1]}${(match[2] ?? '').trim()}` } : null;
+  }).filter(Boolean);
+  if (fromLabels.length >= 2) return fromLabels;
+  return [...source.matchAll(/((?:19|20)\d{2}|현재|최근|평균|마지막|지금)?[^\d-]{0,12}(-?\d+(?:,\d{3})*(?:\.\d+)?)(\s*[%억조만명건개]?)/g)]
+    .map((match, index) => ({ label: `${match[1] || `지표 ${index + 1}`}`.trim(), valueLabel: `${match[2]}${(match[3] ?? '').trim()}` }))
+    .filter((metric) => metric.valueLabel)
+    .slice(0, 4);
+}
+
+function escapeRegExp(value) {
+  return `${value ?? ''}`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function normalizeTrendCardTitle(value, input, index, role) {
+  return normalizeCardTitle(value, input, index, role, false);
+}
+
+function normalizeManualCardTitle(value, input, index, role) {
+  return normalizeCardTitle(value, input, index, role, true);
+}
+
+function normalizeTrendCardBody(value, role, card = {}) {
+  return normalizeCardBody(value, role, card, false);
+}
+
+function normalizeManualCardBodyFromValue(value, role, card = {}) {
+  return normalizeCardBody(value, role, card, true);
+}
+
+function richManualBody(card) {
+  const base = `${card.body ?? ''}`.trim();
+  if (base) return formatCardText(base);
+  const parts = [card.insight, card.action].filter(Boolean);
+  return formatCardText(parts.join('\n'));
 }
 
 function normalizeSourceLine(card, input, index, role) {
@@ -206,25 +487,27 @@ function normalizeSourceLine(card, input, index, role) {
 
 function richBody(card, input) {
   const base = `${card.body ?? ''}`.trim();
+  if (normalizeManualBrief(input) && base) return formatCardText(base);
   if (base.length >= 70) return formatCardText(base);
   const parts = [card.insight, card.action].filter(Boolean);
   if (parts.length) return formatCardText(parts.join('\n'));
   return formatCardText(`${input.label} 흐름은 그냥 지나치기엔 아까워요. 숫자와 원인을 같이 보면, 이게 단순 이슈인지 저장할 만한 변화인지 더 또렷해집니다.`);
 }
 
-function normalizeCardTitle(value, input, index, role) {
+function normalizeCardTitle(value, input, index, role, manual = false) {
   const fallback = defaultTitleForRole(input, role, index);
   const cleaned = cleanAiTone(cleanTitle(value || fallback));
   if (!cleaned || isGenericTitle(cleaned)) return fallback;
-  if (role === 'cover' && !hasCoverHookTitle(cleaned)) return fallback;
-  const limit = role === 'cover' ? 16 : 18;
+  if (role === 'cover' && !manual && !hasCoverHookTitle(cleaned)) return fallback;
+  const limit = manual ? (role === 'cover' ? 26 : 24) : (role === 'cover' ? 16 : 18);
   return compactTitle(cleaned, input, limit);
 }
 
-function normalizeCardBody(value, role, card = {}) {
+function normalizeCardBody(value, role, card = {}, manual = false) {
   const cleaned = removePlanningEchoes(cleanCardBody(cleanAiTone(value)), card);
   const lines = formatCardText(cleaned).split('\n').filter(Boolean);
   const maxLines = role === 'cover' ? 2 : 3;
+  if (manual) return normalizeManualCardBody(lines, maxLines);
   const limit = role === 'cover' ? 22 : 32;
   const normalized = [];
   for (const line of lines) {
@@ -233,6 +516,52 @@ function normalizeCardBody(value, role, card = {}) {
     }
   }
   return normalized.join('\n');
+}
+
+function normalizeManualCardBody(lines, maxLines) {
+  const normalized = lines
+    .flatMap((line) => splitReadableLines(line, 42))
+    .filter(Boolean)
+    .slice(0, maxLines);
+  return normalized.join('\n');
+}
+
+function splitReadableLines(line, limit) {
+  const text = `${line ?? ''}`.replace(/\s+/g, ' ').trim();
+  if (!text) return [];
+  if (text.length <= limit) return [text];
+  const sentences = text.match(/[^.!?。！？]+[.!?。！？]?/g)?.map((item) => item.trim()).filter(Boolean) ?? [text];
+  const lines = [];
+  let current = '';
+  for (const sentence of sentences) {
+    const next = current ? `${current} ${sentence}` : sentence;
+    if (next.length <= limit) {
+      current = next;
+    } else {
+      if (current) lines.push(current);
+      current = sentence;
+    }
+  }
+  if (current) lines.push(current);
+  return lines.flatMap((item) => item.length <= limit + 10 ? [item] : splitByWords(item, limit));
+}
+
+function splitByWords(text, limit) {
+  const words = `${text ?? ''}`.split(/\s+/).filter(Boolean);
+  if (words.length <= 1) return [text];
+  const lines = [];
+  let current = '';
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length <= limit) {
+      current = next;
+    } else {
+      if (current) lines.push(current);
+      current = word;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
 }
 
 function removePlanningEchoes(value, card = {}) {
@@ -327,6 +656,9 @@ function isWeakPlan(cards, input) {
   const generic = /중심으로 배경|추가 검색|신뢰도가 높아집니다|중요합니다|주목받고 있습니다|알아보겠습니다|다음과 같습니다|종합하면|핵심입니다|살펴보겠습니다|영향을 미칩니다|필수적입니다|가능성이 있습니다/g;
   const hasEvidence = /\d|%|조|억|만|증가|감소|전망|비교|확대|개편/.test(text);
   const concreteCount = cards.filter((card) => hasConcreteBody(card.body)).length;
+  const structuredCount = cards.filter((card) => card.dataPoint || card.sourceLine || card.insight || card.action || card.visualItems?.length).length;
+  const explicitRoleCount = cards.filter((card) => card._hadExplicitRole).length;
+  if (!explicitRoleCount && cards.length >= 7 && structuredCount >= Math.ceil(cards.length * 0.7) && hasEvidence) return false;
   if (cards.length >= 8 && hasEvidence && cards.some((card) => card.dataPoint || card.insight || card.action)) return false;
   if (cards.length >= 8 && hasEvidence && concreteCount >= Math.min(5, cards.length)) return false;
   return generic.test(text) || !hasEvidence || concreteCount < Math.min(3, cards.length) || cards.every((card) => !card.dataPoint && !card.insight && !card.action);
@@ -414,13 +746,16 @@ function metricText(value, label) {
 }
 
 function fallbackPlan(input) {
+  const manual = normalizeManualBrief(input);
+  const desiredCardCount = getDesiredCardCount(input);
+  const label = input.label ?? input.keyword ?? manual?.topic ?? '사용자 입력 주제';
   return {
     provider: 'fallback',
     targetAudience: '트렌드를 저장해두고 싶은 20대 후반 여성 독자',
-    coreAngle: input.production?.suggestedAngle ?? input.summary ?? '',
+    coreAngle: manual?.prompt || input.production?.suggestedAngle || input.summary || label,
     referenceStyle: chooseReferenceStyle(input),
     referencePattern: normalizeReferencePattern(undefined, chooseReferenceStyle(input)),
-    carouselBlueprint: defaultBlueprint(input),
+    carouselBlueprint: defaultBlueprint(input).slice(0, desiredCardCount),
     hookTitles: [`${input.label}, 왜 지금 뜰까?`, `${input.label} 핵심 포인트 5가지`],
     captionFirstLine: normalizeCaptionFirstLine('', input),
     captionBody: normalizeCaptionBody('', input),
@@ -429,8 +764,24 @@ function fallbackPlan(input) {
     summary: `${input.label}의 배경과 근거, 저장해둘 포인트를 쉽게 풀어봅니다.`,
     riskNotes: ['단일 근거 내용은 단정하지 마세요.'],
     sourceNotes: input.sampleTitles ?? [],
-    cards: fallbackCards(input)
+    cards: fallbackCardsForCount(input, desiredCardCount)
   };
+}
+
+function fallbackCardsForCount(input, desiredCardCount) {
+  const cards = ensureCarouselCards(fallbackCards(input), input, desiredCardCount)
+    .slice(0, desiredCardCount)
+    .map((card, index) => ({ ...card, page: index + 1 }));
+  if (cards.length) {
+    const last = cards[cards.length - 1];
+    cards[cards.length - 1] = {
+      ...last,
+      role: 'checklist',
+      layout: 'checklist',
+      visualType: 'checklist'
+    };
+  }
+  return cards;
 }
 
 function normalizeCaptionFirstLine(value, input) {
@@ -524,7 +875,47 @@ function referencePatterns() {
 }
 
 function fallbackCards(input) {
+  const manual = normalizeManualBrief(input);
+  if (manual) return manualFallbackCards(input, manual.cardCount);
   return evidenceBackedCards(input);
+}
+
+function manualFallbackCards(input, desiredCardCount = getDesiredCardCount(input)) {
+  const manual = normalizeManualBrief(input);
+  const topic = manual?.topic ?? input.label ?? input.keyword ?? '사용자 입력 주제';
+  const prompt = manual?.prompt || `${topic}을 카드뉴스로 정리`;
+  const base = [
+    makeManualCard(1, `${topic} 시작하기`, `${topic}은 거창하게 시작하지 않아도 돼요.\n오늘 바로 해볼 수 있는 기준부터 잡아볼게요.`, 'cover', 'cover_text', '첫 장 후크'),
+    makeManualCard(2, '먼저 기준을 정해요', `${prompt}\n핵심은 한 번에 많이 설명하는 게 아니라\n독자가 바로 이해할 순서로 나누는 거예요.`, 'content_angle', 'handwritten_research', '핵심 기준'),
+    makeManualCard(3, '하나씩 따라가요', `${topic}을 실천할 때는\n첫 단계와 주의점 하나만 기억해도 충분해요.\n복잡하면 저장하지 않게 되니까요.`, 'why_now', 'quote_card', '실행 포인트'),
+    makeManualCard(4, '비교하면 쉬워져요', `좋은 방법과 헷갈리는 방법을 나란히 두면\n무엇을 선택해야 하는지 금방 보여요.`, 'comparison', 'comparison_board', '비교 포인트'),
+    makeManualCard(5, '숫자는 하나만', `시간, 횟수, 비용처럼 바로 판단할 숫자 하나를\n크게 보여주면 카드가 훨씬 선명해져요.`, 'data_scene', 'data_chart', '대표 숫자'),
+    makeManualCard(6, '헷갈리는 점', `${topic}에서 자주 놓치는 건\n방법보다 순서예요.\n무리하지 않는 기준을 같이 적어주세요.`, 'misconception', 'quote_card', '주의점'),
+    makeManualCard(7, '저장 기준 3개', `오늘 할 수 있는가\n주의점이 분명한가\n다시 볼 이유가 있는가`, 'checklist', 'checklist', '저장 체크')
+  ];
+  const cards = [];
+  for (let index = 0; index < desiredCardCount; index += 1) {
+    const source = index === desiredCardCount - 1 ? base[base.length - 1] : base[index] ?? base[base.length - 2];
+    cards.push({ ...source, page: index + 1 });
+  }
+  return cards;
+}
+
+function makeManualCard(page, title, body, role, layout, emphasis) {
+  return {
+    page,
+    role,
+    layout,
+    visualType: visualTypeForLayout(layout),
+    title,
+    body,
+    insight: body,
+    action: emphasis,
+    visualPrompt: `${title}를 한눈에 보여주는 ${layout} 카드`,
+    visualItems: [title, emphasis].filter(Boolean),
+    sourceLine: '',
+    emphasis
+  };
 }
 
 function ensureList(value, fallback) {
@@ -592,6 +983,14 @@ function canonicalRole(index, total) {
     return ['community_signal', 'comparison', 'data_scene', 'misconception', 'content_angle', 'closing'][index - 1] ?? 'content_angle';
   }
   return ['community_signal', 'why_now', 'comparison', 'data_scene', 'misconception', 'content_angle', 'community_signal', 'content_angle', 'data_scene', 'misconception'][index - 1] ?? 'content_angle';
+}
+
+function canonicalManualRole(index, total, value) {
+  if (index === 0) return 'cover';
+  if (index === total - 1) return 'checklist';
+  const allowed = ['why_now', 'comparison', 'data_scene', 'misconception', 'content_angle', 'closing'];
+  if (allowed.includes(value)) return value;
+  return ['content_angle', 'why_now', 'content_angle', 'comparison', 'data_scene', 'misconception'][index - 1] ?? 'content_angle';
 }
 
 function normalizeLayout(value, role, index, referenceStyle) {

@@ -1,4 +1,4 @@
-import { generateCardNewsImage } from '#trlab/modules/services/content/card-image-generator';
+import { generateCardNewsImage, makeImagePrompt } from '#trlab/modules/services/content/card-image-generator';
 import { badRequest, parseJsonBody } from '#trlab/modules/routes/validators/common';
 import { contentImageBodySchema } from '#trlab/modules/routes/validators/schemas';
 
@@ -8,6 +8,9 @@ export const runtime = 'nodejs';
 export async function POST(request) {
   try {
     const payload = await parseJsonBody(request, contentImageBodySchema);
+    if (payload.preview === true) {
+      return Response.json({ prompt: makeImagePrompt(payload) });
+    }
     const image = await generateCardNewsImage(payload);
     return Response.json({ image, generatedAt: new Date().toISOString() });
   } catch (error) {

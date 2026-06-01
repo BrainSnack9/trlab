@@ -12,15 +12,15 @@ const plan = {
   referencePattern: {
     deckLength: '9~11장 권장',
     coverRhythm: '짧은 주제명과 편집자의 한 줄 관찰',
-    bodyRhythm: '사례, 비교, 숫자를 한 장씩 분리',
-    proofRhythm: '검증 정보는 내부 판단에만 사용',
+    bodyRhythm: '의문, 비교, 숫자를 한 장씩 분리',
+    proofRhythm: '검증 정보는 카드 안에만 사용',
     endingRhythm: '저장 기준으로 종료'
   }
 };
 
 const style = {
   name: '리서치 노트',
-  desc: '메모와 비교표가 섞인 정보형 카드',
+  desc: '메모와 비교표가 얹힌 정보형 카드',
   bg: '#f8fafc',
   ink: '#0f172a',
   accent: '#dc2626',
@@ -55,7 +55,9 @@ describe('card image generator prompts and local fallback', () => {
     expect(prompt).toContain('반도체 제외');
     expect(prompt).toContain('외국인 수급');
     expect(prompt).toContain('data card');
-    expect(prompt).toContain('blank bars and panels');
+    expect(prompt).toContain('premium editorial data story layout');
+    expect(prompt).toContain('clear reserved space in the center');
+    expect(prompt).toContain('Do not render the actual graph');
     expect(prompt).toContain('Do not render any Korean text');
     expect(prompt).toContain('exact SVG text afterward');
     expect(prompt).not.toMatch(/근거:|해석:|실행:/);
@@ -75,8 +77,9 @@ describe('card image generator prompts and local fallback', () => {
       card: { ...card, role: 'checklist', layout: 'checklist', title: '이렇게 만들기' }
     });
 
-    expect(coverPrompt).toContain('hook-first poster');
-    expect(coverPrompt).toContain('huge title');
+    expect(coverPrompt).toContain('full-bleed editorial cover image');
+    expect(coverPrompt).toContain('topic-specific full-bleed');
+    expect(coverPrompt).toContain('Gangnam real estate');
     expect(checklistPrompt).toContain('save-worthy closing card');
     expect(checklistPrompt).toContain('blank checklist rows');
   });
@@ -90,12 +93,14 @@ describe('card image generator prompts and local fallback', () => {
     expect(svg).toContain('코스피 전체');
     expect(svg).toContain('반도체 제외');
     expect(svg).toContain('외국인 수급');
-    expect(svg).toContain('핵심 포인트');
+    expect(svg).toContain('댓글 반응');
+    expect(svg).not.toContain('Remote image unavailable');
+    expect(svg).not.toContain('Exact-text render');
     expect(svg).not.toContain('참고/확인');
     expect(svg).not.toMatch(/data_chart|근거:|해석:|실행:/);
   });
 
-  it('keeps local cover fallback hook-first without exposing long verification text', () => {
+  it('keeps local cover fallback aligned with the preview cover', () => {
     const image = generateLocalCard({
       studio,
       style,
@@ -103,15 +108,42 @@ describe('card image generator prompts and local fallback', () => {
         ...card,
         role: 'cover',
         layout: 'cover_text',
+        page: 1,
         title: '코스피 착시',
         body: '지수만 보면 놓쳐요.',
-        sourceLine: 'FMKorea 포텐 최신순, 검색 검증 결과'
+        sourceLine: 'FMKorea 포텐 최신순 검증 결과'
       }
     }, []);
     const svg = image.buffer.toString('utf8');
 
-    expect(svg).toContain('저장 포인트');
+    expect(svg).toContain('@trlab.insight');
+    expect(svg).toContain('coverShade');
+    expect(svg).toContain('fallbackSky');
+    expect(svg).toContain('코스피 착시');
+    expect(svg).toContain('지수만 보면 놓쳐요.');
+    expect(svg).not.toContain('저장 포인트');
     expect(svg).not.toContain('FMKorea 포텐 최신순');
     expect(svg).not.toContain('참고/확인');
+    expect(svg).not.toContain('Exact-text render');
+  });
+
+  it('uses a custom channel name in generated cards', () => {
+    const image = generateLocalCard({
+      studio: { ...studio, channelName: '@gangnam.life' },
+      style,
+      card: {
+        ...card,
+        role: 'cover',
+        layout: 'cover_text',
+        page: 1,
+        title: '강남 집값',
+        body: '밤의 아파트 불빛으로 봅니다.'
+      }
+    }, []);
+    const svg = image.buffer.toString('utf8');
+
+    expect(svg).toContain('@gangnam.life');
+    expect(svg).not.toContain('@trlab.insight');
+    expect(svg).not.toContain('Exact-text render');
   });
 });

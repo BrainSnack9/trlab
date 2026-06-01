@@ -4,7 +4,7 @@ import { Button } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Butto
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Card';
 import { formatCardText } from '@/lib/card-text';
 import { autoStyle, cardStyles, referenceVisualGuide, styleTraits, templateSlots } from './card-news-styles';
-import { downloadCard, makeCarouselScript, makePostCopy, makePrompt } from './card-news-export';
+import { downloadCard, makeCarouselScript, makePostCopy } from './card-news-export';
 import { CardImageGenerator } from './CardImageGenerator';
 import { CardNewsPreview } from './CardNewsPreview';
 import { evaluateCardNewsPlan } from './card-news-quality';
@@ -13,16 +13,19 @@ export function CardNewsMaker({ studio, plan, onRegenerate, regenerating }) {
   const draftKey = useMemo(() => makeMakerDraftKey(studio, plan), [studio, plan]);
   const [selected, setSelected] = useState(0);
   const [styleKey, setStyleKey] = useState(() => autoStyle(studio, plan));
+  const [channelName, setChannelName] = useState(() => studio?.channelName || studio?.manualBrief?.channelName || '@trlab.insight');
   const cards = useMemo(() => (plan.cards ?? []).map((card, index) => ({ ...card, page: card.page ?? index + 1 })), [plan]);
   const safeSelected = clampIndex(selected, cards.length);
   const card = cards[safeSelected] ?? cards[0];
   const resolvedStyleKey = cardStyles[styleKey] ? styleKey : autoStyle(studio, plan);
   const style = cardStyles[resolvedStyleKey] ?? Object.values(cardStyles)[0];
+  const displayStudio = useMemo(() => ({ ...studio, channelName: normalizeChannelName(channelName) }), [studio, channelName]);
 
   useEffect(() => {
     const draft = loadMakerDraft(draftKey);
     setSelected(clampIndex(draft.selected ?? 0, cards.length));
     setStyleKey(cardStyles[draft.styleKey] ? draft.styleKey : autoStyle(studio, plan));
+    setChannelName(draft.channelName || studio?.channelName || studio?.manualBrief?.channelName || '@trlab.insight');
   }, [draftKey]);
 
   useEffect(() => {
@@ -30,24 +33,25 @@ export function CardNewsMaker({ studio, plan, onRegenerate, regenerating }) {
   }, [cards.length]);
 
   useEffect(() => {
-    saveMakerDraft(draftKey, { selected: safeSelected, styleKey: resolvedStyleKey });
-  }, [draftKey, safeSelected, resolvedStyleKey]);
+    saveMakerDraft(draftKey, { selected: safeSelected, styleKey: resolvedStyleKey, channelName: normalizeChannelName(channelName) });
+  }, [draftKey, safeSelected, resolvedStyleKey, channelName]);
 
   if (!card) return null;
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
-      <CardWorkspace cards={cards} selected={safeSelected} setSelected={setSelected} card={card} style={style} studio={studio} />
-      <ControlPanel cards={cards} card={card} selected={safeSelected} styleKey={resolvedStyleKey} setStyleKey={setStyleKey} style={style} studio={studio} plan={plan} onRegenerate={onRegenerate} regenerating={regenerating} />
+      <CardWorkspace cards={cards} selected={safeSelected} setSelected={setSelected} card={card} style={style} studio={displayStudio} plan={plan} />
+      <ControlPanel cards={cards} card={card} selected={safeSelected} styleKey={resolvedStyleKey} setStyleKey={setStyleKey} style={style} studio={displayStudio} plan={plan} onRegenerate={onRegenerate} regenerating={regenerating} channelName={channelName} setChannelName={setChannelName} />
     </div>
   );
 }
 
-function CardWorkspace({ cards, selected, setSelected, card, style, studio }) {
+function CardWorkspace({ cards, selected, setSelected, card, style, studio, plan }) {
   return (
     <div className="space-y-3">
       <div className="flex gap-2 overflow-x-auto pb-1">{cards.map((item, index) => <Button key={item.page} size="sm" variant={selected === index ? 'default' : 'outline'} onClick={() => setSelected(index)}>Card {item.page} · {roleLabel(item.role)}</Button>)}</div>
       <CarouselStrip cards={cards} selected={selected} setSelected={setSelected} style={style} />
       <CardNewsPreview card={card} style={style} studio={studio} />
+      <CardImageGenerator card={card} selected={selected} style={style} studio={studio} plan={plan} />
     </div>
   );
 }
@@ -79,12 +83,22 @@ function CarouselStrip({ cards, selected, setSelected, style }) {
 }
 
 
-function ControlPanel({ cards, card, selected, styleKey, setStyleKey, style, studio, plan, onRegenerate, regenerating }) {
+function ControlPanel({ cards, card, selected, styleKey, setStyleKey, style, studio, plan, onRegenerate, regenerating, channelName, setChannelName }) {
   return (
     <Card className="h-fit">
       <CardHeader><CardDescription>Production Controls</CardDescription><CardTitle className="flex items-center gap-2"><Images className="h-5 w-5 text-indigo-600" />카드 출력</CardTitle></CardHeader>
       <CardContent className="space-y-4">
         <Button className="w-full" onClick={onRegenerate} disabled={regenerating}><RefreshCw className={`h-4 w-4 ${regenerating ? 'animate-spin' : ''}`} />내용 다시 생성</Button>
+        <label className="grid gap-1.5 rounded-lg border bg-white p-3">
+          <span className="text-xs font-black text-slate-500">채널명</span>
+          <input
+            className="h-10 rounded-md border border-slate-200 px-3 text-sm font-black outline-none focus:border-indigo-400"
+            value={channelName}
+            onChange={(event) => setChannelName(event.target.value)}
+            placeholder="@my_channel"
+          />
+          <span className="text-[11px] font-semibold text-muted-foreground">AI 이미지 하단 브랜드 표기에 사용됩니다.</span>
+        </label>
         <div><div className="mb-2 flex items-center gap-2 text-sm font-black"><Palette className="h-4 w-4" />캔버스 템플릿</div><div className="grid gap-2">{Object.entries(cardStyles).map(([key, item]) => <Button key={key} variant={styleKey === key ? 'default' : 'outline'} className="h-auto justify-start p-3 text-left" onClick={() => setStyleKey(key)}><span><b className="block">{item.name}</b><small className="text-xs opacity-75">{item.desc}</small></span></Button>)}</div></div>
         <TemplateBlueprint style={style} />
         <ReferenceRhythmPanel plan={plan} />
@@ -95,8 +109,6 @@ function ControlPanel({ cards, card, selected, styleKey, setStyleKey, style, stu
         <Button className="w-full" variant="secondary" onClick={() => cards.forEach((item, index) => setTimeout(() => downloadCard(item, index, studio, style, 'png'), index * 250))}>전체 PNG 다운로드</Button>
         <Button className="w-full" variant="outline" onClick={() => navigator.clipboard?.writeText(makeCarouselScript({ ...plan, cards }))}><Copy className="h-4 w-4" />전체 원고 복사</Button>
         <PublishPackage plan={plan} />
-        <CardImageGenerator card={card} selected={selected} style={style} studio={studio} plan={plan} />
-        <Button className="w-full" variant="outline" onClick={() => navigator.clipboard?.writeText(makePrompt(studio, plan, card, style.name))}><Copy className="h-4 w-4" />이미지 프롬프트 복사</Button>
         <div className="rounded-lg bg-slate-50 p-3 text-xs text-muted-foreground">레퍼런스는 인스타 정보 계정형 카드뉴스입니다. 핵심은 큰 후크, 짧은 본문, 한 카드 한 역할, 비교/그래프/반응의 시각화입니다.</div>
       </CardContent>
     </Card>
@@ -243,7 +255,8 @@ function saveMakerDraft(key, draft) {
     window.localStorage.setItem(key, JSON.stringify({
       savedAt: new Date().toISOString(),
       selected: Number.isFinite(draft.selected) ? draft.selected : 0,
-      styleKey: draft.styleKey
+      styleKey: draft.styleKey,
+      channelName: normalizeChannelName(draft.channelName)
     }));
   } catch {
     // Ignore localStorage quota/private mode failures.
@@ -254,4 +267,10 @@ function clampIndex(value, length) {
   if (!length) return 0;
   const number = Number.isFinite(value) ? value : 0;
   return Math.max(0, Math.min(length - 1, number));
+}
+
+function normalizeChannelName(value) {
+  const text = `${value ?? ''}`.trim();
+  if (!text) return '@trlab.insight';
+  return text.startsWith('@') ? text : `@${text}`;
 }

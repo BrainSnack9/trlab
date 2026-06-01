@@ -24,7 +24,7 @@ export const fmkoreaBrowserQuerySchema = z.object({
 
 export const contentPlanBodySchema = z
   .record(z.string(), z.unknown())
-  .refine((payload) => Boolean(payload?.label || payload?.keyword), 'Missing candidate');
+  .refine((payload) => Boolean(payload?.label || payload?.keyword || payload?.manualBrief), 'Missing candidate');
 
 export const contentImageBodySchema = z
   .object({

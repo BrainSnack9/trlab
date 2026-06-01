@@ -73,6 +73,40 @@ describe('createContentPlan fallback carousel', () => {
     expect(plan.hashtags.every((tag) => tag.startsWith('#'))).toBe(true);
   });
 
+  it('keeps manual natural-language briefs at the requested card count', async () => {
+    const originalKey = process.env.OPENAI_API_KEY;
+    const originalProvider = process.env.AI_PROVIDER;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.AI_PROVIDER;
+
+    let plan;
+    try {
+      plan = await createContentPlan({
+        id: 'manual-stretching',
+        label: '퇴근 후 10분 스트레칭',
+        keyword: '퇴근 후 10분 스트레칭',
+        sourceMode: 'manual',
+        cardCount: 4,
+        summary: '직장인이 바로 따라할 수 있는 4컷 카드뉴스',
+        manualBrief: {
+          topic: '퇴근 후 10분 스트레칭',
+          prompt: '각 컷은 동작 하나와 주의점 하나로 구성',
+          cardCount: 4,
+          audience: '앉아서 일하는 직장인',
+          tone: '친근하고 실용적으로'
+        },
+        sources: ['manual']
+      });
+    } finally {
+      if (originalKey) process.env.OPENAI_API_KEY = originalKey;
+      if (originalProvider) process.env.AI_PROVIDER = originalProvider;
+    }
+
+    expect(plan.cards).toHaveLength(4);
+    expect(plan.carouselBlueprint).toHaveLength(4);
+    expect(plan.cards.at(-1).role).toBe('checklist');
+  });
+
   it('keeps longer reference-like AI responses up to 12 cards and inserts a why-now beat', () => {
     const longAiPlan = {
       referenceStyle: 'photo_hook',

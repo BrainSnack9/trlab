@@ -8,20 +8,156 @@ import { Empty, StageHead } from '@/core/TrLab/Components/Desktop/Molecules/TrLa
 import { createContentPlan } from '@/core/TrLab/modules/clients/api';
 import { evaluateCardNewsPlan } from '../CardNews/card-news-quality';
 
-export function StudioView({ queue, studio, setView, contentPlans, setContentPlans }) {
+export function StudioView({ queue, studio, setView, setQueue, contentPlans, setContentPlans }) {
+  const [manualState, setManualState] = useState({ loading: false, error: '' });
   const { plan, loading, error, cached } = useContentPlan(studio, contentPlans, setContentPlans);
-  if (!studio) return <Empty title="스튜디오에 담긴 후보가 없습니다" onClick={() => setView('dashboard')} />;
+  const createManualPlan = async (values) => {
+    const manualStudio = makeManualStudio(values);
+    setManualState({ loading: true, error: '' });
+    try {
+      const data = await createContentPlan(manualStudio, { refresh: true });
+      setQueue((items = []) => [manualStudio, ...items.filter((item) => item?.id !== manualStudio.id)]);
+      setContentPlans((plans) => ({ ...plans, [manualStudio.id]: data.plan }));
+      setView('studio');
+    } catch (error) {
+      setManualState({ loading: false, error: error.message });
+      return;
+    }
+    setManualState({ loading: false, error: '' });
+  };
+  if (!studio) {
+    return (
+      <div className="space-y-5">
+        <ManualBriefPanel onSubmit={createManualPlan} loading={manualState.loading} error={manualState.error} />
+        <Empty title="콘텐츠 설계 대기열이 비어 있습니다" onClick={() => setView('dashboard')} />
+      </div>
+    );
+  }
   return (
     <div className="space-y-5">
       <StageHead label="Step 03 · Content Studio" title={`${studio.label} 콘텐츠 설계`} description="LLM이 후보를 카드뉴스 기획안으로 확장합니다.">
         <Button variant="outline" onClick={() => setView('search')}><ArrowLeft className="h-4 w-4" />검증으로</Button>
         <Button onClick={() => setView('cardnews')} disabled={!plan}><Send className="h-4 w-4" />카드뉴스 시나리오로</Button>
       </StageHead>
+      <ManualBriefPanel onSubmit={createManualPlan} loading={manualState.loading} error={manualState.error} compact />
       {loading && <LoadingBox />}
       {error && <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
       {plan && <PlanGrid plan={plan} queue={queue} cached={cached} />}
     </div>
   );
+}
+
+function ManualBriefPanel({ onSubmit, loading, error, compact = false }) {
+  const [values, setValues] = useState({
+    topic: '',
+    prompt: '',
+    cardCount: 8,
+    channelName: '@trlab.insight',
+    audience: '',
+    tone: ''
+  });
+  const canSubmit = values.topic.trim() && values.prompt.trim() && !loading;
+  const update = (key) => (event) => setValues((current) => ({ ...current, [key]: event.target.value }));
+  const submit = (event) => {
+    event.preventDefault();
+    if (!canSubmit) return;
+    onSubmit({ ...values, cardCount: Number(values.cardCount) });
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardDescription>Manual Content Brief</CardDescription>
+        <CardTitle>원하는 주제로 카드뉴스 설계</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form className="grid gap-3" onSubmit={submit}>
+          <div className={compact ? 'grid gap-3 lg:grid-cols-[minmax(0,1fr)_120px]' : 'grid gap-3 md:grid-cols-[minmax(0,1fr)_140px]'}>
+            <label className="grid gap-1.5">
+              <span className="text-xs font-black text-slate-500">주제</span>
+              <input className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-indigo-400" value={values.topic} onChange={update('topic')} placeholder="예: 30대 직장인을 위한 저속노화 식단" />
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-xs font-black text-slate-500">컷 수</span>
+              <input className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-indigo-400" type="number" min="3" max="12" value={values.cardCount} onChange={update('cardCount')} />
+            </label>
+          </div>
+          <label className="grid gap-1.5">
+            <span className="text-xs font-black text-slate-500">만들고 싶은 내용</span>
+            <textarea className="min-h-28 resize-y rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold leading-6 outline-none focus:border-indigo-400" value={values.prompt} onChange={update('prompt')} placeholder="어떤 관점으로, 어떤 독자에게, 어떤 페이지 흐름으로 만들고 싶은지 자연어로 적어주세요." />
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-xs font-black text-slate-500">채널명</span>
+            <input className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-indigo-400" value={values.channelName} onChange={update('channelName')} placeholder="@my_channel" />
+          </label>
+          {!compact ? (
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="grid gap-1.5">
+                <span className="text-xs font-black text-slate-500">대상 독자</span>
+                <input className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-indigo-400" value={values.audience} onChange={update('audience')} placeholder="예: 인스타 저장형 정보를 좋아하는 20대 후반" />
+              </label>
+              <label className="grid gap-1.5">
+                <span className="text-xs font-black text-slate-500">톤</span>
+                <input className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-indigo-400" value={values.tone} onChange={update('tone')} placeholder="예: 친근하지만 근거 있는 말투" />
+              </label>
+            </div>
+          ) : null}
+          {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">{error}</div> : null}
+          <div className="flex justify-end">
+            <Button type="submit" disabled={!canSubmit}>
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              콘텐츠 설계 생성
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+function makeManualStudio(values) {
+  const topic = values.topic.trim();
+  const prompt = values.prompt.trim();
+  const cardCount = Math.min(12, Math.max(3, Number(values.cardCount) || 8));
+  const channelName = normalizeChannelName(values.channelName);
+  const idSeed = `${topic}-${prompt}-${cardCount}-${Date.now()}`;
+  return {
+    id: `manual-${hashString(idSeed)}`,
+    label: topic,
+    keyword: topic,
+    category: 'manual',
+    sourceMode: 'manual',
+    channelName,
+    score: 100,
+    rank: 1,
+    summary: prompt,
+    production: {
+      tier: 'Manual',
+      score: 100,
+      suggestedAngle: prompt
+    },
+    validation: {
+      contentType: '사용자 입력'
+    },
+    manualBrief: {
+      topic,
+      prompt,
+      channelName,
+      audience: values.audience?.trim(),
+      tone: values.tone?.trim(),
+      cardCount
+    },
+    cardCount,
+    evidence: [],
+    sampleTitles: [],
+    sources: ['manual']
+  };
+}
+
+function hashString(value) {
+  let result = 0;
+  for (let index = 0; index < value.length; index += 1) result = (result * 31 + value.charCodeAt(index)) >>> 0;
+  return result.toString(36);
 }
 
 function PlanGrid({ plan, queue, cached }) {
@@ -186,6 +322,12 @@ function referenceLabel(value) {
     magazine_story: '매거진형',
     meme_factcheck: '밈 팩트체크형'
   }[value] ?? value;
+}
+
+function normalizeChannelName(value) {
+  const text = `${value ?? ''}`.trim();
+  if (!text) return '@trlab.insight';
+  return text.startsWith('@') ? text : `@${text}`;
 }
 
 function useContentPlan(studio, contentPlans, setContentPlans) {
