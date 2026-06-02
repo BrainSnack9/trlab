@@ -1,6 +1,6 @@
-import { Activity, Clock3, Rss, ServerCog, SlidersHorizontal } from 'lucide-react';
+import { Activity, Clock3, Eraser, Rss, ServerCog, SlidersHorizontal } from 'lucide-react';
 import { Button } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Button/Button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Select';
 import { Metric, PageHero } from '@/core/TrLab/Components/Desktop/Molecules/TrLab/Common';
 import { CollectionTabs } from './CollectionTabs';
@@ -10,14 +10,14 @@ export function CollectionView(props) {
   return (
     <div className="space-y-5">
       <section className="grid gap-4 md:grid-cols-[minmax(0,1fr)_360px] md:items-end">
-        <PageHero label="Collection Control Room" title="수집 채널과 저장소 관리" description="채널 상태, 저장 데이터, 수집 로그를 한곳에서 점검합니다." />
+        <PageHero title="수집 채널과 저장소 관리" description="채널 상태, 저장 데이터, 수집 로그를 한곳에서 점검합니다." />
         <div className="grid grid-cols-3 gap-2"><Metric label="전체 신호" value={props.signalStats?.total ?? props.signals.length} /><Metric label="채널" value={props.sources.length} /><Metric label="최근 로그" value={props.collectionRuns.length} /></div>
       </section>
       <Card>
         <CardHeader className="border-b">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div><CardDescription>Signal Health</CardDescription><CardTitle className="flex items-center gap-2"><ServerCog className="h-5 w-5 text-indigo-600" />수집 채널 상태</CardTitle></div>
-            <Toolbar collectSignals={props.collectSignals} collectingSignals={props.collectingSignals} />
+            <div><CardTitle className="flex items-center gap-2"><ServerCog className="h-5 w-5 text-indigo-600" />수집 채널 상태</CardTitle></div>
+            <Toolbar collectSignals={() => props.collectSignals({ areas: props.selectedAreas, profiles: props.selectedChannelProfiles })} clearCollectedTrends={props.clearCollectedTrends} collectingSignals={props.collectingSignals} clearingCollection={props.clearingCollection} hasSignals={Boolean(props.signals.length)} hasTrends={Boolean(props.rankedTrends.length)} />
           </div>
         </CardHeader>
         <CardContent className="pt-5"><div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_360px]"><EventList events={props.timerEvents} /><TimerBox /></div></CardContent>
@@ -27,8 +27,8 @@ export function CollectionView(props) {
   );
 }
 
-function Toolbar({ collectSignals, collectingSignals }) {
-  return <div className="flex flex-wrap gap-2"><Select value="30"><SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="30">30분</SelectItem></SelectContent></Select><Button variant="outline" disabled><SlidersHorizontal className="h-4 w-4" />소스 적용중</Button><Button variant="outline" disabled><Activity className="h-4 w-4" />자동 수집 작동 중</Button><Button onClick={collectSignals} disabled={collectingSignals}><Rss className="h-4 w-4" />{collectingSignals ? '수집 중' : '전체 수집'}</Button></div>;
+function Toolbar({ collectSignals, clearCollectedTrends, collectingSignals, clearingCollection, hasSignals, hasTrends }) {
+  return <div className="flex flex-wrap gap-2"><Select value="30"><SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="30">30분</SelectItem></SelectContent></Select><Button variant="outline" disabled><SlidersHorizontal className="h-4 w-4" />소스 적용중</Button><Button variant="outline" disabled><Activity className="h-4 w-4" />자동 수집 작동 중</Button><Button onClick={collectSignals} disabled={collectingSignals || clearingCollection}><Rss className="h-4 w-4" />{collectingSignals ? '수집 중' : '전체 수집'}</Button><Button variant="outline" onClick={clearCollectedTrends} disabled={collectingSignals || clearingCollection || (!hasSignals && !hasTrends)}><Eraser className="h-4 w-4" />{clearingCollection ? '비우는 중' : '비우기'}</Button></div>;
 }
 
 function TimerBox() {

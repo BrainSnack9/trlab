@@ -11,7 +11,6 @@ export default function CardNews() {
       studio={workspace.studioTrend}
       setView={workspace.setView}
       contentPlans={workspace.contentPlans}
-      setContentPlans={workspace.setContentPlans}
     />
   );
 }

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, CheckCircle2, Plus } from 'lucide-react';
+import { ArrowLeft, BarChart3, CheckCircle2, Database, MessageCircle, Plus, ShieldCheck } from 'lucide-react';
 import { Badge } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Badge/Badge';
 import { Button } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Button/Button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Card';
-import { Empty, Metric, StageHead } from '@/core/TrLab/Components/Desktop/Molecules/TrLab/Common';
+import { Card, CardContent, CardHeader, CardTitle } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Card';
+import { Empty, StageHead } from '@/core/TrLab/Components/Desktop/Molecules/TrLab/Common';
 import { verifySearch } from '@/core/TrLab/modules/clients/api';
 
 export function SearchView({ selected, addToQueue, queued, setView }) {
@@ -29,7 +29,7 @@ export function SearchView({ selected, addToQueue, queued, setView }) {
 
   return (
     <div className="space-y-5">
-      <StageHead label="Step 02 · Search Intelligence" title={`${selected.label} 검색 검증`} description="검색 의도, 결과 강도, 콘텐츠 각도를 확인합니다.">
+      <StageHead title={`${selected.label} 검색 검증`}>
         <Button variant="outline" onClick={() => setView('dashboard')}><ArrowLeft className="h-4 w-4" />뒤로가기</Button>
         <Button onClick={() => addToQueue(searchCheck)} disabled={checkingSearch || !canQueue}>{queued ? <CheckCircle2 className="h-4 w-4" /> : <Plus className="h-4 w-4" />}{queueLabel(queued, checkingSearch, canQueue)}</Button>
       </StageHead>
@@ -49,11 +49,12 @@ function queueLabel(queued, checking, canQueue) {
 
 function SummaryCard({ selected }) {
   const evidence = getEvidence(selected);
+  const accentColor = selected.color || '#4f46e5';
   return (
     <Card className="overflow-hidden">
-      <div className="p-5 text-white" style={{ background: `linear-gradient(135deg, ${selected.color}, #111827)` }}><Badge variant="secondary">#{selected.rank}</Badge><h2 className="mt-3 break-words text-xl font-black leading-tight">{cleanDisplayText(selected.label)}</h2><p className="mt-2 break-words text-[13px] font-semibold leading-5 text-white/80">{cleanDisplayText(selected.summary)}</p></div>
+      <div className="border-b bg-slate-950 p-5 text-white" style={{ background: `linear-gradient(135deg, ${accentColor}, #111827)` }}><Badge variant="secondary">#{selected.rank}</Badge><h2 className="mt-3 break-words text-xl font-black leading-tight text-white">{cleanDisplayText(selected.label)}</h2><p className="mt-2 break-words text-[13px] font-semibold leading-5 text-white/80">{cleanDisplayText(selected.summary)}</p></div>
       <CardContent className="space-y-4 pt-5">
-        <div className="grid grid-cols-2 gap-2"><Metric label="제작점수" value={selected.production?.score ?? selected.score} /><Metric label="반응" value={selected.scoring?.communityReaction ?? 0} /><Metric label="출처" value={selected.sources.length} /><Metric label="등급" value={selected.production?.tier ?? '검증'} /></div>
+        <SummaryStats selected={selected} />
         <DetailBlock title="왜 가져왔나">
           <p>{makeReason(selected)}</p>
         </DetailBlock>
@@ -72,46 +73,126 @@ function SummaryCard({ selected }) {
   );
 }
 
-function ResultCard({ selected, searchCheck, checking, error }) {
-  const verification = searchCheck?.verification;
+function SummaryStats({ selected }) {
   return (
-    <Card>
-      <CardHeader><CardDescription>Search Verdict</CardDescription><CardTitle>검색 검증 결과</CardTitle></CardHeader>
-      <CardContent className="space-y-4">
-        <VerificationFlow selected={selected} searchCheck={searchCheck} />
-        {checking && <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">Google/Naver 검색 결과를 확인하는 중입니다.</div>}
-        {error && <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
-        {verification && <div className="rounded-lg border bg-slate-50 p-4"><Badge>{verification.grade}</Badge><h3 className="mt-3 text-lg font-black leading-tight">점수 {verification.score}</h3><p className="mt-2 text-sm font-semibold text-muted-foreground">{verification.summary}</p><p className="mt-2 text-xs font-medium text-muted-foreground">{verification.reason}</p>{verification.keyFindings?.length ? <FindingList items={verification.keyFindings} /> : null}</div>}
-        <div className="grid min-w-0 gap-2">{(searchCheck?.results ?? []).slice(0, 8).map((result) => <a key={`${result.source}-${result.url}`} href={result.url} target="_blank" rel="noreferrer" className="min-w-0 rounded-lg border bg-white p-3 transition hover:border-indigo-300"><div className="flex flex-wrap gap-1.5"><Badge variant="outline">{result.source}</Badge>{result.publishedAt ? <Badge variant="secondary">{formatDate(result.publishedAt)}</Badge> : null}</div><strong className="mt-2 line-clamp-2 block break-words text-sm leading-5">{cleanDisplayText(result.title)}</strong>{result.snippet ? <p className="mt-1 line-clamp-2 break-words text-xs font-medium leading-5 text-muted-foreground">{cleanDisplayText(result.snippet)}</p> : null}</a>)}</div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function VerificationFlow({ selected, searchCheck }) {
-  const query = searchCheck?.query ?? selected.label;
-  const sourceSummary = searchCheck?.sources?.length
-    ? searchCheck.sources.map((source) => `${source.source} ${source.count ?? 0}건`).join(' · ')
-    : '검색 실행 전';
-  return (
-    <div className="grid gap-3 rounded-lg border bg-white p-4 md:grid-cols-3">
-      <FlowStep label="1. 수집 근거" value={`${selected.sources?.join(', ') || '출처 없음'} · 반응 ${selected.scoring?.communityReaction ?? 0}`} />
-      <FlowStep label="2. 추론 검색어" value={query} />
-      <FlowStep label="3. 검증 결과" value={searchCheck?.verification ? `${searchCheck.verification.grade} · ${searchCheck.verification.score}점 · ${sourceSummary}` : sourceSummary} />
+    <div className="grid grid-cols-2 gap-2">
+      <StatTile icon={BarChart3} label="제작점수" value={selected.production?.score ?? selected.score ?? 0} tone="indigo" />
+      <StatTile icon={MessageCircle} label="반응" value={selected.scoring?.communityReaction ?? 0} tone="rose" />
+      <StatTile icon={Database} label="출처" value={selected.sources?.length ?? 0} tone="slate" />
+      <StatTile icon={ShieldCheck} label="등급" value={selected.production?.tier ?? '검증'} tone="emerald" />
     </div>
   );
 }
 
-function FlowStep({ label, value }) {
-  return <div className="min-w-0"><div className="text-[11px] font-black text-slate-500">{label}</div><p className="mt-1 break-words text-sm font-black leading-5 text-slate-900">{cleanDisplayText(value)}</p></div>;
+function StatTile({ icon: Icon, label, value, tone }) {
+  const toneClass = {
+    indigo: 'border-indigo-100 bg-indigo-50 text-indigo-700',
+    rose: 'border-rose-100 bg-rose-50 text-rose-700',
+    slate: 'border-slate-200 bg-slate-50 text-slate-700',
+    emerald: 'border-emerald-100 bg-emerald-50 text-emerald-700'
+  }[tone] ?? 'border-slate-200 bg-slate-50 text-slate-700';
+
+  return (
+    <div className={`min-w-0 rounded-lg border p-3 ${toneClass}`}>
+      <div className="flex items-center gap-1.5 text-[11px] font-black">
+        <Icon className="h-3.5 w-3.5 shrink-0" />
+        <span>{label}</span>
+      </div>
+      <strong className="mt-2 block truncate text-xl font-black leading-none text-slate-950">{value}</strong>
+    </div>
+  );
+}
+
+function ResultCard({ selected, searchCheck, checking, error }) {
+  const verification = searchCheck?.verification;
+  const results = getUniqueResults(searchCheck);
+  const sources = searchCheck?.sources ?? [];
+  const tokens = verification?.tokens ?? getTokens(searchCheck?.query ?? selected.label);
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader><CardTitle>검증 판정</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          {checking && <div className="rounded-lg border border-dashed p-6 text-sm font-semibold text-muted-foreground">Google/Naver 검색 결과를 확인하는 중입니다.</div>}
+          {error && <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">{error}</div>}
+          {verification ? <VerificationVerdict verification={verification} /> : null}
+          <div className="rounded-lg border bg-white p-3">
+            <div className="text-[11px] font-black text-slate-500">매칭 단어</div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {tokens.map((token) => <Badge key={token} variant="secondary">{cleanDisplayText(token)}</Badge>)}
+            </div>
+            <p className="mt-3 text-xs font-semibold leading-5 text-muted-foreground">최근 45일 결과 중 제목에 매칭 단어가 잡힌 항목만 강한 근거로 봅니다.</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>출처별 확인 결과</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          <SourceStatusGrid sources={sources} checking={checking} />
+          <ResultList results={results} checking={checking} />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function VerificationVerdict({ verification }) {
+  const tone = getGradeTone(verification.grade);
+  return (
+    <div className={`rounded-xl border p-4 ${tone.box}`}>
+      <h3 className="text-2xl font-black leading-tight text-slate-950">{verification.score}점</h3>
+      <p className="mt-3 break-words text-sm font-bold leading-6 text-slate-800">{cleanDisplayText(verification.summary)}</p>
+      <p className="mt-2 break-words text-xs font-semibold leading-5 text-muted-foreground">{cleanDisplayText(verification.reason)}</p>
+    </div>
+  );
+}
+
+function SourceStatusGrid({ sources, checking }) {
+  if (checking && !sources.length) return <div className="rounded-lg border border-dashed p-4 text-sm font-semibold text-muted-foreground">출처별 결과를 불러오는 중입니다.</div>;
+  if (!sources.length) return <div className="rounded-lg border border-dashed p-4 text-sm font-semibold text-muted-foreground">아직 확인된 출처가 없습니다.</div>;
+  return (
+    <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+      {sources.map((source) => {
+        const tone = getSourceTone(source);
+        return (
+          <div key={source.source} className={`rounded-lg border p-3 ${tone}`}>
+            <div className="text-xs font-black text-slate-600">{source.source}</div>
+            <div className="mt-2 flex items-end justify-between gap-2">
+              <strong className="text-xl font-black text-slate-950">{source.count ?? 0}</strong>
+              <Badge variant="outline">{source.status === 'ok' ? '확인됨' : '실패'}</Badge>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function DetailBlock({ title, children }) {
   return <section><div className="mb-2 text-[11px] font-black text-slate-500">{title}</div><div className="text-xs font-semibold leading-5 text-slate-700">{children}</div></section>;
 }
 
-function FindingList({ items }) {
-  return <ul className="mt-3 space-y-1.5">{items.slice(0, 4).map((item, index) => <li key={`${index}-${item}`} className="break-words rounded-md bg-white px-3 py-2 text-xs font-bold leading-5 text-slate-700">{cleanDisplayText(item)}</li>)}</ul>;
+function ResultList({ results, checking }) {
+  if (checking && !results.length) return null;
+  if (!results.length) return <div className="rounded-lg border border-dashed p-4 text-sm font-semibold text-muted-foreground">검색 결과에서 강한 근거를 아직 찾지 못했습니다.</div>;
+  return (
+    <div className="space-y-2">
+      <div className="text-[11px] font-black text-slate-500">강한 근거 {results.length}개</div>
+      <div className="grid min-w-0 gap-2">
+        {results.slice(0, 8).map((result) => (
+          <a key={`${result.source}-${result.url || result.title}`} href={result.url} target="_blank" rel="noreferrer" className="min-w-0 rounded-lg border bg-white p-3 transition hover:border-indigo-300">
+            <div className="flex flex-wrap gap-1.5">
+              <Badge variant="outline">{result.source}</Badge>
+              {(result.matchTokens ?? []).slice(0, 3).map((token) => <Badge key={token} variant="secondary">{cleanDisplayText(token)}</Badge>)}
+              {result.publishedAt ? <Badge variant="secondary">{formatDate(result.publishedAt)}</Badge> : null}
+            </div>
+            <strong className="mt-2 line-clamp-2 block break-words text-sm leading-5">{cleanDisplayText(result.title)}</strong>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function getEvidence(selected) {
@@ -134,6 +215,32 @@ function formatDate(value) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
 }
 
+function getUniqueResults(searchCheck) {
+  const seen = new Set();
+  return (searchCheck?.results ?? []).filter((result) => {
+    const key = cleanDisplayText(result.url || result.title).toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function getTokens(value) {
+  return cleanDisplayText(value).split(/\s+/).filter((token) => token.length >= 2).slice(0, 6);
+}
+
+function getGradeTone(grade) {
+  if (grade === '통과') return { box: 'border-emerald-200 bg-emerald-50' };
+  if (grade === '보류') return { box: 'border-amber-200 bg-amber-50' };
+  return { box: 'border-slate-200 bg-slate-50' };
+}
+
+function getSourceTone(source) {
+  if (source.status !== 'ok') return 'bg-red-50 border-red-100';
+  if ((source.count ?? 0) > 0) return 'bg-emerald-50 border-emerald-100';
+  return 'bg-slate-50 border-slate-200';
+}
+
 function cleanDisplayText(value) {
   return `${value ?? ''}`
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
@@ -145,6 +252,8 @@ function cleanDisplayText(value) {
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&nbsp;/g, ' ')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)))
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();

@@ -1,13 +1,13 @@
 'use client';
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { defaultExcludedAreas, defaultSelectedAreas } from '@/core/TrLab/modules/configs/constants';
+import { defaultExcludedAreas, defaultSelectedAreas, defaultSelectedProfiles } from '@/core/TrLab/modules/configs/constants';
 import { useTrLabData } from '@/core/TrLab/modules/controller/useTrLabData';
 import { trendToRadarItem } from '@/core/TrLab/modules/helpers/utils';
 
 const TrLabWorkspaceContext = createContext(null);
 const WORKSPACE_STORAGE_KEY = 'trlab.workspace.v1';
-const WORKSPACE_STATE_VERSION = 1;
+const WORKSPACE_STATE_VERSION = 2;
 const PERSISTABLE_VIEWS = new Set(['dashboard', 'collection', 'search', 'studio', 'cardnews']);
 
 function useTrLabWorkspaceImpl() {
@@ -17,6 +17,7 @@ function useTrLabWorkspaceImpl() {
   const [queue, setQueue] = useState([]);
   const [contentPlans, setContentPlans] = useState({});
   const [selectedTrend, setSelectedTrend] = useState(null);
+  const [selectedChannelProfiles, setSelectedChannelProfiles] = useState(defaultSelectedProfiles);
   const [selectedAreas, setSelectedAreas] = useState(defaultSelectedAreas);
   const [excludedAreas, setExcludedAreas] = useState(defaultExcludedAreas);
 
@@ -26,6 +27,7 @@ function useTrLabWorkspaceImpl() {
     if (persisted.queue) setQueue(persisted.queue);
     if (persisted.contentPlans) setContentPlans(persisted.contentPlans);
     if (persisted.selectedTrend) setSelectedTrend(persisted.selectedTrend);
+    if (persisted.selectedChannelProfiles) setSelectedChannelProfiles(persisted.selectedChannelProfiles);
     if (persisted.selectedAreas) setSelectedAreas(persisted.selectedAreas);
     if (persisted.excludedAreas) setExcludedAreas(persisted.excludedAreas);
     setHydrated(true);
@@ -46,13 +48,22 @@ function useTrLabWorkspaceImpl() {
     if (selectedTrend) setView('studio');
   }, [selectedTrend]);
 
+  const clearCollectedTrends = useCallback(async () => {
+    await data.clearCollectedTrends();
+    setSelectedTrend(null);
+    setQueue([]);
+    setSelectedChannelProfiles(getDefaultProfileIds(data.channelProfiles));
+    setSelectedAreas(defaultSelectedAreas);
+    setExcludedAreas(defaultExcludedAreas);
+  }, [data]);
+
   const studioTrend = useMemo(() => queue?.[0] ?? selectedTrend, [queue, selectedTrend]);
   const isQueued = useMemo(() => queue?.some((item) => item?.id === selectedTrend?.id), [queue, selectedTrend]);
 
   useEffect(() => {
     if (!hydrated) return;
-    saveWorkspaceState({ view, queue, contentPlans, selectedTrend, selectedAreas, excludedAreas });
-  }, [hydrated, view, queue, contentPlans, selectedTrend, selectedAreas, excludedAreas]);
+    saveWorkspaceState({ view, queue, contentPlans, selectedTrend, selectedChannelProfiles, selectedAreas, excludedAreas });
+  }, [hydrated, view, queue, contentPlans, selectedTrend, selectedChannelProfiles, selectedAreas, excludedAreas]);
 
   return {
     ...data,
@@ -64,6 +75,8 @@ function useTrLabWorkspaceImpl() {
     setContentPlans,
     selectedTrend,
     setSelectedTrend,
+    selectedChannelProfiles,
+    setSelectedChannelProfiles,
     selectedAreas,
     setSelectedAreas,
     excludedAreas,
@@ -71,7 +84,8 @@ function useTrLabWorkspaceImpl() {
     studioTrend,
     isQueued,
     chooseTrend,
-    addToQueue
+    addToQueue,
+    clearCollectedTrends
   };
 }
 
@@ -124,6 +138,8 @@ function stripHtml(value) {
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&nbsp;/g, ' ')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)))
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -141,7 +157,8 @@ function loadWorkspaceState() {
       queue: Array.isArray(parsed.queue) ? parsed.queue : [],
       contentPlans: isPlainObject(parsed.contentPlans) ? parsed.contentPlans : {},
       selectedTrend: parsed.selectedTrend && typeof parsed.selectedTrend === 'object' ? parsed.selectedTrend : null,
-      selectedAreas: Array.isArray(parsed.selectedAreas) && parsed.selectedAreas.length ? parsed.selectedAreas : defaultSelectedAreas,
+      selectedChannelProfiles: Array.isArray(parsed.selectedChannelProfiles) ? parsed.selectedChannelProfiles : defaultSelectedProfiles,
+      selectedAreas: Array.isArray(parsed.selectedAreas) ? parsed.selectedAreas : defaultSelectedAreas,
       excludedAreas: Array.isArray(parsed.excludedAreas) ? parsed.excludedAreas : defaultExcludedAreas
     };
   } catch {
@@ -159,6 +176,7 @@ function saveWorkspaceState(state) {
       queue: Array.isArray(state.queue) ? state.queue.slice(0, 12) : [],
       contentPlans: isPlainObject(state.contentPlans) ? state.contentPlans : {},
       selectedTrend: state.selectedTrend ?? null,
+      selectedChannelProfiles: Array.isArray(state.selectedChannelProfiles) ? state.selectedChannelProfiles : defaultSelectedProfiles,
       selectedAreas: Array.isArray(state.selectedAreas) ? state.selectedAreas : defaultSelectedAreas,
       excludedAreas: Array.isArray(state.excludedAreas) ? state.excludedAreas : defaultExcludedAreas
     }));
@@ -169,4 +187,9 @@ function saveWorkspaceState(state) {
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function getDefaultProfileIds(profiles = []) {
+  const ids = profiles.filter((profile) => profile.enabled !== false).map((profile) => profile.id);
+  return ids.length ? ids : defaultSelectedProfiles;
 }

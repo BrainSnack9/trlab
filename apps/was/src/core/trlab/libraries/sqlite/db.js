@@ -139,6 +139,19 @@ function initialize(database) {
 
     CREATE INDEX IF NOT EXISTS idx_content_plans_updated
       ON content_plans(updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS channel_profiles (
+      id TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      seeds_json TEXT NOT NULL DEFAULT '[]',
+      reddit_json TEXT NOT NULL DEFAULT '[]',
+      keywords_json TEXT NOT NULL DEFAULT '[]',
+      scoring_json TEXT NOT NULL DEFAULT '{}',
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
   `);
   ensureColumn(database, 'keyword_snapshots', 'reason', "TEXT DEFAULT ''");
   ensureColumn(database, 'keyword_snapshots', 'trend_json', "TEXT NOT NULL DEFAULT '{}'");

@@ -52,6 +52,7 @@ export function evaluateProductionReadiness(candidate) {
   if (monetizableAreas.includes(areaId) && channelGrowthPattern.test(`${candidate.keyword} ${candidate.sampleTitles.join(' ')}`)) add(8, '채널 성장/상품 연결 가능');
   if (areaId === 'beauty' && candidate.mentions >= 5) add(8, '뷰티 상품/비교 콘텐츠 확장 가능');
   if (areaId === 'auto' && candidate.mentions >= 5) add(4, '자동차 구매/구독 비교 콘텐츠 확장 가능');
+  if (candidate.channelFit?.bestProfile) add(12, `${candidate.channelFit.bestProfile.label} 채널과 적합`);
   if (hasMarketingIntent(candidate, areaId)) add(14, '마케팅 콘텐츠 각도 존재');
   if (!hasCommunitySource(candidate) && candidate.sources.some((source) => ['Search SERP', 'Google Trends'].includes(source))) add(-16, '커뮤니티 반응 미확인');
   if (isLowIntentTopic(candidate, areaId)) add(-24, '순간 반응형이라 활용성 낮음');

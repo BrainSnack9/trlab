@@ -12,8 +12,8 @@ export function mergeRelatedCandidates(candidates) {
     target.mentions += candidate.mentions;
     candidate.sourceSet.forEach((source) => target.sourceSet.add(source));
     target.signals.push(...candidate.signals);
-    candidate.sampleTitles.forEach((title) => addUnique(target.sampleTitles, title, 4));
-    if (candidate.keyword.length < target.keyword.length && candidate.keyword.length >= 3) target.keyword = candidate.keyword;
+    candidate.sampleTitles.forEach((title) => addUnique(target.sampleTitles, title, 20));
+    if (!target.keyword.includes(' ') && candidate.keyword.length < target.keyword.length && candidate.keyword.length >= 3) target.keyword = candidate.keyword;
     target.bestPhraseRank = Math.min(target.bestPhraseRank, candidate.bestPhraseRank);
   });
   return merged;
@@ -22,11 +22,13 @@ export function mergeRelatedCandidates(candidates) {
 export function limitDuplicateTitles(candidate, index, candidates) {
   const mainTitle = candidate.sampleTitles[0];
   if (!mainTitle) return true;
+  if (candidate.channelFit?.bestProfile && /(품절|대란|아마존|틱톡|올영|스타벅스|콜드컵|K-?뷰티|구매|추천템|브랜드)/i.test(`${candidate.keyword} ${candidate.sampleTitles.join(' ')}`)) return true;
   const earlier = candidates.slice(0, index).filter((item) => item.sampleTitles.includes(mainTitle));
   return earlier.length === 0 || candidate.sources.length >= 2;
 }
 
 export function limitRelatedEvidence(candidate, index, candidates) {
+  if (candidate.channelFit?.bestProfile && /(스타벅스\s*곰돌이|K-?뷰티|올영세일|틱톡발|일본 생활|일본 주부|구다이글로벌)/i.test(`${candidate.keyword ?? ''}`)) return true;
   const candidateEvidence = evidenceKeys(candidate);
   if (!candidateEvidence.size) return true;
   const earlier = candidates.slice(0, index);
@@ -37,6 +39,7 @@ export function isStrongFinalCandidate(candidate) {
   const text = `${candidate.keyword} ${candidate.sampleTitles.join(' ')}`;
   if (broadKeywordPattern.test(candidate.keyword)) return false;
   if (weakStandaloneKeywordPattern.test(candidate.keyword)) return false;
+  if (/(네이버페이|캐시워크|포인트|적립|랜덤|눌러|라이브보고|\d+원)/i.test(text) && !/(가격|인상|인하|소비|구매|브랜드|시장)/i.test(text)) return false;
   if (incidentPattern.test(text) && !/(전략|시장|비교|가격|소비|브랜드|AI|반도체|전기차)/i.test(text)) return false;
   if (candidate.sources.length === 1 && incidentPattern.test(text)) return false;
   return true;
@@ -50,8 +53,8 @@ export function mergeFinalizedCandidates(candidates) {
     if (!current) return map.set(key, candidate);
     current.mentions += candidate.mentions;
     current.sources = [...new Set([...current.sources, ...candidate.sources])];
-    current.sampleTitles = [...new Set([...current.sampleTitles, ...candidate.sampleTitles])].slice(0, 4);
-    current.evidence = uniqueEvidence([...current.evidence, ...candidate.evidence]).slice(0, 5);
+    current.sampleTitles = [...new Set([...current.sampleTitles, ...candidate.sampleTitles])].slice(0, 20);
+    current.evidence = uniqueEvidence([...current.evidence, ...candidate.evidence]).slice(0, 30);
     current.score = Math.max(current.score, candidate.score);
     current.scoring.total = Math.max(current.scoring.total, candidate.scoring.total);
     current.crossCheck = { ...current.crossCheck, sourceCount: current.sources.length, repeated: current.mentions >= 2, label: current.sources.length >= 2 ? '복수 출처 교차감지' : '단일 출처 관찰' };

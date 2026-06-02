@@ -13,7 +13,7 @@ export function hasAIProvider() {
   return PROVIDERS.some(([, env]) => Boolean(process.env[env]));
 }
 
-export async function generateAIJson(prompt) {
+export async function generateAIJson(prompt, options = {}) {
   const preferred = process.env.AI_PROVIDER?.toLowerCase();
   const ordered = [...PROVIDERS].sort(([nameA], [nameB]) => (nameA === preferred ? -1 : nameB === preferred ? 1 : 0));
   const errors = [];
@@ -21,8 +21,9 @@ export async function generateAIJson(prompt) {
     const key = process.env[env];
     if (!key) continue;
     try {
-      const text = await caller(prompt, key);
-      return { provider: name, data: parseJson(text) };
+      const result = await caller(prompt, key, options);
+      const text = typeof result === 'string' ? result : result.text;
+      return { provider: name, data: parseJson(text), meta: typeof result === 'string' ? {} : { model: result.model, usage: result.usage } };
     } catch (error) {
       errors.push(`${name}: ${error.message}`);
     }
@@ -30,15 +31,20 @@ export async function generateAIJson(prompt) {
   throw new Error(`AI providers failed: ${errors.join(' | ')}`);
 }
 
-async function callOpenAI(prompt, key) {
+async function callOpenAI(prompt, key, options = {}) {
   const models = uniqueModels([process.env.OPENAI_MODEL, ...(process.env.OPENAI_FALLBACK_MODELS ?? 'gpt-4o-mini').split(',')]);
   const errors = [];
   for (const model of models) {
     try {
-      const body = { model, messages: [{ role: 'system', content: systemPrompt() }, { role: 'user', content: prompt }], response_format: { type: 'json_object' } };
+      const body = {
+        model,
+        messages: [{ role: 'system', content: systemPrompt() }, { role: 'user', content: prompt }],
+        response_format: options.schema ? jsonSchemaFormat(options.schemaName ?? 'trlab_result', options.schema) : { type: 'json_object' }
+      };
       if (process.env.OPENAI_TEMPERATURE) body.temperature = Number(process.env.OPENAI_TEMPERATURE);
+      if (options.promptCacheKey) body.prompt_cache_key = options.promptCacheKey;
       const json = await postJson('https://api.openai.com/v1/chat/completions', key, body);
-      return json.choices?.[0]?.message?.content ?? '';
+      return { text: json.choices?.[0]?.message?.content ?? '', model: json.model ?? model, usage: json.usage };
     } catch (error) {
       errors.push(`${model}: ${error.message}`);
     }
@@ -75,7 +81,7 @@ async function callAnthropic(prompt, key) {
 async function callCompat(prompt, key, url, model) {
   const body = { model, messages: [{ role: 'system', content: systemPrompt() }, { role: 'user', content: prompt }], temperature: 0.2, response_format: { type: 'json_object' } };
   const json = await postJson(url, key, body);
-  return json.choices?.[0]?.message?.content ?? '';
+  return { text: json.choices?.[0]?.message?.content ?? '', model: json.model ?? model, usage: json.usage };
 }
 
 async function postJson(url, key, body) {
@@ -104,6 +110,17 @@ function parseJson(text) {
   return JSON.parse(match ? match[0] : cleaned);
 }
 
+function jsonSchemaFormat(name, schema) {
+  return {
+    type: 'json_schema',
+    json_schema: {
+      name,
+      strict: true,
+      schema
+    }
+  };
+}
+
 function systemPrompt() {
-  return '당신은 한국어 아침 마케팅 트렌드 브리핑의 총괄 편집장입니다. 단순 화제성과 실무자가 저장하거나 공유할 가치가 있는 시장 신호를 구분하고, 소비자 행동/브랜드/콘텐츠 기획 관점으로 냉정하게 평가합니다. 반드시 유효한 JSON만 반환합니다.';
+  return '한국어 인스타그램 트렌드 편집장. 소비/육아/반려동물 후보의 발행가치와 리스크를 짧게 평가한다. 반드시 JSON만 반환한다.';
 }

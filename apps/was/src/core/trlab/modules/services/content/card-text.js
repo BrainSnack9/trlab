@@ -14,7 +14,6 @@ export function cardTextLines(value, limit = 28, max = 4) {
   const lines = [];
   formatCardText(value).split('\n').forEach((line) => {
     for (const wrapped of wrapLine(line, limit)) {
-      if (lines.length >= max) break;
       lines.push(wrapped);
     }
   });

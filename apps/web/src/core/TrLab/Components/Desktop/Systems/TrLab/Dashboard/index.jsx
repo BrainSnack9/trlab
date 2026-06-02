@@ -9,7 +9,7 @@ export default function Dashboard() {
   return (
     <DashboardView
       {...workspace}
-      onCollectSignals={() => workspace.collectSignals(workspace.selectedAreas)}
+      onCollectSignals={() => workspace.collectSignals({ areas: workspace.selectedAreas, profiles: workspace.selectedChannelProfiles })}
     />
   );
 }

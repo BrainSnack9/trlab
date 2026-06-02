@@ -19,6 +19,34 @@ export function extractKeywordTokens(title) {
     .filter(isUsefulCandidate);
 }
 
+export function extractContentTopicPhrases(signal) {
+  const title = cleanKeyword(signal?.title ?? '');
+  const metric = cleanKeyword(signal?.metric ?? '');
+  const text = `${title} ${metric}`;
+  const phrases = [];
+  const add = (value) => {
+    const normalized = normalizeCandidateKeyword(value);
+    if (isUsefulCandidate(normalized) && !phrases.includes(normalized)) phrases.push(normalized);
+  };
+
+  if (/스타벅스|Starbucks/i.test(text) && /(곰돌이|베어|bear|콜드컵|cold\s*cup)/i.test(text)) add('스타벅스 곰돌이 콜드컵');
+  if (/K-?뷰티|K-?Beauty|화장품|메디큐브|제로모공패드|올리브영|올영/i.test(text) && /아마존|amazon/i.test(text)) add('미국 아마존 K뷰티 돌풍');
+  if (/K-?뷰티|K-?Beauty|화장품|메디큐브|제로모공패드|올리브영|올영/i.test(text) && /틱톡|tiktok/i.test(text)) add('틱톡 K뷰티 입소문');
+  if (/K-?뷰티|K-?Beauty|화장품|메디큐브|제로모공패드|올리브영|올영/i.test(text) && /일본|품절/i.test(text)) add('일본 K뷰티 품절템');
+  if (/올리브영|올영|선크림|자차|화장품/i.test(text) && /세일|할인|꿀팁/i.test(text)) add('올영세일 뷰티템');
+  if (/출산|임신|부모급여|육아\s*지원|어린이집|신생아|아기/i.test(text) && /혜택|지원|급여|보조금|세금/i.test(text)) add('출산 육아 지원 혜택');
+  if (/어린이집|유치원|키즈|아기/i.test(text) && /엄마|부모|수영복|등원/i.test(text)) add('어린이집 등원 이슈');
+  if (/강아지|고양이|반려|펫|pet|dog|cat/i.test(text) && /간식|장난감|용품|자동|보험|병원|costco|amazon/i.test(text)) add('반려동물 인기 용품');
+  if (/아마존|amazon/i.test(text) && /상품|제품|구매|finds|급상승|품절|대란/i.test(text)) add('미국 아마존 인기 상품');
+  if (/틱톡|tiktok/i.test(text) && /광고|입소문|구매|브랜드|made me buy/i.test(text)) add('틱톡발 구매 트렌드');
+  if (/일본|칼디|편의점/i.test(text) && /추천템|쇼핑|품절|신상|필수템/i.test(text)) add('일본 생활 쇼핑 추천템');
+
+  const quoted = title.match(/['"]([^'"]{3,28})['"]/);
+  if (quoted?.[1] && /(품절|대란|인기|추천|급상승|아마존|틱톡|일본|미국|뷰티|육아|펫|반려)/i.test(text)) add(quoted[1]);
+
+  return phrases;
+}
+
 export function extractNgrams(tokens, size) {
   const phrases = [];
   for (let index = 0; index <= tokens.length - size; index += 1) {

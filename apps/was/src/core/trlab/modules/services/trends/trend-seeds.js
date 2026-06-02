@@ -1,3 +1,5 @@
+import { getChannelProfiles } from '#trlab/modules/services/channel-profiles/channel-profiles';
+
 export const seedGroups = {
   tech: ['AI 검색 최적화 브랜드 노출', '생성형 AI 업무 자동화 사례', '반도체 AI 수요 전망'],
   brand: ['AI 검색 최적화 브랜드 노출', '브랜드 소비자 반응 변화', '기업 AI 도입 사례'],
@@ -26,15 +28,26 @@ export const redditGroups = {
   local: ['Entrepreneur', 'smallbusiness']
 };
 
-export function getTopicalSeeds(areaIds = []) {
-  return pickByAreas(seedGroups, areaIds);
+export async function getTopicalSeeds(areaIds = [], profileIds = []) {
+  const profiles = await pickProfiles(profileIds);
+  const areaSeeds = areaIds.length ? pickByAreas(seedGroups, areaIds) : (profileIds.length ? [] : pickByAreas(seedGroups, []));
+  return [...new Set([...areaSeeds, ...profiles.flatMap((profile) => profile.seeds ?? [])])];
 }
 
-export function getRedditSubreddits(areaIds = []) {
-  return pickByAreas(redditGroups, areaIds);
+export async function getRedditSubreddits(areaIds = [], profileIds = []) {
+  const profiles = await pickProfiles(profileIds);
+  const areaSubreddits = areaIds.length ? pickByAreas(redditGroups, areaIds) : (profileIds.length ? [] : pickByAreas(redditGroups, []));
+  return [...new Set([...areaSubreddits, ...profiles.flatMap((profile) => profile.reddit ?? [])])];
 }
 
 function pickByAreas(groups, areaIds) {
   const ids = areaIds.length ? areaIds : Object.keys(groups);
   return [...new Set(ids.flatMap((id) => groups[id] ?? []))];
+}
+
+async function pickProfiles(profileIds = []) {
+  const profiles = await getChannelProfiles({ enabledOnly: true });
+  if (!profileIds.length) return profiles;
+  const selected = new Set(profileIds);
+  return profiles.filter((profile) => selected.has(profile.id));
 }

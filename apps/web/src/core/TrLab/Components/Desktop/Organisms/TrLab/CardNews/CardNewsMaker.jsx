@@ -1,19 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Copy, Download, Images, Palette, RefreshCw } from 'lucide-react';
+import { Copy, Download, Images, Palette } from 'lucide-react';
 import { Button } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Button/Button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Card';
 import { formatCardText } from '@/lib/card-text';
-import { autoStyle, cardStyles, referenceVisualGuide, styleTraits, templateSlots } from './card-news-styles';
+import { autoStyle, cardStyles, styleRecommendation } from './card-news-styles';
 import { downloadCard, makeCarouselScript, makePostCopy } from './card-news-export';
 import { CardImageGenerator } from './CardImageGenerator';
 import { CardNewsPreview } from './CardNewsPreview';
-import { evaluateCardNewsPlan } from './card-news-quality';
 
-export function CardNewsMaker({ studio, plan, onRegenerate, regenerating }) {
+export function CardNewsMaker({ studio, plan }) {
   const draftKey = useMemo(() => makeMakerDraftKey(studio, plan), [studio, plan]);
   const [selected, setSelected] = useState(0);
   const [styleKey, setStyleKey] = useState(() => autoStyle(studio, plan));
   const [channelName, setChannelName] = useState(() => studio?.channelName || studio?.manualBrief?.channelName || '@trlab.insight');
+  const [generatedImages, setGeneratedImages] = useState({});
   const cards = useMemo(() => (plan.cards ?? []).map((card, index) => ({ ...card, page: card.page ?? index + 1 })), [plan]);
   const safeSelected = clampIndex(selected, cards.length);
   const card = cards[safeSelected] ?? cards[0];
@@ -26,32 +26,49 @@ export function CardNewsMaker({ studio, plan, onRegenerate, regenerating }) {
     setSelected(clampIndex(draft.selected ?? 0, cards.length));
     setStyleKey(cardStyles[draft.styleKey] ? draft.styleKey : autoStyle(studio, plan));
     setChannelName(draft.channelName || studio?.channelName || studio?.manualBrief?.channelName || '@trlab.insight');
+    setGeneratedImages(sanitizeGeneratedImages(draft.generatedImages, cards));
   }, [draftKey]);
 
   useEffect(() => {
     setSelected((value) => clampIndex(value, cards.length));
+    setGeneratedImages((value) => sanitizeGeneratedImages(value, cards));
   }, [cards.length]);
 
   useEffect(() => {
-    saveMakerDraft(draftKey, { selected: safeSelected, styleKey: resolvedStyleKey, channelName: normalizeChannelName(channelName) });
-  }, [draftKey, safeSelected, resolvedStyleKey, channelName]);
+    saveMakerDraft(draftKey, {
+      selected: safeSelected,
+      styleKey: resolvedStyleKey,
+      channelName: normalizeChannelName(channelName),
+      generatedImages: sanitizeGeneratedImages(generatedImages, cards)
+    });
+  }, [draftKey, safeSelected, resolvedStyleKey, channelName, generatedImages, cards]);
 
   if (!card) return null;
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
-      <CardWorkspace cards={cards} selected={safeSelected} setSelected={setSelected} card={card} style={style} studio={displayStudio} plan={plan} />
-      <ControlPanel cards={cards} card={card} selected={safeSelected} styleKey={resolvedStyleKey} setStyleKey={setStyleKey} style={style} studio={displayStudio} plan={plan} onRegenerate={onRegenerate} regenerating={regenerating} channelName={channelName} setChannelName={setChannelName} />
+      <CardWorkspace
+        cards={cards}
+        selected={safeSelected}
+        setSelected={setSelected}
+        card={card}
+        style={style}
+        studio={displayStudio}
+        plan={plan}
+        generatedImage={generatedImages[cardImageKey(card, safeSelected)]}
+        setGeneratedImage={(image) => setGeneratedImages((value) => ({ ...value, [cardImageKey(card, safeSelected)]: image }))}
+      />
+      <ControlPanel cards={cards} card={card} selected={safeSelected} styleKey={resolvedStyleKey} setStyleKey={setStyleKey} style={style} studio={displayStudio} plan={plan} channelName={channelName} setChannelName={setChannelName} />
     </div>
   );
 }
 
-function CardWorkspace({ cards, selected, setSelected, card, style, studio, plan }) {
+function CardWorkspace({ cards, selected, setSelected, card, style, studio, plan, generatedImage, setGeneratedImage }) {
   return (
     <div className="space-y-3">
-      <div className="flex gap-2 overflow-x-auto pb-1">{cards.map((item, index) => <Button key={item.page} size="sm" variant={selected === index ? 'default' : 'outline'} onClick={() => setSelected(index)}>Card {item.page} · {roleLabel(item.role)}</Button>)}</div>
+      <div className="flex gap-2 overflow-x-auto pb-1">{cards.map((item, index) => <Button key={item.page} size="sm" variant={selected === index ? 'default' : 'outline'} onClick={() => setSelected(index)}>카드 {item.page} · {roleLabel(item.role)}</Button>)}</div>
       <CarouselStrip cards={cards} selected={selected} setSelected={setSelected} style={style} />
       <CardNewsPreview card={card} style={style} studio={studio} />
-      <CardImageGenerator card={card} selected={selected} style={style} studio={studio} plan={plan} />
+      <CardImageGenerator card={card} selected={selected} style={style} studio={studio} plan={plan} generatedImage={generatedImage} onGenerated={setGeneratedImage} />
     </div>
   );
 }
@@ -83,12 +100,13 @@ function CarouselStrip({ cards, selected, setSelected, style }) {
 }
 
 
-function ControlPanel({ cards, card, selected, styleKey, setStyleKey, style, studio, plan, onRegenerate, regenerating, channelName, setChannelName }) {
+function ControlPanel({ cards, card, selected, styleKey, setStyleKey, style, studio, plan, channelName, setChannelName }) {
+  const recommendation = styleRecommendation(studio, plan);
+  const recommendedKey = recommendation.key;
   return (
     <Card className="h-fit">
-      <CardHeader><CardDescription>Production Controls</CardDescription><CardTitle className="flex items-center gap-2"><Images className="h-5 w-5 text-indigo-600" />카드 출력</CardTitle></CardHeader>
+      <CardHeader><CardTitle className="flex items-center gap-2"><Images className="h-5 w-5 text-indigo-600" />카드 출력</CardTitle></CardHeader>
       <CardContent className="space-y-4">
-        <Button className="w-full" onClick={onRegenerate} disabled={regenerating}><RefreshCw className={`h-4 w-4 ${regenerating ? 'animate-spin' : ''}`} />내용 다시 생성</Button>
         <label className="grid gap-1.5 rounded-lg border bg-white p-3">
           <span className="text-xs font-black text-slate-500">채널명</span>
           <input
@@ -99,123 +117,49 @@ function ControlPanel({ cards, card, selected, styleKey, setStyleKey, style, stu
           />
           <span className="text-[11px] font-semibold text-muted-foreground">AI 이미지 하단 브랜드 표기에 사용됩니다.</span>
         </label>
-        <div><div className="mb-2 flex items-center gap-2 text-sm font-black"><Palette className="h-4 w-4" />캔버스 템플릿</div><div className="grid gap-2">{Object.entries(cardStyles).map(([key, item]) => <Button key={key} variant={styleKey === key ? 'default' : 'outline'} className="h-auto justify-start p-3 text-left" onClick={() => setStyleKey(key)}><span><b className="block">{item.name}</b><small className="text-xs opacity-75">{item.desc}</small></span></Button>)}</div></div>
-        <TemplateBlueprint style={style} />
-        <ReferenceRhythmPanel plan={plan} />
-        <ReferenceVisualPanel plan={plan} />
-        <QualityPanel plan={plan} />
-        <div className="rounded-lg bg-slate-50 p-3"><div className="mb-2 text-xs font-black text-slate-500">스타일 규칙</div><div className="flex flex-wrap gap-1.5">{styleTraits(styleKey).map((trait) => <span key={trait} className="rounded bg-white px-2 py-1 text-xs font-bold">{trait}</span>)}</div></div>
-        <div className="grid grid-cols-2 gap-2"><Button onClick={() => downloadCard(card, selected, studio, style, 'png')}><Download className="h-4 w-4" />PNG</Button><Button variant="outline" onClick={() => downloadCard(card, selected, studio, style, 'svg')}>SVG</Button></div>
-        <Button className="w-full" variant="secondary" onClick={() => cards.forEach((item, index) => setTimeout(() => downloadCard(item, index, studio, style, 'png'), index * 250))}>전체 PNG 다운로드</Button>
+        <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-xs font-black text-indigo-700">추천 템플릿</div>
+              <strong className="mt-1 block text-sm">{recommendation.style?.name}</strong>
+              <p className="mt-1 text-xs font-semibold leading-5 text-indigo-700/80">{recommendation.reason}</p>
+            </div>
+            <Button size="sm" variant={styleKey === recommendedKey ? 'secondary' : 'default'} onClick={() => setStyleKey(recommendedKey)} disabled={styleKey === recommendedKey}>
+              {styleKey === recommendedKey ? '적용됨' : '추천 적용'}
+            </Button>
+          </div>
+        </div>
+        <div><div className="mb-2 flex items-center gap-2 text-sm font-black"><Palette className="h-4 w-4" />캔버스 템플릿</div><div className="grid gap-2">{Object.entries(cardStyles).map(([key, item]) => <Button key={key} variant={styleKey === key ? 'default' : 'outline'} className="h-auto justify-start p-3 text-left" onClick={() => setStyleKey(key)}><span><b className="block">{item.name}{key === recommendedKey ? ' · 추천' : ''}</b><small className="text-xs opacity-75">{item.desc}</small></span></Button>)}</div></div>
+        <Button className="w-full" onClick={() => downloadCard(card, selected, studio, style, 'png')}><Download className="h-4 w-4" />현재 카드 PNG 다운로드</Button>
         <Button className="w-full" variant="outline" onClick={() => navigator.clipboard?.writeText(makeCarouselScript({ ...plan, cards }))}><Copy className="h-4 w-4" />전체 원고 복사</Button>
-        <PublishPackage plan={plan} />
-        <div className="rounded-lg bg-slate-50 p-3 text-xs text-muted-foreground">레퍼런스는 인스타 정보 계정형 카드뉴스입니다. 핵심은 큰 후크, 짧은 본문, 한 카드 한 역할, 비교/그래프/반응의 시각화입니다.</div>
+        <PublishCopyPanel plan={plan} />
       </CardContent>
     </Card>
   );
 }
 
-function ReferenceVisualPanel({ plan }) {
-  const guide = referenceVisualGuide(plan.referenceStyle);
-  const rows = [
-    ['계정', guide.account],
-    ['표지', guide.cover],
-    ['본문', guide.body],
-    ['글자', guide.typography],
-    ['금지', guide.avoid]
-  ];
-  return (
-    <div className="rounded-lg border bg-white p-3">
-      <div className="mb-2 text-xs font-black text-slate-500">시각 가이드</div>
-      <div className="grid gap-1.5">
-        {rows.map(([label, value]) => (
-          <div key={label} className="grid grid-cols-[44px_minmax(0,1fr)] gap-2 text-xs leading-5">
-            <b className={label === '금지' ? 'text-rose-500' : 'text-slate-500'}>{label}</b>
-            <span className="font-semibold text-slate-700">{value}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function QualityPanel({ plan }) {
-  const quality = evaluateCardNewsPlan(plan);
+function PublishCopyPanel({ plan }) {
+  const copy = makePostCopy(plan);
+  if (!copy) return null;
   return (
     <div className="rounded-lg border bg-white p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="text-xs font-black text-slate-500">레퍼런스 QA</div>
-        <span className={`rounded-full px-2 py-1 text-xs font-black ${quality.score >= 80 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>{quality.label} {quality.score}</span>
+        <strong className="text-sm">게시 원고</strong>
+        <Button size="sm" variant="outline" onClick={() => navigator.clipboard?.writeText(copy)}>
+          <Copy className="h-3.5 w-3.5" />
+          복사
+        </Button>
       </div>
-      <div className="grid gap-1.5">
-        {quality.checks.map((item) => (
-          <div key={item.label} className="rounded-md bg-slate-50 p-2">
-            <div className="flex justify-between gap-2 text-xs font-bold">
-              <span className={item.passed ? 'text-slate-700' : 'text-amber-700'}>{item.passed ? '✓' : '!'} {item.label}</span>
-              <span className="shrink-0 text-slate-400">{item.detail}</span>
-            </div>
-            {!item.passed ? <p className="mt-1 text-[11px] font-semibold leading-4 text-amber-700">{item.action}</p> : null}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ReferenceRhythmPanel({ plan }) {
-  const pattern = plan.referencePattern;
-  const rows = pattern ? [
-    ['카드 수', pattern.deckLength],
-    ['표지', pattern.coverRhythm],
-    ['본문', pattern.bodyRhythm],
-    ['마무리', pattern.endingRhythm]
-  ].filter(([, value]) => value) : [];
-  const blueprint = Array.isArray(plan.carouselBlueprint) ? plan.carouselBlueprint.slice(0, 6) : [];
-  if (!rows.length && !blueprint.length) return null;
-  return (
-    <div className="rounded-lg border bg-white p-3">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="text-xs font-black text-slate-500">레퍼런스 리듬</div>
-        <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-black text-slate-600">{plan.referenceStyle || 'reference'}</span>
-      </div>
-      <div className="grid gap-1.5">
-        {rows.map(([label, value]) => (
-          <div key={label} className="grid grid-cols-[44px_minmax(0,1fr)] gap-2 text-xs leading-5">
-            <b className="text-slate-500">{label}</b>
-            <span className="font-semibold text-slate-700">{value}</span>
-          </div>
-        ))}
-      </div>
-      {blueprint.length ? (
-        <div className="mt-3 rounded-md bg-slate-50 p-2">
-          <div className="mb-1 text-[11px] font-black text-slate-500">흐름 체크</div>
-          <ol className="grid gap-1 text-[11px] font-semibold leading-4 text-slate-600">
-            {blueprint.map((item, index) => <li key={`${index}-${item}`} className="line-clamp-2">{index + 1}. {item}</li>)}
-          </ol>
+      {plan.captionFirstLine ? <strong className="block text-sm leading-5">{plan.captionFirstLine}</strong> : null}
+      {plan.captionBody ? <p className="mt-2 whitespace-pre-line text-xs font-semibold leading-5 text-slate-600">{plan.captionBody}</p> : null}
+      {plan.captionCTA ? <p className="mt-2 rounded-md bg-indigo-50 p-2 text-xs font-black leading-5 text-indigo-700">{plan.captionCTA}</p> : null}
+      {Array.isArray(plan.hashtags) && plan.hashtags.length ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {plan.hashtags.map((tag) => <span key={tag} className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-black text-slate-600">{tag}</span>)}
         </div>
       ) : null}
     </div>
   );
-}
-
-function PublishPackage({ plan }) {
-  if (!plan.captionFirstLine && !plan.captionBody && !plan.hashtags?.length) return null;
-  return (
-    <div className="rounded-lg border bg-white p-3">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="text-xs font-black text-slate-500">게시 문구</div>
-        <Button size="sm" variant="outline" onClick={() => navigator.clipboard?.writeText(makePostCopy(plan))}><Copy className="h-3.5 w-3.5" />복사</Button>
-      </div>
-      {plan.captionFirstLine ? <strong className="block text-sm leading-5">{plan.captionFirstLine}</strong> : null}
-      {plan.captionBody ? <p className="mt-2 line-clamp-6 whitespace-pre-line text-xs font-semibold leading-5 text-slate-600">{plan.captionBody}</p> : null}
-      {plan.captionCTA ? <p className="mt-2 rounded-md bg-indigo-50 p-2 text-xs font-black leading-5 text-indigo-700">{plan.captionCTA}</p> : null}
-      {plan.hashtags?.length ? <p className="mt-2 line-clamp-2 text-xs font-bold leading-5 text-slate-500">{plan.hashtags.join(' ')}</p> : null}
-    </div>
-  );
-}
-
-function TemplateBlueprint({ style }) {
-  return <div className="rounded-lg border bg-white p-3"><div className="mb-2 text-xs font-black text-slate-500">고정 캔버스 슬롯</div><div className="grid grid-cols-2 gap-1.5">{templateSlots(style).map((slot) => <span key={slot} className="rounded-md bg-slate-100 px-2 py-1.5 text-xs font-bold text-slate-700">{slot}</span>)}</div><p className="mt-2 text-[11px] text-muted-foreground">AI는 슬롯에 들어갈 내용과 보조 그래픽만 제안하고, 한글 텍스트는 TrLab 렌더러가 정확히 얹습니다.</p></div>;
 }
 
 function roleLabel(value) {
@@ -256,11 +200,25 @@ function saveMakerDraft(key, draft) {
       savedAt: new Date().toISOString(),
       selected: Number.isFinite(draft.selected) ? draft.selected : 0,
       styleKey: draft.styleKey,
-      channelName: normalizeChannelName(draft.channelName)
+      channelName: normalizeChannelName(draft.channelName),
+      generatedImages: draft.generatedImages ?? {}
     }));
   } catch {
     // Ignore localStorage quota/private mode failures.
   }
+}
+
+function cardImageKey(card, index) {
+  return `${card?.page ?? index + 1}`;
+}
+
+function sanitizeGeneratedImages(value, cards = []) {
+  if (!value || typeof value !== 'object') return {};
+  const allowed = new Set(cards.map((card, index) => cardImageKey(card, index)));
+  const entries = Object.entries(value).filter(([key, image]) => {
+    return (!allowed.size || allowed.has(key)) && image && typeof image === 'object' && typeof image.url === 'string';
+  });
+  return Object.fromEntries(entries);
 }
 
 function clampIndex(value, length) {

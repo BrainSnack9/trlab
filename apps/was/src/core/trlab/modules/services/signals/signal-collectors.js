@@ -38,7 +38,7 @@ async function collectGoogleTrends() {
 async function collectSearchSerp(context = {}) {
   const trendPayload = await collectGoogleTrends();
   const trendSeeds = trendPayload.items.slice(0, 8).map((item) => item.title);
-  const topicalSearchSeeds = getTopicalSeeds(context.areas);
+  const topicalSearchSeeds = await getTopicalSeeds(context.areas, context.profiles);
   const seeds = [...trendSeeds, ...topicalSearchSeeds];
   const settled = await Promise.allSettled(seeds.map((seed) => collectGoogleNewsForSeed(seed, topicalSearchSeeds.includes(seed))));
   const seen = new Set();
@@ -47,13 +47,13 @@ async function collectSearchSerp(context = {}) {
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
-  }).slice(0, 48);
+  }).slice(0, 180);
   return { source: 'Search SERP', status: 'ok', items };
 }
 
 async function collectGoogleNewsForSeed(seed, topical = false) {
   const xml = await fetchText(`https://news.google.com/rss/search?hl=ko&gl=KR&ceid=KR:ko&q=${encodeURIComponent(seed)}`);
-  return [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, 3).map((match) => {
+  return [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, 4).map((match) => {
     const block = match[1];
     return makeSignal({ source: 'Search SERP', title: textBetween(block, 'title'), url: textBetween(block, 'link'), metric: seed, publishedAt: textBetween(block, 'pubDate'), summary: cleanText(stripTags(textBetween(block, 'description'))), type: topical ? 'topical-serp' : 'google-news-serp' });
   }).filter((item) => item.title && item.url);
@@ -219,8 +219,9 @@ function sleep(ms) {
 }
 
 async function collectReddit(context = {}) {
-  const settled = await Promise.allSettled(getRedditSubreddits(context.areas).map(collectRedditSubreddit));
-  const items = settled.flatMap((result) => result.status === 'fulfilled' ? result.value : []).slice(0, 72);
+  const subreddits = await getRedditSubreddits(context.areas, context.profiles);
+  const settled = await Promise.allSettled(subreddits.map(collectRedditSubreddit));
+  const items = settled.flatMap((result) => result.status === 'fulfilled' ? result.value : []).slice(0, 144);
   return { source: 'Reddit', status: 'ok', items };
 }
 

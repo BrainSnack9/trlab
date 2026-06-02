@@ -5,7 +5,8 @@ export const collectSignalsQuerySchema = z.object({
   source: z.string().optional(),
   reason: z.string().optional(),
   exclude: z.string().default(''),
-  areas: z.string().default('')
+  areas: z.string().default(''),
+  profiles: z.string().default('')
 });
 
 export const importSignalsBodySchema = z.object({

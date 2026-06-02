@@ -18,23 +18,24 @@ export function CollectionTabs(props) {
   );
 }
 
-function ChannelGrid({ sources, signalSources, signals, sourceRunStates, collectSource }) {
+function ChannelGrid({ sources, signalSources, signals, sourceRunStates, collectSource, selectedAreas, selectedChannelProfiles }) {
   const statusBySource = useMemo(() => new Map(signalSources.map((source) => [source.source, source])), [signalSources]);
   const countBySource = useMemo(() => signals.reduce((map, signal) => map.set(signal.source, (map.get(signal.source) ?? 0) + 1), new Map()), [signals]);
   const useful = sources.filter((source) => collectableSourceIds.includes(source.id));
-  return <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{useful.map((source) => <SourceCard key={source.id} source={source} statusBySource={statusBySource} countBySource={countBySource} running={sourceRunStates[source.id]} collectSource={collectSource} />)}</div>;
+  return <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{useful.map((source) => <SourceCard key={source.id} source={source} statusBySource={statusBySource} countBySource={countBySource} running={sourceRunStates[source.id]} collectSource={collectSource} selectedAreas={selectedAreas} selectedChannelProfiles={selectedChannelProfiles} />)}</div>;
 }
 
-function SourceCard({ source, statusBySource, countBySource, running, collectSource }) {
+function SourceCard({ source, statusBySource, countBySource, running, collectSource, selectedAreas, selectedChannelProfiles }) {
   const meta = sourceMetaById[source.id] ?? ['기타', source.name];
   const name = sourceNameById[source.id] ?? source.name;
   const status = statusBySource.get(name);
+  const statusText = statusLabel(status?.status ?? source.status);
   return (
     <div className="rounded-lg border bg-white p-4 shadow-sm">
-      <div className="flex items-start justify-between gap-3"><div><strong className="block">{source.name}</strong><span className="text-xs text-muted-foreground">{meta[0]} · {meta[1]}</span></div><Badge variant={status?.status === 'ok' ? 'default' : 'secondary'}>{status?.status ?? source.status}</Badge></div>
+      <div className="flex items-start justify-between gap-3"><div><strong className="block">{source.name}</strong><span className="text-xs text-muted-foreground">{meta[0]} · {meta[1]}</span></div><Badge variant={status?.status === 'ok' ? 'default' : 'secondary'}>{statusText}</Badge></div>
       <div className="mt-3 grid grid-cols-3 gap-2 text-xs"><Mini label="저장" value={countBySource.get(name) ?? 0} /><Mini label="최근" value={status?.count ?? 0} /><Mini label="주기" value={`${source.interval}분`} /></div>
       {status?.finishedAt && <p className="mt-2 text-xs text-muted-foreground">마지막 수집: {formatTime(status.finishedAt)}</p>}
-      <Button className="mt-3 w-full" variant="outline" size="sm" disabled={running} onClick={() => collectSource(source.id, 'storage-tab')}>{running ? '수집 중' : '지금 수집'}</Button>
+      <Button className="mt-3 w-full" variant="outline" size="sm" disabled={running} onClick={() => collectSource(source.id, 'storage-tab', selectedAreas, selectedChannelProfiles)}>{running ? '수집 중' : '지금 수집'}</Button>
     </div>
   );
 }
@@ -70,13 +71,31 @@ function filterSignals(signals, { source, quality, query }) {
 }
 
 function RunLog({ runs }) {
-  return <div className="max-h-[460px] space-y-2 overflow-y-auto">{runs.map((run) => <div key={run.id} className="grid gap-2 rounded-lg border bg-slate-50 p-3 text-sm md:grid-cols-[120px_1fr_120px_140px]"><Badge variant={run.status === 'ok' ? 'default' : 'destructive'}>{run.status}</Badge><div><strong>{run.source}</strong><p className="text-xs text-muted-foreground">{run.reason}</p></div><span>{run.count}건</span><span className="text-xs text-muted-foreground">{formatTime(run.finishedAt)}</span></div>)}</div>;
+  return <div className="max-h-[460px] space-y-2 overflow-y-auto">{runs.map((run) => <div key={run.id} className="grid gap-2 rounded-lg border bg-slate-50 p-3 text-sm md:grid-cols-[120px_1fr_120px_140px]"><Badge variant={run.status === 'ok' ? 'default' : 'destructive'}>{statusLabel(run.status)}</Badge><div><strong>{run.source}</strong><p className="text-xs text-muted-foreground">{reasonLabel(run.reason)}</p></div><span>{run.count}건</span><span className="text-xs text-muted-foreground">{formatTime(run.finishedAt)}</span></div>)}</div>;
 }
 
 function BlockedSources({ sources }) {
-  return <div className="grid gap-3 md:grid-cols-2">{sources.filter((source) => !collectableSourceIds.includes(source.id)).map((source) => <div key={source.id} className="rounded-lg border bg-slate-50 p-4"><div className="flex items-center justify-between gap-3"><strong>{source.name}</strong><Badge variant="outline">{source.status}</Badge></div><p className="mt-2 text-sm text-muted-foreground">공식 권한 또는 로컬 로그인 세션이 필요합니다. 자동 수집 전 인증 전략을 먼저 정해야 합니다.</p></div>)}</div>;
+  return <div className="grid gap-3 md:grid-cols-2">{sources.filter((source) => !collectableSourceIds.includes(source.id)).map((source) => <div key={source.id} className="rounded-lg border bg-slate-50 p-4"><div className="flex items-center justify-between gap-3"><strong>{source.name}</strong><Badge variant="outline">{statusLabel(source.status)}</Badge></div><p className="mt-2 text-sm text-muted-foreground">공식 권한 또는 로컬 로그인 세션이 필요합니다. 자동 수집 전 인증 전략을 먼저 정해야 합니다.</p></div>)}</div>;
 }
 
 function Mini({ label, value }) {
   return <span className="rounded-md bg-slate-50 p-2 text-muted-foreground">{label} <b className="text-slate-900">{value}</b></span>;
+}
+
+function statusLabel(value) {
+  return {
+    ok: '정상',
+    active: '활성',
+    failed: '실패',
+    blocked: '대기',
+    disabled: '비활성'
+  }[value] ?? value ?? '대기';
+}
+
+function reasonLabel(value) {
+  return {
+    manual: '수동',
+    'storage-tab': '수동 수집',
+    collect: '수집'
+  }[value] ?? (value?.startsWith?.('scheduled-') ? '정기 반영' : value ?? '-');
 }

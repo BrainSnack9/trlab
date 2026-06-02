@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, Search } from 'lucide-react';
 import { Badge } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Badge/Badge';
 import { Button } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Button/Button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Select';
 import { formatTime } from '@/core/TrLab/modules/helpers/utils';
 import { getTrendHistory } from '@/core/TrLab/modules/clients/api';
@@ -47,7 +47,7 @@ function HistoryFilters({ date, setDate, slot, setSlot, kind, setKind, query, se
 function HistoryCard({ run }) {
   return (
     <Card className="shadow-none">
-      <CardHeader className="pb-3"><div className="flex flex-wrap items-start justify-between gap-3"><div><CardDescription className="flex items-center gap-1"><CalendarDays className="h-4 w-4" />{formatTime(run.createdAt)}</CardDescription><CardTitle className="text-base">트렌드 반영 스냅샷</CardTitle></div><div className="flex gap-2"><Badge variant="secondary">{run.reason || 'manual'}</Badge><Badge variant="secondary">{run.count}개</Badge><Badge variant="outline">평균 {run.avgScore ?? 0}</Badge></div></div></CardHeader>
+      <CardHeader className="pb-3"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-1 text-xs font-bold text-muted-foreground"><CalendarDays className="h-4 w-4" />{formatTime(run.createdAt)}</div><CardTitle className="text-base">트렌드 반영 스냅샷</CardTitle></div><div className="flex gap-2"><Badge variant="secondary">{reasonLabel(run.reason)}</Badge><Badge variant="secondary">{run.count}개</Badge><Badge variant="outline">평균 {run.avgScore ?? 0}</Badge></div></div></CardHeader>
       <CardContent className="space-y-2">{run.items.map((item, index) => <HistoryItem key={`${run.createdAt}-${index}-${item.keyword}`} item={item} index={index} />)}</CardContent>
     </Card>
   );
@@ -81,4 +81,10 @@ function sortHistory(a, b, sort) {
   if (sort === 'score') return (b.avgScore ?? 0) - (a.avgScore ?? 0);
   if (sort === 'count') return (b.count ?? 0) - (a.count ?? 0);
   return new Date(b.createdAt) - new Date(a.createdAt);
+}
+
+function reasonLabel(value) {
+  if (!value || value === 'manual') return '수동';
+  if (value.startsWith('scheduled-')) return '정기 반영';
+  return value;
 }

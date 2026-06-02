@@ -1,10 +1,10 @@
-import { useMemo } from 'react';
-import { ListChecks, Radar } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { FileText } from 'lucide-react';
 import { Badge } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Badge/Badge';
 import { Button } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Button/Button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Card';
 import { defaultExcludedAreas, defaultSelectedAreas } from '@/core/TrLab/modules/configs/constants';
-import { isSignalVisible, isTrendVisible, trendToRadarItem } from '@/core/TrLab/modules/helpers/utils';
+import { isSignalVisible, isTrendVisible } from '@/core/TrLab/modules/helpers/utils';
 import { PageHero } from '@/core/TrLab/Components/Desktop/Molecules/TrLab/Common';
 import { CandidateBoard, ScopeFilter, TrendProcessingStatus } from './DashboardWidgets';
 
@@ -13,11 +13,23 @@ export function DashboardView(props) {
   const excludedSet = useMemo(() => new Set(props.excludedAreas), [props.excludedAreas]);
   const visibleSignals = useMemo(() => props.signals.filter((s) => isSignalVisible(s, selectedSet, excludedSet)), [props.signals, selectedSet, excludedSet]);
   const candidates = useMemo(() => props.rankedTrends.filter((t) => isTrendVisible(t, selectedSet, excludedSet)), [props.rankedTrends, selectedSet, excludedSet]);
-  const radarItems = useMemo(() => candidates.slice(0, 8).map(trendToRadarItem), [candidates]);
+  const [selectedCandidateId, setSelectedCandidateId] = useState('');
+  const selectedCandidate = useMemo(() => candidates.find((candidate) => getCandidateId(candidate) === selectedCandidateId) ?? candidates[0], [candidates, selectedCandidateId]);
   const resetScope = () => {
+    props.setSelectedChannelProfiles(props.channelProfiles?.filter((profile) => profile.enabled !== false).map((profile) => profile.id) ?? []);
     props.setSelectedAreas(defaultSelectedAreas);
     props.setExcludedAreas(defaultExcludedAreas);
   };
+
+  useEffect(() => {
+    if (!candidates.length) {
+      setSelectedCandidateId('');
+      return;
+    }
+    if (!selectedCandidateId || !candidates.some((candidate) => getCandidateId(candidate) === selectedCandidateId)) {
+      setSelectedCandidateId(getCandidateId(candidates[0]));
+    }
+  }, [candidates, selectedCandidateId]);
 
   return (
     <div className="space-y-5">
@@ -30,14 +42,12 @@ export function DashboardView(props) {
           candidates={props.rankingLoading ? '...' : candidates.length}
         />
       </section>
-      <TrendProcessingStatus meta={props.processingMeta} trends={candidates} loading={props.rankingLoading} onRefresh={props.refreshTrendRanking} onCollect={props.onCollectSignals} collecting={props.collectingSignals} />
-      <section className="grid gap-5 md:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_380px]">
-        <RadarPanel {...props} items={radarItems} loading={props.rankingLoading} />
-        <RecommendedPanel items={radarItems} chooseTrend={props.chooseTrend} />
+      <TrendProcessingStatus meta={props.processingMeta} trends={candidates} loading={props.rankingLoading} onRefresh={props.refreshTrendRanking} onCollect={props.onCollectSignals} onClear={props.clearCollectedTrends} collecting={props.collectingSignals} clearing={props.clearingCollection} hasSignals={Boolean(props.signals.length)} />
+      <section className="grid items-stretch gap-5 md:h-[calc(100vh-220px)] md:min-h-[720px] md:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_380px]">
+        <CandidateBoard candidates={candidates} selectedCandidate={selectedCandidate} onSelectCandidate={(candidate) => setSelectedCandidateId(getCandidateId(candidate))} />
+        <CandidateDetailPanel candidate={selectedCandidate} chooseTrend={props.chooseTrend} loading={props.rankingLoading} />
       </section>
-      <CandidateBoard candidates={candidates} chooseTrend={props.chooseTrend} />
       <ScopeFilter {...props} selectedSet={selectedSet} excludedSet={excludedSet} reset={resetScope} />
-      <MovementRanking items={radarItems} chooseTrend={props.chooseTrend} />
     </div>
   );
 }
@@ -76,44 +86,100 @@ function SignalSummary({ total, visible, candidates }) {
   );
 }
 
-function RadarPanel({ items, chooseTrend, loading }) {
+function CandidateDetailPanel({ candidate, chooseTrend, loading }) {
+  const evidence = getCandidateEvidence(candidate);
+  const score = candidate?.production?.score ?? candidate?.score ?? 0;
+  const profile = candidate?.channelFit?.bestProfile;
+  const ai = candidate?.aiAnalysis;
+
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="flex-row items-center justify-between border-b bg-white"><div><CardDescription>Production Radar</CardDescription><CardTitle className="flex items-center gap-2"><Radar className="h-5 w-5 text-indigo-600" />제작 후보 레이더</CardTitle></div><Badge variant="outline" className="text-slate-600">콘텐츠화 점수</Badge></CardHeader>
-      <CardContent className="relative h-[500px] overflow-hidden bg-[radial-gradient(circle_at_30%_20%,rgba(79,70,229,.12),transparent_28%),linear-gradient(rgba(99,102,241,.08)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,.08)_1px,transparent_1px)] bg-[size:auto,42px_42px,42px_42px]">
-        {!items.length ? <EmptyRadar loading={loading} /> : items.map((item) => (
-          <button key={item.id} className="absolute grid place-items-center rounded-full border-4 border-white text-white shadow-xl transition hover:z-30 hover:scale-105" style={{ left: `${item.x}%`, top: `${item.y}%`, width: item.size, height: item.size, zIndex: 20 - item.rank, transform: 'translate(-50%, -50%)', background: item.color }} onClick={() => chooseTrend(item)}>
-            <span className="text-xs font-black">#{item.rank}</span>{item.size > 76 && <strong className="line-clamp-2 max-w-[72%] text-center text-xs font-black leading-tight">{item.label}</strong>}<small className="font-black">{item.production?.score ?? item.score}</small>
-          </button>
-        ))}
+    <Card className="flex h-full min-h-0 flex-col">
+      <CardHeader className="border-b"><CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5 text-indigo-600" />후보 상세</CardTitle></CardHeader>
+      <CardContent className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden pt-5">
+        {!candidate ? (
+          <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">{loading ? '후보를 정리하는 중입니다.' : '제작 후보를 선택하면 상세 내용이 표시됩니다.'}</p>
+        ) : <>
+          <div className="rounded-md border bg-slate-50 p-3">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Badge variant="secondary">{candidate.area?.label ?? '영역 미분류'}</Badge>
+              {profile && <Badge variant="outline">{profile.label}</Badge>}
+              <Badge variant="outline">{candidate.production?.tier ?? '검증'}</Badge>
+            </div>
+            <h3 className="mt-3 text-xl font-black leading-tight text-slate-950">{candidate.keyword ?? candidate.label}</h3>
+            <p className="mt-2 text-sm font-bold leading-6 text-slate-700">{candidate.production?.suggestedAngle ?? candidate.contentAngle ?? '분석 각도를 확인 중입니다.'}</p>
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-xs">
+            <DetailMetric label="점수" value={score} />
+            <DetailMetric label="언급" value={candidate.mentions} />
+            <DetailMetric label="출처" value={candidate.sources?.length ?? 0} />
+          </div>
+          {ai && <div className="rounded-md border border-indigo-100 bg-indigo-50 p-3">
+            <div className="text-xs font-black text-indigo-700">AI 판단</div>
+            <p className="mt-1 text-sm font-bold leading-6 text-indigo-950">{ai.angle ?? ai.summary ?? ai.reason ?? 'AI 분석 결과가 반영된 후보입니다.'}</p>
+          </div>}
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="text-sm font-black text-slate-700">근거 게시글과 신호</div>
+              <Badge variant="secondary">{evidence.length}개</Badge>
+            </div>
+            <div className="min-h-[220px] flex-1 space-y-2 overflow-auto pr-1">
+              {evidence.map((item, index) => (
+                <article key={`${item.source}-${index}-${item.title}`} className="rounded-md border bg-slate-50 p-3">
+                  <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                    <Badge variant="outline">{item.source || '출처'}</Badge>
+                    {item.metric && <Badge variant="secondary">{item.metric}</Badge>}
+                  </div>
+                  {item.url ? (
+                    <a href={item.url} target="_blank" rel="noreferrer" className="line-clamp-2 text-sm font-bold leading-5 text-slate-900 hover:text-indigo-700">{item.title}</a>
+                  ) : (
+                    <p className="line-clamp-2 text-sm font-bold leading-5 text-slate-900">{item.title}</p>
+                  )}
+                </article>
+              ))}
+              {!evidence.length && <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">이 후보에 연결된 근거가 아직 없습니다.</p>}
+            </div>
+          </div>
+          <Button className="w-full min-h-[42px]" onClick={() => chooseTrend(candidate)}>이 후보로 제작 준비</Button>
+        </>}
       </CardContent>
     </Card>
   );
 }
 
-function EmptyRadar({ loading }) {
-  const title = loading ? '랭킹을 계산하는 중입니다' : '아직 레이더에 올릴 후보가 없습니다';
-  const body = loading ? '수집 신호를 묶고 검색 검증 점수를 반영하고 있습니다.' : '트렌드 수집 후 AI 분석을 실행하면 제작 후보가 표시됩니다.';
-  return <div className="absolute inset-0 grid place-items-center p-6 text-center"><div className="max-w-sm rounded-lg border border-dashed bg-white/90 p-6 shadow-sm"><Radar className="mx-auto h-8 w-8 text-indigo-600" /><h3 className="mt-3 text-lg font-black">{title}</h3><p className="mt-2 text-sm text-muted-foreground">{body}</p></div></div>;
-}
-
-function RecommendedPanel({ items, chooseTrend }) {
+function DetailMetric({ label, value }) {
   return (
-    <Card><CardHeader><CardDescription>Action Queue</CardDescription><CardTitle className="flex items-center gap-2"><ListChecks className="h-5 w-5 text-indigo-600" />먼저 검증할 후보</CardTitle></CardHeader>
-      <CardContent className="max-h-[438px] space-y-2 overflow-auto">{items.slice(0, 5).map((item) => <Button key={item.id} variant="secondary" className="h-auto w-full justify-start p-3" onClick={() => chooseTrend(item)}><Badge variant="outline">{item.rank}</Badge><span className="flex-1 text-left"><span className="block font-bold">{item.label}</span><span className="block text-xs text-muted-foreground">{item.category} · {item.production?.tier ?? '검증'}</span></span><ScoreChip score={item.production?.score ?? item.score} /></Button>)}{!items.length && <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">랭킹 계산이 끝나면 우선 검증 후보가 표시됩니다.</p>}</CardContent>
-    </Card>
+    <span className="rounded-md border border-slate-100 bg-slate-50 px-2 py-2">
+      <span className="block text-[10px] font-black text-slate-500">{label}</span>
+      <b className="mt-1 block text-base font-black leading-none text-slate-900">{value ?? 0}</b>
+    </span>
   );
 }
 
-function MovementRanking({ items, chooseTrend }) {
-  return <Card><CardHeader className="border-b"><CardDescription>Movement Ranking</CardDescription><CardTitle>제작 후보 순위</CardTitle></CardHeader><CardContent className="grid gap-2 pt-5 lg:grid-cols-2">{items.map((item) => <Button key={item.id} variant="secondary" className="h-auto justify-start p-3" onClick={() => chooseTrend(item)}><Badge variant="outline">{item.rank}</Badge><span className="flex-1 text-left"><strong className="block">{item.label}</strong><small className="text-muted-foreground">{item.category} · {item.production?.tier ?? item.intent}</small></span><ScoreChip score={item.production?.score ?? item.score} /></Button>)}</CardContent></Card>;
+function getCandidateEvidence(candidate) {
+  if (!candidate) return [];
+  const seen = new Set();
+  const evidenceItems = (candidate.evidence ?? []).map((item) => ({
+    source: item.source,
+    title: item.title,
+    url: item.url,
+    metric: item.metric
+  }));
+  const sampleItems = (candidate.sampleTitles ?? []).map((title, index) => ({
+    source: candidate.sources?.[index] ?? '관련 제목',
+    title,
+    url: ''
+  }));
+
+  return [...evidenceItems, ...sampleItems]
+    .filter((item) => {
+      if (!item.title) return false;
+      const key = `${item.source ?? ''}:${item.title}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 }
 
-function ScoreChip({ score }) {
-  const className = score >= 82
-    ? 'border-emerald-200 bg-emerald-50/70 text-emerald-700'
-    : score >= 66
-      ? 'border-amber-200 bg-amber-50/70 text-amber-700'
-      : 'border-slate-200 bg-slate-50 text-slate-700';
-  return <Badge variant="outline" className={`min-w-10 justify-center ${className}`}>{score}</Badge>;
+function getCandidateId(candidate) {
+  return candidate?.id ?? `${candidate?.keyword ?? candidate?.label ?? ''}`;
 }

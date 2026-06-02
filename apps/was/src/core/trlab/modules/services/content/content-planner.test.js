@@ -51,15 +51,13 @@ describe('createContentPlan fallback carousel', () => {
     expect(plan.referenceStyle).toBe('handdrawn_research');
     expect(plan.referencePattern.deckLength).toContain('9~11장');
     expect(plan.referencePattern.proofRhythm).toContain('내부 판단');
-    expect(plan.carouselBlueprint.length).toBeGreaterThanOrEqual(7);
-    expect(plan.cards.length).toBeGreaterThanOrEqual(7);
+    expect(plan.carouselBlueprint.length).toBeGreaterThanOrEqual(5);
+    expect(plan.cards.length).toBeGreaterThanOrEqual(5);
     expect(plan.cards.map((card) => card.role)).toEqual([
       'cover',
       'community_signal',
       'comparison',
       'data_scene',
-      'misconception',
-      'content_angle',
       'checklist'
     ]);
     expect(plan.cards.every((card) => card.layout && card.visualType && card.sourceLine !== undefined && card.visualItems?.length)).toBe(true);
@@ -144,17 +142,15 @@ describe('createContentPlan fallback carousel', () => {
     expect(plan.referencePattern.coverRhythm).toContain('사진 위 반전');
   });
 
-  it('forces the reference carousel order even when AI returns mixed roles and layouts', () => {
+  it('preserves a complete AI carousel flow instead of forcing fixed middle roles', () => {
     const mixedAiPlan = {
       referenceStyle: 'handdrawn_research',
       cards: [
-        { role: 'data_scene', layout: 'data_chart', title: '잘못 온 데이터', body: '댓글 반응 86개를 먼저 확인해야 해요.' },
-        { role: 'checklist', layout: 'checklist', title: '잘못 온 체크', body: '비교 기준을 저장해요.' },
-        { role: 'cover', layout: 'cover_photo', title: '잘못 온 표지', body: '반도체 포함과 제외를 비교해요.' },
+        { role: 'cover', layout: 'cover_text', title: '코스피 착시', body: '지수만 보면 놓쳐요.' },
+        { role: 'data_scene', layout: 'data_chart', title: '댓글이 먼저 갈렸다', body: '댓글 반응 86개와 추천 140개가 비교 축을 만들었어요.', dataPoint: '댓글 86개, 추천 140개', visualItems: ['댓글 86개', '추천 140개'] },
+        { role: 'content_angle', layout: 'handwritten_research', title: '왜 이렇게 보일까', body: '반도체 비중이 커지면 전체 지수의 체감이 달라져요.' },
         { role: 'comparison', layout: 'comparison_board', title: '비교 카드', body: '코스피 전체와 반도체 제외 지표를 나눠봐요.' },
-        { role: 'content_angle', layout: 'handwritten_research', title: '각도 카드', body: '커뮤니티 반응은 사실이 아니라 신호예요.' },
-        { role: 'misconception', layout: 'quote_card', title: '오해 카드', body: '시점과 비교 기준을 같이 봐야 해요.' },
-        { role: 'community_signal', layout: 'quote_card', title: '반응 카드', body: '저장 기준은 숫자 하나와 비교 축이에요.' }
+        { role: 'misconception', layout: 'quote_card', title: '오해하면 안 되는 점', body: '한 지표만 보고 시장 전체를 단정하면 흐름을 놓쳐요.' }
       ]
     };
 
@@ -162,25 +158,21 @@ describe('createContentPlan fallback carousel', () => {
 
     expect(plan.cards.map((card) => card.role)).toEqual([
       'cover',
-      'community_signal',
-      'comparison',
       'data_scene',
-      'misconception',
       'content_angle',
-      'checklist'
+      'comparison',
+      'misconception'
     ]);
     expect(plan.cards.map((card) => card.layout)).toEqual([
       'cover_text',
-      'quote_card',
-      'comparison_board',
       'data_chart',
-      'quote_card',
       'handwritten_research',
-      'checklist'
+      'comparison_board',
+      'quote_card'
     ]);
   });
 
-  it('fills short AI responses into a complete 7-card reference carousel', () => {
+  it('fills short AI responses into a complete 5-card reference carousel by default', () => {
     const shortAiPlan = {
       referenceStyle: 'handdrawn_research',
       cards: [
@@ -207,20 +199,16 @@ describe('createContentPlan fallback carousel', () => {
 
     const plan = normalizeContentPlanForTest(shortAiPlan, candidate);
 
-    expect(plan.cards).toHaveLength(7);
+    expect(plan.cards).toHaveLength(5);
     expect(plan.cards.map((card) => card.role)).toEqual([
       'cover',
       'community_signal',
       'comparison',
       'data_scene',
-      'misconception',
-      'content_angle',
       'checklist'
     ]);
     expect(plan.cards[3].layout).toBe('data_chart');
-    expect(plan.cards[4].layout).toBe('quote_card');
-    expect(plan.cards[5].layout).toBe('handwritten_research');
-    expect(plan.cards[6].layout).toBe('checklist');
+    expect(plan.cards[4].layout).toBe('checklist');
     expect(plan.cards.slice(1).every((card) => card.sourceLine)).toBe(true);
   });
 
@@ -305,5 +293,228 @@ describe('createContentPlan fallback carousel', () => {
     expect(plan.hashtags).toContain('#코스피');
     expect(plan.hashtags).toContain('#반도체투자');
     expect(plan.hashtags.every((tag) => /^#[\p{L}\p{N}_]+$/u.test(tag))).toBe(true);
+  });
+
+  it('turns daycare signals into parent empathy titles and card copy', () => {
+    const plan = normalizeContentPlanForTest({}, {
+      id: 'daycare-parent-issue',
+      label: '어린이집 등원 이슈',
+      keyword: '어린이집 등원 감기 첫돌 워킹맘',
+      category: '육아 트렌드',
+      summary: '부모가 실제로 겪는 등원 기준 이슈',
+      sampleTitles: [
+        '“감기 걸린 아이, 유치원 보내면 맘충?” 워킹맘 토로',
+        '“한 시간만이라도 살 것 같았는데” 첫돌 전 어린이집 보낸 엄마의 반전'
+      ],
+      searchVerification: {
+        verification: {
+          keyFindings: [
+            '유치원·어린이집 아침돌봄 지원 강화',
+            '정부가 어린이집 미설치 기업 명단을 공표했다'
+          ]
+        }
+      }
+    });
+
+    expect(plan.targetAudience).toContain('부모');
+    expect(plan.hookTitles).toContain('감기 걸리면 어린이집 보내면 안 될까');
+    expect(plan.cards[0].title).toBe('감기 걸리면 어린이집 보내면 안 될까');
+    expect(plan.cards[0].visualPrompt).toContain('체온계');
+    expect(plan.cards.find((card) => card.role === 'comparison')?.visualPrompt).toContain('2x2 비교표');
+    expect(plan.cards.at(-1).visualPrompt).toContain('체크리스트');
+    expect(plan.cards.at(-1).title).toBe('등원 전 체크 3개');
+    expect(plan.cards.at(-1).emphasis).toBe('등원 판단 기준');
+    const dataCard = plan.cards.find((card) => card.role === 'data_scene');
+    if (dataCard) {
+      expect(dataCard.body).toContain('확인된 수치가 없다면');
+      expect(dataCard.body).not.toMatch(/요즘|임출육|twig24|뉴시스|\\.\\.\\./);
+      expect(dataCard.visualPrompt).not.toMatch(/근거:|요즘|임출육|\\.\\.\\./);
+      expect(dataCard.visualItems.join('\n')).not.toMatch(/Search SERP|요즘|임출육|twig24|가격\/비중|\\.\\.\\./);
+    }
+    expect(plan.carouselBlueprint.join('\n')).toContain('부모들이 실제로 막힌 지점');
+    expect(plan.cards.map((card) => `${card.title} ${card.body}`).join('\n')).toMatch(/부모|등원|아이 컨디션|제도/);
+    expect(plan.cards.map((card) => card.body).join('\n')).not.toMatch(/Search SERP|네이트판|기획|작성/);
+  });
+
+  it('turns baby product safety signals into safety-check titles', () => {
+    const plan = normalizeContentPlanForTest({}, {
+      id: 'baby-bath-safety',
+      label: '환경호르몬 아기 욕조',
+      keyword: '아기 욕조 환경호르몬 유해성분',
+      category: '육아 트렌드',
+      summary: '부모가 제품 안전 기준을 확인하려는 이슈',
+      sampleTitles: [
+        '똑똑한 소비자가 왜 환경호르몬 아기 욕조를 샀을까',
+        '아기 욕조 유해성분 논란'
+      ]
+    });
+
+    expect(plan.hookTitles).toContain('아기 욕조 정말 괜찮을까');
+    expect(plan.cards[0].title).toBe('아기 욕조 정말 괜찮을까');
+    expect(plan.cards.at(-1).title).toBe('구매 전 체크 3개');
+    expect(plan.cards.at(-1).emphasis).toBe('구매 판단 기준');
+    expect(plan.cards.map((card) => `${card.title} ${card.body}`).join('\n')).toMatch(/성분|사용 연령|대체품|유해성분/);
+  });
+
+  it('does not leak daycare evidence into baby bath safety cards when the selected title changes intent', () => {
+    const mixedAiPlan = {
+      referenceStyle: 'photo_hook',
+      hookTitles: ['아기 욕조 유해성분 괜찮을까'],
+      cards: [
+        {
+          role: 'cover',
+          title: '아기 욕조 유해성분 괜찮을까',
+          body: '소재·사용 조건·대체 기준\n유치원·어린이집 아침돌봄 지원 강화라는 원문 맥락에 사람들의 반응이 붙었어요.',
+          sourceLine: '유치원·어린이집 아침돌봄 지원 강화…출근길 등원 돕는다 - 뉴시스',
+          dataPoint: '제품 안전 이슈 보도 기반'
+        },
+        {
+          role: 'checklist',
+          title: '저장 기준 3개',
+          body: '우리 집 상황과 맞나\n제도 기준이 있나\n아이 컨디션을 봤나'
+        }
+      ]
+    };
+    const plan = normalizeContentPlanForTest(mixedAiPlan, {
+      id: 'mixed-daycare-baby-bath',
+      label: '어린이집 등원 이슈',
+      keyword: '어린이집 등원 감기 첫돌 워킹맘',
+      category: '육아 트렌드',
+      selectedHookTitle: '아기 욕조 유해성분 괜찮을까',
+      sampleTitles: [
+        '유치원·어린이집 아침돌봄 지원 강화…출근길 등원 돕는다 - 뉴시스',
+        '“감기 걸린 아이, 유치원 보내면 맘충?” 워킹맘 토로'
+      ]
+    });
+
+    const visible = [
+      ...plan.cards.map((card) => `${card.title}\n${card.body}\n${card.sourceLine}\n${card.dataPoint}`),
+      ...(plan.sourceNotes ?? [])
+    ].join('\n');
+
+    expect(plan.cards[0].title).toBe('아기 욕조 유해성분 괜찮을까');
+    expect(plan.cards[0].visualPrompt).toContain('아기 욕조');
+    expect(plan.cards.at(-1).visualPrompt).toContain('체크리스트');
+    expect(plan.cards.at(-1).body).toContain('성분 기준이 확인됐나');
+    expect(visible).toMatch(/아기 욕조|성분|대체 기준|사용 연령/);
+    expect(visible).not.toMatch(/어린이집|유치원|등원|돌봄|감기|아이 컨디션|제도 기준/);
+  });
+
+  it('uses the selected cover title as the top priority for product topics', () => {
+    const plan = normalizeContentPlanForTest({}, {
+      id: 'selected-title-product-priority',
+      label: '어린이집 등원 이슈',
+      keyword: '어린이집 등원 감기 워킹맘',
+      category: '육아 트렌드',
+      selectedHookTitle: '미국 아이 장난감 왜 팔릴까',
+      sampleTitles: [
+        '유치원·어린이집 아침돌봄 지원 강화',
+        '감기 걸린 아이 유치원 등원 기준'
+      ]
+    });
+
+    const visible = [
+      plan.coreAngle,
+      plan.summary,
+      ...plan.hookTitles,
+      ...plan.cards.map((card) => `${card.title}\n${card.body}\n${card.sourceLine}\n${card.dataPoint}`)
+    ].join('\n');
+
+    expect(plan.cards[0].title).toBe('미국 아이 장난감 왜 팔릴까');
+    expect(plan.hookTitles).toContain('미국 아이 장난감 왜 팔릴까');
+    expect(plan.cards[0].visualPrompt).toContain('쇼핑 매거진형');
+    expect(plan.cards[0].visualPrompt).not.toContain('팔릴까을');
+    expect(plan.cards[3].visualPrompt).toContain('그래프 대신 반복 언급 신호');
+    expect(plan.cards.at(-1).title).toBe('사기 전 체크 3개');
+    expect(visible).toMatch(/살 이유|구매|장바구니|왜 이걸 사갈까/);
+    expect(visible).not.toMatch(/어린이집|유치원|등원|감기|성분 기준|사용 연령|대체품/);
+  });
+
+  it('writes parent reaction cards as concrete blocked moments instead of generic empathy copy', async () => {
+    const originalKey = process.env.OPENAI_API_KEY;
+    const originalProvider = process.env.AI_PROVIDER;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.AI_PROVIDER;
+
+    let plan;
+    try {
+      plan = await createContentPlan({
+        id: 'daycare-cold-parent-issue',
+        label: '감기 걸리면 어린이집 보내면 안 될까',
+        keyword: '어린이집 등원 감기 워킹맘 부모 현실',
+        category: '육아 트렌드',
+        selectedHookTitle: '감기 걸리면 어린이집 보내면 안 될까',
+        evidence: [
+          { title: '감기 걸린 아이 유치원 등원 기준과 워킹맘 토로' }
+        ],
+        sampleTitles: ['감기 걸린 아이, 유치원 보내면 괜찮을까']
+      });
+    } finally {
+      if (originalKey) process.env.OPENAI_API_KEY = originalKey;
+      if (originalProvider) process.env.AI_PROVIDER = originalProvider;
+    }
+
+    const reaction = plan.cards.find((card) => card.role === 'community_signal');
+
+    expect(reaction?.title).toBe('부모들이 막힌 순간');
+    expect(reaction?.body).toContain('출근 시간');
+    expect(reaction?.body).toContain('기관 기준');
+    expect(reaction?.body).not.toMatch(/정보보다 공감|우리 집도 이럴 때|저장돼요/);
+    expect(reaction?.visualItems).toEqual(expect.arrayContaining(['출근 시간', '아이 컨디션', '기관 기준']));
+    expect(plan.captionBody).toContain('기관 기준');
+    expect(plan.captionBody).toContain('등원 전');
+    expect(plan.captionBody).not.toMatch(/까은|제도 기준|반응, 비교 기준, 숫자 하나|확인할 숫자|단순히 많이 언급/);
+  });
+
+  it('creates a finished manual daycare shortage carousel without an AI provider', async () => {
+    const providerKeys = ['OPENAI_API_KEY', 'GEMINI_API_KEY', 'ANTHROPIC_API_KEY', 'XAI_API_KEY', 'GROQ_API_KEY', 'DEEPSEEK_API_KEY', 'MISTRAL_API_KEY', 'DEEPINFRA_API_KEY'];
+    const original = Object.fromEntries(providerKeys.map((key) => [key, process.env[key]]));
+    const originalProvider = process.env.AI_PROVIDER;
+    for (const key of providerKeys) delete process.env[key];
+    delete process.env.AI_PROVIDER;
+
+    let plan;
+    try {
+      plan = await createContentPlan({
+        id: 'manual-daycare-shortage',
+        label: '왜 어린이집은 늘 부족할까?',
+        keyword: '어린이집 부족 대기 수요 부모 현실',
+        category: '육아 트렌드',
+        sourceMode: 'manual',
+        cardCount: 5,
+        selectedHookTitle: '왜 어린이집은 늘 부족할까?',
+        summary: '부모들이 체감하는 어린이집 부족 문제를 저장형 카드뉴스로 설명',
+        manualBrief: {
+          topic: '왜 어린이집은 늘 부족할까?',
+          prompt: '공급, 위치, 시간, 선호도 차이로 쉽게 풀어줘. 단정적인 통계 없이 구조를 설명하고 마지막은 부모가 확인할 기준으로 마무리.',
+          cardCount: 5,
+          audience: '어린이집 대기와 입소 문제를 겪는 부모',
+          tone: '현실적이고 차분하게'
+        },
+        sources: ['manual']
+      });
+    } finally {
+      for (const [key, value] of Object.entries(original)) {
+        if (value) process.env[key] = value;
+      }
+      if (originalProvider) process.env.AI_PROVIDER = originalProvider;
+    }
+
+    expect(plan.provider).toBe('fallback');
+    expect(plan.cards).toHaveLength(5);
+    expect(plan.cards.map((card) => card.title)).toEqual([
+      '왜 어린이집은 늘 부족할까?',
+      '문제는 숫자보다 위치',
+      '시간이 안 맞아도 부족',
+      '정원만 늘리면 될까',
+      '입소 전 볼 기준 3개'
+    ]);
+    expect(plan.cards[0].body).toContain('자리 수만의 문제');
+    expect(plan.cards[1].visualPrompt).toContain('동네 지도');
+    expect(plan.cards[2].visualPrompt).toContain('2열 시간표');
+    expect(plan.cards[4].body).toContain('대기 순번만');
+    expect(plan.captionBody).toContain('거리, 운영 시간, 실제 등하원 동선');
+    expect(plan.hashtags).toEqual(expect.arrayContaining(['#어린이집입소', '#입소대기', '#육아현실']));
+    expect(plan.cards.map((card) => `${card.title}\n${card.body}\n${card.visualPrompt}`).join('\n')).not.toMatch(/시작하기|실천할 때|Search SERP|네이트판/);
   });
 });

@@ -22,37 +22,42 @@ const api = ky.create({
 });
 
 export function getLatestSignals() {
-  return api.get('/api/signals/latest', { cache: 'no-store' }).json();
+  return api.get(apiPath('/api/signals/latest'), { cache: 'no-store' }).json();
 }
 
 export function getLatestTrendSnapshot() {
-  return api.get('/api/trends/latest', { cache: 'no-store' }).json();
+  return api.get(apiPath('/api/trends/latest'), { cache: 'no-store' }).json();
 }
 
 export function rankTrends() {
-  return api.get('/api/trends/rank', {
+  return api.get(apiPath('/api/trends/rank'), {
     cache: 'no-store',
     searchParams: {
       verify: '0',
       ai: '1',
-      aiLimit: '8',
-      limit: '8',
+      aiLimit: '5',
+      limit: '12',
       save: '1',
       reason: 'manual-rank'
     }
   }).json();
 }
 
-export function collectSignals({ source, reason, areas } = {}) {
+export function collectSignals({ source, reason, areas, profiles } = {}) {
   const searchParams = new URLSearchParams();
   if (source) searchParams.set('source', source);
   if (reason) searchParams.set('reason', reason);
   if (areas?.length) searchParams.set('areas', areas.join(','));
-  return api.get('/api/signals/collect', { cache: 'no-store', searchParams }).json();
+  if (profiles?.length) searchParams.set('profiles', profiles.join(','));
+  return api.get(apiPath('/api/signals/collect'), { cache: 'no-store', searchParams }).json();
+}
+
+export function clearCollectedTrends() {
+  return api.post(apiPath('/api/signals/clear')).json();
 }
 
 export function collectFmKoreaWithBrowser({ auth = true } = {}) {
-  return api.get('/api/signals/fmkorea-browser', {
+  return api.get(apiPath('/api/signals/fmkorea-browser'), {
     cache: 'no-store',
     timeout: 180000,
     searchParams: { auth: auth ? '1' : '0' }
@@ -60,7 +65,7 @@ export function collectFmKoreaWithBrowser({ auth = true } = {}) {
 }
 
 export function verifySearch({ query, type = '검증형' }) {
-  return api.get('/api/search/verify', {
+  return api.get(apiPath('/api/search/verify'), {
     cache: 'no-store',
     searchParams: {
       q: query,
@@ -70,10 +75,22 @@ export function verifySearch({ query, type = '검증형' }) {
 }
 
 export function getTrendHistory(limit = 60) {
-  return api.get('/api/trends/history', {
+  return api.get(apiPath('/api/trends/history'), {
     cache: 'no-store',
     searchParams: { limit }
   }).json();
+}
+
+export function getChannelProfiles() {
+  return api.get(apiPath('/api/channel-profiles'), { cache: 'no-store' }).json();
+}
+
+export function saveChannelProfile(profile) {
+  return api.post(apiPath('/api/channel-profiles'), { json: profile }).json();
+}
+
+export function deleteChannelProfile(id) {
+  return api.delete(apiPath('/api/channel-profiles'), { searchParams: { id } }).json();
 }
 
 export function createContentPlan(payload, { refresh = false } = {}) {
@@ -111,6 +128,7 @@ function sanitizeContentPlanPayload(payload = {}) {
     sampleTitles: (payload.sampleTitles ?? []).slice(0, 5).map(cleanText),
     sources: payload.sources ?? [],
     summary: cleanText(payload.summary),
+    selectedHookTitle: cleanText(payload.selectedHookTitle),
     sourceMode: payload.sourceMode,
     channelName: cleanText(payload.channelName),
     manualBrief: payload.manualBrief ? {
@@ -154,6 +172,8 @@ function cleanText(value) {
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&nbsp;/g, ' ')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)))
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();

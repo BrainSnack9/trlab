@@ -15,6 +15,7 @@ export function isSignalVisible(signal, selectedSet, excludedSet) {
   const text = `${signal.title ?? ''} ${signal.summary ?? ''}`;
   if (isAdultText(text)) return false;
   if (exclusionAreas.some((area) => excludedSet.has(area.id) && matchesArea(text, area))) return false;
+  if (!selectedSet.size) return true;
   return selectedSet.has(classifyText(text).id);
 }
 
@@ -22,6 +23,7 @@ export function isTrendVisible(trend, selectedSet, excludedSet) {
   const text = `${trend.keyword ?? trend.label ?? ''} ${(trend.sampleTitles ?? []).join(' ')}`;
   if (isAdultText(text)) return false;
   if (exclusionAreas.some((area) => excludedSet.has(area.id) && matchesArea(text, area))) return false;
+  if (!selectedSet.size) return true;
   return selectedSet.has((trend.area?.id ? trend.area : classifyText(text)).id);
 }
 
@@ -43,6 +45,7 @@ export function trendToRadarItem(trend, index) {
     validation: trend.validation,
     searchVerification: trend.searchVerification,
     aiAnalysis: trend.aiAnalysis,
+    channelFit: trend.channelFit,
     evidence: trend.evidence ?? [],
     sampleTitles: trend.sampleTitles ?? [],
     scoring: trend.scoring,

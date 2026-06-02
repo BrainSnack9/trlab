@@ -2,7 +2,12 @@ export const DEFAULT_CARD_IMAGE_SIZE = '1024x1536';
 
 export async function tryGenerateRemoteImage(prompt) {
   const errors = [];
-  for (const provider of providers()) {
+  const availableProviders = providers();
+  if (!availableProviders.length) {
+    errors.push('AI 이미지 provider가 설정되지 않았습니다. OPENAI_API_KEY, XAI_API_KEY, DEEPINFRA_API_KEY 또는 GEMINI_API_KEY를 설정하세요.');
+    return { image: null, errors };
+  }
+  for (const provider of availableProviders) {
     try {
       return { image: await provider.call(prompt), errors };
     } catch (error) {

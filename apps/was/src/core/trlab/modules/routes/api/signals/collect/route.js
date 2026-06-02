@@ -17,7 +17,10 @@ export async function GET(request) {
   const source = query.source;
   const reason = query.reason ?? (source ? 'single-source' : 'manual');
   const excluded = new Set(query.exclude.split(',').filter(Boolean));
-  const context = { areas: query.areas.split(',').filter(Boolean) };
+  const context = {
+    areas: query.areas.split(',').filter(Boolean),
+    profiles: query.profiles.split(',').filter(Boolean)
+  };
   const entries = source && collectorMap[source]
     ? [[source, collectorMap[source]]]
     : Object.entries(collectorMap).filter(([id]) => !excluded.has(id));
@@ -31,6 +34,7 @@ export async function GET(request) {
     finishedAt,
     count: signals.length,
     areas: context.areas,
+    profiles: context.profiles,
     sources: payloads.map(({ source: name, status, error, items }) => ({ source: name, status, error, count: items.length })),
     signals
   });

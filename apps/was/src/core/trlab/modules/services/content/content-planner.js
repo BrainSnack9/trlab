@@ -2,6 +2,8 @@ import { generateAIJson, hasAIProvider } from '#trlab/modules/services/ai/ai-pro
 import { formatCardText } from './card-text.js';
 import { repairDeep } from '#trlab/modules/helpers/text-repair';
 
+const DEFAULT_TREND_CARD_COUNT = 5;
+
 export async function createContentPlan(input) {
   if (!hasAIProvider()) return fallbackPlan(input);
   try {
@@ -15,110 +17,55 @@ export async function createContentPlan(input) {
 function buildPrompt(input) {
   const manual = normalizeManualBrief(input);
   if (manual) return buildManualPrompt(input, manual);
+  const desiredCardCount = getDesiredCardCount(input);
+  const intent = classifyContentIntent(input);
   return JSON.stringify({
-    manualRequest: manual ? {
-      instruction: '사용자가 트렌드 감지와 무관하게 직접 만들고 싶은 카드뉴스 주제입니다. candidate보다 manualRequest를 우선하고, 사용자가 요청한 컷 수와 방향을 지켜서 설계하세요.',
-      topic: manual.topic,
-      prompt: manual.prompt,
-      audience: manual.audience,
-      tone: manual.tone,
-      cardCount: manual.cardCount,
-      cardCountRule: `${manual.cardCount}컷으로 정확히 구성합니다. cards 배열 길이와 carouselBlueprint 길이를 이 숫자에 맞춥니다.`
-    } : undefined,
-    task: '검증된 트렌드 후보를 인스타 카드뉴스 캐러셀 기획안으로 만든다. 최종 목표는 채널 성장과 추후 관련 상품/리포트/템플릿/서비스 판매로 이어질 신뢰 자산을 쌓는 것이다.',
-    role: '당신은 커뮤니티 반응을 읽는 데이터 기반 마케팅 에디터다. 뉴스 요약이 아니라, 사람들이 저장하고 공유할 만한 “근거 있는 바이럴 카드뉴스”를 설계한다.',
-    referenceStyle: [
-      '@twojob_angel: 흰 배경, 손글씨 느낌, 앱/비즈니스 사례, 10장 안팎, 창업자/제품 스토리와 참고자료 박스',
-      '@power_biolife: 사진 풀블리드 표지, 큰 반전 문장, 7~20장, 뒤 카드에서 사실을 한 장씩 공개',
-      '@1page_secret: 평균 9장, 첫 줄 20자 안팎, 개인 기록처럼 시작해 저장/CTA로 끝나는 원페이지 리듬',
-      '@artart.today: 매거진형 사진 표지, 짧고 굵은 제목, 문화/브랜드 트렌드에 적합',
-      '@koreanmedicalmemed: 짧은 키워드, 밈/말풍선, 팩트체크형 전개'
-    ],
-    referenceCarouselRules: {
-      cover: [
-        '표지는 결론을 설명하지 않는다. “착시”, “비교하면 달라지는 것”, “사람들이 눌러본 이유”처럼 멈추게 하는 한 문장만 둔다.',
-        '레퍼런스 기준 첫 줄은 짧다. 12~31자 사이의 질문/반전/비교 약속을 우선한다.',
-        '표지 본문은 0~2줄만 허용한다. 긴 근거 문장은 표지에 쓰지 않는다.'
-      ],
-      bodyCard: [
-        '본문 카드는 자료 캡션이 아니라 카드 한 장짜리 주장이다. 첫 줄은 “무엇을 봐야 하는지”로 시작한다.',
-        '근거 원문 제목은 body에 복붙하지 않는다. sourceLine에만 두고, body에서는 “댓글이 이 지점에 몰렸어요”처럼 해석된 문장으로 바꾼다.',
-        '비교 카드에는 최소 2개 비교 축을 둔다. 예: 코스피 전체/반도체 제외, 강남/홍콩, 제품A/제품B.',
-        '숫자 카드에는 숫자가 하나라도 있으면 크게 쓰고, 없으면 “확인할 지표”를 시각 라벨로 만든다.',
-        '오해 방지 카드는 단정 대신 확인 조건을 보여준다. 예: 시점, 표본, 비교 기준.'
-      ],
-      ending: [
-        '마지막 카드는 저장할 기준 3개로 끝낸다. 감상평이나 요약 문단으로 끝내지 않는다.',
-        '향후 상품/리포트/템플릿 판매를 염두에 두고, 독자가 “이 계정은 판단 기준을 준다”고 느끼게 한다.'
-      ],
-      badPatterns: [
-        '“근거: 원문 제목”으로 시작하는 카드',
-        '검색 결과 제목을 그대로 본문에 붙이는 카드',
-        '모든 카드가 같은 배경의 설명문으로만 구성되는 카드',
-        '“중요합니다/주목됩니다/시사합니다”로 끝나는 보고서 문장'
-      ]
+    task: '아래 주제와 컷 수만 중심으로 인스타 카드뉴스 기획안 JSON을 완성한다.',
+    request: {
+      cardCount: desiredCardCount,
+      topic: primaryTopic(input),
+      coverTitle: cleanManualText(input.selectedHookTitle) || primaryTopic(input),
+      intent: intent.id,
+      titlePattern: intent.titlePattern,
+      angle: intent.angle
     },
-    planningRule: [
-      '원신호를 그대로 요약하지 않는다. “왜 사람들이 반응했는지”, “무엇과 비교해야 하는지”, “어떤 숫자를 봐야 하는지”로 바꾼다.',
-      '전체 카드 수는 기본 8~12장으로 잡는다. 근거가 부족하면 최소 7장까지 허용한다. 한 카드에는 하나의 역할만 둔다.',
-      '1장은 긴 설명 금지. 강한 질문, 반전, 비교 약속 중 하나로 손을 멈추게 한다.',
-      '2~7장은 커뮤니티 반응 → 왜 지금 → 비교 프레임 → 숫자/그래프 → 오해/리스크 → 콘텐츠 각도로 이어간다.',
-      '마지막 카드는 저장용 체크리스트, 판단 기준, 실행 순서 중 하나로 끝낸다.',
-      '근거는 candidate.evidence, candidate.searchVerification.verification.keyFindings, candidate.searchVerification.results, candidate.aiAnalysis.dataPoints를 우선 사용한다.',
-      '검색 결과에 없는 숫자를 새로 만들지 않는다. 숫자가 없으면 “확인할 지표”로 표현한다.',
-      '비교 콘텐츠로 풀 수 있으면 비교 축을 제시한다. 예: 반도체 포함/제외 코스피, 강남/홍콩/도쿄/뉴욕, 제품 A/B, 세대별 반응, 가격대별 차이.',
-      '카드 제목은 짧고 구체적이어야 한다. “영향 분석”, “전망 정리” 같은 보고서 제목만 쓰지 않는다.',
-      '카드 본문은 1~3줄로 나누고, 첫 줄은 구체 사실/질문/반전으로 시작한다.',
-      '카드 본문에는 “근거:”, “해석:”, “실행:”, “데이터:” 같은 기획 라벨을 절대 쓰지 않는다. 해당 정보는 dataPoint, insight, action, sourceLine 필드에만 넣는다.'
+    rules: [
+      `${desiredCardCount}장 정확히 작성한다. 1장은 표지, 2장부터는 주제에 가장 좋은 전개를 직접 설계한다.`,
+      '반응/비교/데이터/체크 같은 순서를 억지로 맞추지 않는다. 같은 role을 반복해도 되고, 필요 없는 role은 쓰지 않는다.',
+      '각 cards 항목의 title과 body는 실제 카드에 그대로 들어갈 완성 문구다. 설명문이나 제작 지시문이 아니다.',
+      '각 cards 항목의 visualPrompt와 visualItems는 이미지/표/그래프/배경 제작용 지시다. 카드 문구와 섞지 않는다.',
+      'body에는 출처명, Search SERP, 네이트판, 기사 제목, URL, 기획 메모, 근거 라벨을 넣지 않는다.',
+      `표지 제목은 request.coverTitle을 최우선으로 사용한다. 다른 후보는 hookTitles에만 넣는다.`,
+      `${intent.rule}`,
+      '숫자는 근거에 있는 것만 쓴다. 근거 숫자가 없으면 숫자를 만들지 말고 상황/반복 언급/비교 기준으로 설계한다.'
     ],
-    editorialStandard: [
-      '말투는 20대 중반~30대 초반 여성이 인스타 정보 계정에서 친구에게 설명하듯 쓴다.',
-      '반말은 쓰지 말고 “봐야 해요”, “챙겨두면 좋아요”, “여기서 갈려요”처럼 자연스러운 존댓말을 쓴다.',
-      '너무 애교 섞인 표현, 과한 감탄사, “대박”, “헐”, 이모지는 쓰지 않는다.',
-      '유저가 AI 자동생성 문장이라고 느끼는 순간 실패다. 사람이 직접 편집한 인스타 카드뉴스처럼 쓴다.',
-      '“~에 대해 알아보겠습니다”, “다음과 같습니다”, “종합하면”, “핵심입니다” 같은 생성형 AI 클리셰를 금지한다.',
-      '얕은 일반론 금지. 모든 카드는 구체적 근거, 숫자, 변화 원인, 시사점 중 2개 이상을 포함한다.',
-      '독자가 저장하거나 공유할 이유가 있어야 한다. “중요하다”, “주목된다” 같은 빈말만 쓰지 않는다.',
-      '근거가 부족하면 “확인 필요”라고 쓰되, 왜 확인해야 하는지까지 적는다.',
-      '본문은 카드당 45~110자. 표지 카드는 35자 이내도 가능하다.',
-      '하이픈(-)으로 이어 쓰지 말고 짧은 줄 2~4개로 나눠 카드뉴스 문장처럼 쓴다.',
-      '“탐구한다”, “제시한다”, “중요하다”, “시사한다” 같은 AI 보고서 말투를 피한다.',
-      '마지막 카드는 독자가 바로 써먹을 체크리스트나 판단 기준으로 끝낸다.'
-    ],
-    schema: {
-      targetAudience: '좁힌 독자군',
-      coreAngle: '증명 가능한 한 줄 논지. 비교 축 또는 숫자 기준을 포함',
-      referenceStyle: 'handdrawn_research | photo_hook | magazine_story | meme_factcheck 중 하나',
-      referencePattern: {
-        deckLength: '권장 카드 수. 예: 9~11장',
-        coverRhythm: '표지에서 따라 할 레퍼런스 리듬',
-        bodyRhythm: '본문 카드 전개 리듬',
-        proofRhythm: '검증 정보를 내부 판단에만 쓰는 방식',
-        endingRhythm: '마지막 저장/CTA 방식'
-      },
-      carouselBlueprint: ['카드별 흐름을 7~12개 단계로 요약'],
-      hookTitles: ['저장/공유를 유도하는 제목 5개. 각 제목은 22자 이내'],
-      captionFirstLine: '게시물 첫 줄. 35자 이내. 저장/공유를 유도하는 짧은 후크',
-      captionBody: '게시물 캡션 본문. 350~700자. 카드에서 다 못한 맥락, 근거, 저장 이유를 자연스럽게 설명',
-      captionCTA: '댓글/저장/공유를 유도하는 한 문장',
-      hashtags: ['5~8개. 너무 넓은 태그보다 주제/독자/형식 태그 중심'],
-      summary: '왜 지금 이 카드뉴스가 필요한지. 근거와 독자 효용 포함',
-      riskNotes: ['과장 방지/확인 필요 사항'],
-      sourceNotes: ['사용한 근거. 원문 제목 중심'],
+    jsonStructure: {
+      targetAudience: '',
+      coreAngle: '',
+      referenceStyle: 'handdrawn_research|photo_hook|magazine_story|meme_factcheck',
+      carouselBlueprint: [''],
+      hookTitles: [''],
+      captionFirstLine: '',
+      captionBody: '',
+      captionCTA: '',
+      hashtags: [''],
+      summary: '',
+      riskNotes: [''],
+      sourceNotes: ['내부 참고용. 카드에는 직접 노출하지 않음'],
       cards: [{
         page: 1,
-        role: 'cover | why_now | community_signal | comparison | data_scene | misconception | content_angle | checklist | closing',
-        layout: 'cover_photo | cover_text | handwritten_research | comparison_board | data_chart | quote_card | checklist',
-        visualType: 'photo | chart | table | screenshot | quote | checklist | meme',
-        title: '13자 안팎의 강한 제목',
-        dataPoint: '이 카드에서 쓰는 숫자/근거/확인 지표',
-        insight: '그 근거가 의미하는 해석',
+        role: 'cover|why_now|community_signal|comparison|data_scene|misconception|content_angle|checklist|closing 중 자연스럽게 선택',
+        layout: 'cover_photo|cover_text|handwritten_research|comparison_board|data_chart|quote_card|checklist 중 선택',
+        visualType: 'photo|illustration|chart|table|quote|checklist 중 선택',
+        title: '카드에 보일 제목',
+        body: '카드에 보일 본문 1~3줄',
+        visualPrompt: '배경/장면/이미지/표/그래프/포인트 연출. 글자 삽입 지시 금지',
+        visualItems: ['시각 요소나 표/그래프 라벨 2~4개'],
+        dataPoint: '내부 참고 데이터. 카드에 그대로 노출하지 않음',
+        insight: '내부 기획 판단',
         action: '독자가 저장하거나 실행할 포인트',
-        body: '45~110자 본문. 1~3줄. 라벨 없이 독자에게 보일 최종 문장만 작성',
-        visualPrompt: '실제 카드에 들어갈 사진/그래프/표/비교 구도',
-        visualItems: ['그래프 축/비교표 칸/체크리스트 항목에 들어갈 짧은 라벨 2~4개'],
-        sourceLine: '내부 검증 메모. 최종 카드에는 직접 노출하지 않음',
-        emphasis: '짧은 강조 문구'
+        sourceLine: '내부 출처 메모. 카드에 그대로 노출하지 않음',
+        emphasis: '강조 문구'
       }]
     },
     candidate: compactCandidate(input)
@@ -127,28 +74,32 @@ function buildPrompt(input) {
 
 function compactCandidate(input) {
   const manual = normalizeManualBrief(input);
+  const intent = manual ? null : classifyContentIntent(input);
   return {
-    label: input.label ?? input.keyword,
+    label: primaryTopic(input),
+    originalLabel: input.label ?? input.keyword,
     sourceMode: input.sourceMode,
+    contentIntent: intent?.id,
     manualBrief: manual,
     category: input.category,
     production: input.production,
     validation: input.validation,
     aiAnalysis: input.aiAnalysis,
+    selectedHookTitle: input.selectedHookTitle,
     sources: input.sources,
-    evidence: (input.evidence ?? []).slice(0, 5),
-    sampleTitles: (input.sampleTitles ?? []).slice(0, 5),
+    evidence: (input.evidence ?? []).slice(0, 3),
+    sampleTitles: (input.sampleTitles ?? []).slice(0, 3),
     searchVerification: input.searchVerification ? {
       query: input.searchVerification.query,
       verification: input.searchVerification.verification,
-      results: (input.searchVerification.results ?? []).slice(0, 5)
+      results: (input.searchVerification.results ?? []).slice(0, 3)
     } : undefined
   };
 }
 
 function buildManualPrompt(input, manual) {
   return JSON.stringify({
-    task: '사용자가 직접 입력한 주제로 인스타그램 카드뉴스 콘텐츠 설계안을 만든다. 트렌드 감지 결과나 검색 후보가 아니므로, 아래 manualRequest만 최우선으로 따른다.',
+    task: '사용자 직접 입력 주제와 컷 수만 중심으로 인스타 카드뉴스 기획안 JSON을 완성한다.',
     manualRequest: {
       topic: manual.topic,
       prompt: manual.prompt,
@@ -157,44 +108,28 @@ function buildManualPrompt(input, manual) {
       cardCount: manual.cardCount
     },
     rules: [
-      `${manual.cardCount}컷으로 정확히 구성한다. cards 배열 길이는 반드시 ${manual.cardCount}개다.`,
-      '각 카드는 page, role, layout, visualType, title, body, visualPrompt, visualItems, emphasis를 포함한다.',
-      '카드 문구는 사용자가 입력한 주제와 요청 내용에 직접 연결한다. 커뮤니티 반응, 검색 신호, 트렌드 감지 같은 표현을 임의로 넣지 않는다.',
-      '1컷은 강한 후크 표지, 마지막 컷은 저장/실행 체크리스트로 구성한다.',
-      'body는 실제 카드에 들어갈 최종 문구만 1~3줄로 쓴다.',
-      'captionFirstLine, captionBody, captionCTA, hashtags도 함께 만든다.'
+      `${manual.cardCount}컷 정확히. 첫 장은 표지, 이후 흐름은 주제에 가장 자연스럽게 직접 설계한다.`,
+      '반응/비교/데이터/체크 같은 고정 순서에 맞추지 않는다.',
+      'title과 body는 실제 카드에 그대로 들어갈 완성 문구다.',
+      'visualPrompt와 visualItems는 배경/이미지/표/그래프 제작용 지시로 분리한다.',
+      'body에는 작성하세요/넣어주세요/보여줘요/확인해야 해요 같은 제작 지시문 금지.',
+      '트렌드 감지/검색 신호/커뮤니티 반응을 임의로 넣지 말고 사용자 입력에만 맞춘다.',
+      'captionFirstLine, captionBody, captionCTA, hashtags 포함.'
     ],
-    schema: {
-      targetAudience: '독자',
-      coreAngle: '카드뉴스 핵심 각도',
-      referenceStyle: 'handdrawn_research | photo_hook | magazine_story | meme_factcheck',
-      referencePattern: {
-        deckLength: `${manual.cardCount}컷`,
-        coverRhythm: '표지 리듬',
-        bodyRhythm: '본문 전개 리듬',
-        proofRhythm: '근거/주의점 처리 방식',
-        endingRhythm: '마무리 방식'
-      },
-      carouselBlueprint: [`${manual.cardCount}개 단계`],
-      hookTitles: ['후크 제목 후보 3~5개'],
-      captionFirstLine: '게시글 첫 줄',
-      captionBody: '게시글 본문',
-      captionCTA: '저장/공유 유도 문장',
-      hashtags: ['#해시태그'],
-      summary: '기획 요약',
-      riskNotes: ['주의할 표현'],
+    jsonStructure: {
+      targetAudience: '',
+      coreAngle: '',
+      referenceStyle: '',
+      carouselBlueprint: [''],
+      hookTitles: [''],
+      captionFirstLine: '',
+      captionBody: '',
+      captionCTA: '',
+      hashtags: [''],
+      summary: '',
+      riskNotes: [''],
       sourceNotes: ['사용자 입력 기반'],
-      cards: [{
-        page: 1,
-        role: 'cover | why_now | comparison | data_scene | misconception | content_angle | checklist | closing',
-        layout: 'cover_photo | cover_text | handwritten_research | comparison_board | data_chart | quote_card | checklist',
-        visualType: 'photo | chart | table | quote | checklist',
-        title: '짧은 카드 제목',
-        body: '실제 카드 문구',
-        visualPrompt: '시각화 지시',
-        visualItems: ['카드에 들어갈 시각 요소'],
-        emphasis: '강조 문구'
-      }]
+      cards: [{ page: 1, role: '', layout: '', visualType: '', title: '', body: '', visualPrompt: '', visualItems: [''], emphasis: '' }]
     },
     candidate: compactCandidate(input)
   });
@@ -218,7 +153,7 @@ function normalizeManualBrief(input = {}) {
 function getDesiredCardCount(input = {}) {
   const manual = normalizeManualBrief(input);
   if (manual) return manual.cardCount;
-  return 7;
+  return input.cardCount ? clampCardCount(input.cardCount) : DEFAULT_TREND_CARD_COUNT;
 }
 
 function clampCardCount(value) {
@@ -241,30 +176,42 @@ function normalizePlan(data, input, provider) {
 
 function normalizeTrendPlan(data, input, provider) {
   const aiCardCount = Array.isArray(data.cards) ? data.cards.length : 0;
-  const desiredCardCount = Math.min(12, Math.max(7, aiCardCount || 7));
+  const desiredCardCount = input.cardCount
+    ? getDesiredCardCount(input)
+    : Math.min(12, Math.max(DEFAULT_TREND_CARD_COUNT, aiCardCount || DEFAULT_TREND_CARD_COUNT));
   const cards = Array.isArray(data.cards) && data.cards.length ? data.cards : fallbackCards(input);
+  const intent = classifyContentIntent(input);
   const referenceStyle = data.referenceStyle ?? chooseReferenceStyle(input);
   const rawCards = ensureTrendCarouselCards(cards, input, desiredCardCount).slice(0, desiredCardCount);
   const normalizedCards = rawCards.map((card, index) => normalizeTrendCard(card, input, index, rawCards.length, referenceStyle));
-  const finalCards = (isWeakPlan(normalizedCards, input)
-    ? ensureCarouselCards(evidenceBackedCards(input), input, desiredCardCount).slice(0, desiredCardCount)
+  const hasCompleteAiCards = aiCardCount >= desiredCardCount;
+  const shouldReplaceAiCards = hasIntentMismatch(normalizedCards, input, intent) || (!hasCompleteAiCards && isWeakPlan(normalizedCards, input));
+  const baseFinalCards = (shouldReplaceAiCards
+    ? ensureTrendCarouselCards(evidenceBackedCards(input), input, desiredCardCount).slice(0, desiredCardCount)
     : normalizedCards.map((card, index) => strengthenCard(card, input, index)))
-    .map(enforceCardLength);
+    .map(enforceCardLength)
+    .map((card, index) => enforceIntentCard(card, input, intent, index));
+  const finalCards = (hasCompleteAiCards ? normalizeChecklistCards(baseFinalCards, input) : ensureFinalChecklist(baseFinalCards, input))
+    .map((card, index) => (index === 0 && input.selectedHookTitle ? { ...card, title: compactTitle(input.selectedHookTitle, input, 32) } : card));
+  const hookTitles = normalizeHookTitles(data.hookTitles, input, intent);
+  const selectedHookTitle = cleanManualText(input.selectedHookTitle);
   return {
     provider,
-    targetAudience: data.targetAudience ?? '트렌드를 실용적으로 이해하고 저장해두려는 20대 후반 여성',
-    coreAngle: data.coreAngle ?? input.production?.suggestedAngle ?? input.summary ?? '',
+    primaryTopic: primaryTopic(input),
+    selectedHookTitle,
+    targetAudience: data.targetAudience ?? intent.audience,
+    coreAngle: data.coreAngle ?? input.production?.suggestedAngle ?? intent.angle ?? input.summary ?? '',
     referenceStyle,
     referencePattern: normalizeReferencePattern(data.referencePattern, referenceStyle),
-    carouselBlueprint: ensureList(data.carouselBlueprint, defaultBlueprint(input)).slice(0, desiredCardCount),
-    hookTitles: ensureList(data.hookTitles, [`${input.label} 지금 봐야 할 변화`, `${input.label}에서 읽어야 할 신호`]).map((title) => compactTitle(title, input, 22)).slice(0, 5),
+    carouselBlueprint: ensureList(data.carouselBlueprint, defaultBlueprint(input, intent)).slice(0, desiredCardCount),
+    hookTitles: selectedHookTitle ? [selectedHookTitle, ...hookTitles.filter((title) => title !== selectedHookTitle)].slice(0, 5) : hookTitles,
     captionFirstLine: normalizeCaptionFirstLine(data.captionFirstLine, input),
     captionBody: normalizeCaptionBody(data.captionBody, input),
     captionCTA: normalizeCaptionCTA(data.captionCTA),
     hashtags: normalizeHashtags(data.hashtags, input),
-    summary: data.summary ?? `${input.label}의 배경과 근거, 저장해둘 포인트를 쉽게 풀어봅니다.`,
+    summary: data.summary ?? `${primaryTopic(input)}의 배경과 근거, 저장해둘 포인트를 쉽게 풀어봅니다.`,
     riskNotes: ensureList(data.riskNotes, ['근거가 부족한 수치는 단정하지 마세요.']),
-    sourceNotes: ensureList(data.sourceNotes, input.searchVerification?.verification?.keyFindings ?? input.sampleTitles ?? []),
+    sourceNotes: filterSourceNotes(ensureList(data.sourceNotes, getEvidence(input, intent)), intent, input),
     cards: finalCards
   };
 }
@@ -278,10 +225,69 @@ function enforceCardLength(card) {
   };
 }
 
+function normalizeChecklistCards(cards, input) {
+  return cards.map((card) => (card.role === 'checklist' || card.layout === 'checklist' ? normalizeChecklistCard(card, input) : card));
+}
+
+function ensureFinalChecklist(cards, input) {
+  if (!cards.length) return cards;
+  const last = cards[cards.length - 1];
+  const looksLikeChecklist = /체크|저장|기준/.test(`${last.title} ${last.body} ${last.visualPrompt}`);
+  if (last.role === 'checklist' && last.layout === 'checklist' && looksLikeChecklist) {
+    return normalizeChecklistCards(cards, input);
+  }
+  const fallback = evidenceBackedCards(input).find((card) => card.role === 'checklist') ?? {
+    role: 'checklist',
+    layout: 'checklist',
+    visualType: 'checklist',
+    title: '저장 기준 3개',
+    body: '지금 볼 이유가 있나\n비교 기준이 있나\n다시 확인할 수 있나',
+    sourceLine: primaryTopic(input),
+    dataPoint: primaryTopic(input),
+    emphasis: '저장 기준'
+  };
+  return cards.map((card, index) => (index === cards.length - 1 ? normalizeChecklistCard({ ...fallback, page: index + 1 }, input) : card));
+}
+
+function normalizeChecklistCard(card, input) {
+  if (card.role !== 'checklist' && card.layout !== 'checklist') return card;
+  const intent = classifyContentIntent(input);
+  const title = isGenericChecklistTitle(card.title) ? checklistTitleForIntent(input, intent) : card.title;
+  const emphasis = isGenericChecklistEmphasis(card.emphasis) ? checklistEmphasisForIntent(intent) : card.emphasis;
+  return {
+    ...card,
+    title,
+    emphasis
+  };
+}
+
+function isGenericChecklistTitle(value) {
+  return /^(저장\s*기준|저장\s*전\s*체크|저장\s*체크|체크리스트|마지막\s*체크|이렇게\s*만들기)(\s*\d+개?)?$/.test(`${value ?? ''}`.trim());
+}
+
+function isGenericChecklistEmphasis(value) {
+  return !value || /저장\s*기준|저장\s*체크|체크리스트|다시\s*볼/.test(`${value ?? ''}`);
+}
+
+function checklistTitleForIntent(input, intent = classifyContentIntent(input)) {
+  if (intent.id === 'parent_social_issue') return '등원 전 체크 3개';
+  if (intent.id === 'parent_safety_issue') return '구매 전 체크 3개';
+  if (intent.id === 'consumer_product_marketing' || intent.id === 'pet_consumer_product') return '사기 전 체크 3개';
+  if (normalizeManualBrief(input)) return '실행 전 체크 3개';
+  return '확인할 기준 3개';
+}
+
+function checklistEmphasisForIntent(intent = {}) {
+  if (intent.id === 'parent_social_issue') return '등원 판단 기준';
+  if (intent.id === 'parent_safety_issue') return '구매 판단 기준';
+  if (intent.id === 'consumer_product_marketing' || intent.id === 'pet_consumer_product') return '구매 판단 기준';
+  return '확인 기준';
+}
+
 function normalizeManualPlan(data, input, provider, manual) {
   const desiredCardCount = manual.cardCount;
   const cards = Array.isArray(data.cards) && data.cards.length ? data.cards : manualFallbackCards(input, desiredCardCount);
-  const referenceStyle = data.referenceStyle ?? 'handdrawn_research';
+  const referenceStyle = data.referenceStyle ?? chooseReferenceStyle(input);
   const rawCards = ensureManualCarouselCards(cards, input, desiredCardCount).slice(0, desiredCardCount);
   const normalizedCards = rawCards.map((card, index) => normalizeManualCard(card, input, index, rawCards.length, referenceStyle));
   return {
@@ -316,7 +322,9 @@ function ensureCarouselCards(cards, input, desiredCardCount = getDesiredCardCoun
 }
 
 function ensureTrendCarouselCards(cards, input, desiredCardCount) {
-  return ensureCarouselCards(cards, input, desiredCardCount);
+  const base = Array.isArray(cards) ? cards.filter(Boolean) : [];
+  if (base.length >= desiredCardCount) return base;
+  return ensureCarouselCards(base, input, desiredCardCount);
 }
 
 function ensureManualCarouselCards(cards, input, desiredCardCount) {
@@ -336,10 +344,11 @@ export function normalizeContentPlanForTest(data, input, provider = 'test') {
 }
 
 function normalizeTrendCard(card, input, index, total, referenceStyle) {
-  const role = canonicalRole(index, total);
+  const intent = classifyContentIntent(input);
+  const role = normalizeTrendRole(card.role, index, total);
   const layout = normalizeLayout(card.layout, role, index, referenceStyle);
   const title = normalizeTrendCardTitle(card.title, input, index, role);
-  const body = normalizeTrendCardBody(richBody(card, input), role, card);
+  const body = finalizeCardBody(normalizeTrendCardBody(richBody(card, input), role, card), role, card, input);
   const sourceLine = normalizeSourceLine(card, input, index, role);
   return normalizeDataCardContract({
     page: card.page ?? index + 1,
@@ -352,10 +361,10 @@ function normalizeTrendCard(card, input, index, total, referenceStyle) {
     dataPoint: card.dataPoint ?? (role === 'data_scene' ? sourceLine : ''),
     insight: card.insight ?? '',
     action: card.action ?? '',
-    visualPrompt: card.visualPrompt ?? `${title}를 설명하는 인포그래픽 카드`,
+    visualPrompt: normalizeVisualPrompt(card.visualPrompt, input, role, layout, title, body, sourceLine, intent),
     visualItems: normalizeVisualItems(card.visualItems, input, role, card),
     sourceLine,
-    emphasis: card.emphasis ?? card.dataPoint ?? input.label
+    emphasis: card.emphasis ?? card.dataPoint ?? primaryTopic(input)
   }, input);
 }
 
@@ -363,7 +372,7 @@ function normalizeManualCard(card, input, index, total, referenceStyle) {
   const role = canonicalManualRole(index, total, card.role);
   const layout = normalizeLayout(card.layout, role, index, referenceStyle);
   const title = normalizeManualCardTitle(card.title, input, index, role);
-  const body = normalizeManualCardBodyFromValue(richManualBody(card), role, card);
+  const body = finalizeCardBody(normalizeManualCardBodyFromValue(richManualBody(card), role, card), role, card, input, true);
   return normalizeDataCardContract({
     page: card.page ?? index + 1,
     role,
@@ -374,7 +383,7 @@ function normalizeManualCard(card, input, index, total, referenceStyle) {
     dataPoint: card.dataPoint ?? '',
     insight: card.insight ?? '',
     action: card.action ?? '',
-    visualPrompt: card.visualPrompt ?? `${title}를 한눈에 보여주는 카드`,
+    visualPrompt: normalizeVisualPrompt(card.visualPrompt, input, role, layout, title, body, card.sourceLine ?? '', null),
     visualItems: normalizeVisualItems(card.visualItems, input, role, card),
     sourceLine: cleanCardBody(card.sourceLine ?? ''),
     emphasis: card.emphasis ?? card.dataPoint ?? title
@@ -408,24 +417,28 @@ function normalizeDataStoryBody(value) {
 }
 
 function dataCardVisualPrompt(card, input, story) {
-  const topic = [input.label, input.keyword, card.title].filter(Boolean).join(' ');
+  const topic = [primaryTopic(input), card.title].filter(Boolean).join(' ');
   const base = `${topic} 데이터를 보여주는 카드`;
+  const hasStory = Boolean(story);
   const background = /홍콩|hong kong/i.test(`${topic} ${card.body} ${card.dataPoint} ${card.visualPrompt}`)
     ? '홍콩 야경 고층 아파트와 빅토리아 하버가 보이는 배경'
     : /강남|서울|아파트|부동산|집값/i.test(`${topic} ${card.body} ${card.dataPoint} ${card.visualPrompt}`)
       ? '도심 아파트와 야간 스카이라인 배경'
       : '주제와 직접 연결되는 실제적인 배경';
-  return `${card.visualPrompt || base}. ${background}. 중앙에는 상승/하락 흐름을 한눈에 볼 수 있는 차트 영역, 하단에는 핵심 데이터 스토리 문장이 들어갈 여백. ${story || ''}`.trim();
+  const center = hasStory
+    ? '중앙에는 상승/하락 흐름을 한눈에 볼 수 있는 차트 영역, 하단에는 핵심 데이터 스토리 문장이 들어갈 여백'
+    : '중앙에는 반복 신호 3개와 사례 요약 영역, 하단에는 핵심 문장이 들어갈 여백';
+  return `${card.visualPrompt || base}. ${background}. ${center}. ${story || ''}`.trim();
 }
 
 function dataCardStory(card, metrics, input) {
-  const text = [card.title, card.body, card.dataPoint, card.sourceLine, input.label, input.keyword].filter(Boolean).join(' ');
+  const text = [card.title, card.body, card.dataPoint, card.sourceLine, primaryTopic(input)].filter(Boolean).join(' ');
   const years = [...text.matchAll(/\b(19\d{2}|20\d{2})\b/g)].map((match) => match[1]);
   const values = metrics.filter((metric) => /\d/.test(metric.valueLabel));
   const current = values.find((metric) => /현재|최근|평균|current|latest/i.test(metric.label)) ?? values.at(-1);
   const firstYear = years[0];
   const lastYear = years.length > 1 ? years.at(-1) : '';
-  const subject = /홍콩/.test(text) ? '홍콩 부동산' : /강남/.test(text) ? '강남 부동산' : (input.label || input.keyword || '이 지표');
+  const subject = /홍콩/.test(text) ? '홍콩 부동산' : /강남/.test(text) ? '강남 부동산' : (primaryTopic(input) || '이 지표');
   const valueName = /집값|부동산|아파트|평균/.test(text) ? '평균 집값' : '현재값';
   if (firstYear && lastYear && current?.valueLabel) {
     return `${subject}은 ${firstYear}년부터 ${lastYear}년까지 상승 흐름이 이어졌습니다.\n현재 ${valueName}은 ${current.valueLabel}입니다.`;
@@ -478,28 +491,30 @@ function richManualBody(card) {
 }
 
 function normalizeSourceLine(card, input, index, role) {
-  const evidence = getEvidence(input);
+  const intent = classifyContentIntent(input);
+  const evidence = getEvidence(input, intent);
   const fallback = role === 'cover'
     ? ''
     : evidence[index] ?? evidence.find((item) => /\d/.test(item)) ?? evidence[0] ?? '확인 필요';
-  return cleanCardBody(card.sourceLine ?? card.dataPoint ?? fallback);
+  const source = card.sourceLine ?? card.dataPoint;
+  return cleanCardBody(isEvidenceRelevant(source, intent, input) ? source : fallback);
 }
 
 function richBody(card, input) {
   const base = `${card.body ?? ''}`.trim();
-  if (normalizeManualBrief(input) && base) return formatCardText(base);
-  if (base.length >= 70) return formatCardText(base);
+  if (base) return formatCardText(base);
   const parts = [card.insight, card.action].filter(Boolean);
   if (parts.length) return formatCardText(parts.join('\n'));
-  return formatCardText(`${input.label} 흐름은 그냥 지나치기엔 아까워요. 숫자와 원인을 같이 보면, 이게 단순 이슈인지 저장할 만한 변화인지 더 또렷해집니다.`);
+  return formatCardText(`${primaryTopic(input)}은 단순 화제보다 반응의 방향이 먼저 보이는 주제예요. 숫자와 원인이 붙으면 저장할 만한 변화가 더 또렷해져요.`);
 }
 
 function normalizeCardTitle(value, input, index, role, manual = false) {
-  const fallback = defaultTitleForRole(input, role, index);
+  const intent = manual ? null : classifyContentIntent(input);
+  const fallback = defaultTitleForRole(input, role, index, intent);
   const cleaned = cleanAiTone(cleanTitle(value || fallback));
-  if (!cleaned || isGenericTitle(cleaned)) return fallback;
+  if (!cleaned || isGenericTitle(cleaned) || isInstructionalTitle(cleaned)) return fallback;
   if (role === 'cover' && !manual && !hasCoverHookTitle(cleaned)) return fallback;
-  const limit = manual ? (role === 'cover' ? 26 : 24) : (role === 'cover' ? 16 : 18);
+  const limit = manual ? (role === 'cover' ? 32 : 24) : (role === 'cover' ? 32 : 18);
   return compactTitle(cleaned, input, limit);
 }
 
@@ -509,12 +524,10 @@ function normalizeCardBody(value, role, card = {}, manual = false) {
   const maxLines = role === 'cover' ? 2 : 3;
   if (manual) return normalizeManualCardBody(lines, maxLines);
   const limit = role === 'cover' ? 22 : 32;
-  const normalized = [];
-  for (const line of lines) {
-    for (let index = 0; index < line.length && normalized.length < maxLines; index += limit) {
-      normalized.push(line.slice(index, index + limit).trim());
-    }
-  }
+  const normalized = lines
+    .flatMap((line) => splitReadableLines(line, limit))
+    .filter(Boolean)
+    .slice(0, maxLines);
   return normalized.join('\n');
 }
 
@@ -524,6 +537,123 @@ function normalizeManualCardBody(lines, maxLines) {
     .filter(Boolean)
     .slice(0, maxLines);
   return normalized.join('\n');
+}
+
+function finalizeCardBody(value, role, card = {}, input = {}, manual = false) {
+  const body = cleanCardBody(cleanAiTone(value));
+  if (body && !isInstructionalBody(body) && !isBadCardCopy(body) && hasFinishedCardCopy(body)) return body;
+  const topic = cleanShort(primaryTopic(input) ?? input.manualBrief?.topic ?? card.title ?? '이 주제');
+  const intent = manual ? null : classifyContentIntent(input);
+  const fact = cleanShort(card.dataPoint || card.sourceLine || getEvidence(input, intent)[0] || topic);
+  const title = cleanShort(card.title || defaultTitleForRole(input, role, 0));
+  if (manual) return manualFinishedBody(role, topic, title, fact);
+  return trendFinishedBody(role, topic, title, fact);
+}
+
+function isInstructionalBody(value) {
+  return /(작성|구성|넣어|보여줘|보여주|정리해야|잡아야|제시|설명해야|만들어야|활용할|나누는 거|기준.*잡|어떻게 할|무엇을|해야 합니다|해주세요|합니다\.|비교해야 할 대상|확인해야 할 지표|봐야 하는 이유)/.test(`${value ?? ''}`);
+}
+
+function hasFinishedCardCopy(value) {
+  const text = `${value ?? ''}`.trim();
+  if (text.length < 24) return false;
+  if (/핵심 내용을 입력|카드 \d+ 제목|확인할 지표/.test(text)) return false;
+  return true;
+}
+
+function isBadCardCopy(value) {
+  return /(Search SERP|Naver|Google|Brave|SERP|네이트판|출처명|수집 채널|불안이나 욕망|욕망에 가까워|반복된 말|단순 화제보다 반응의 방향)/i.test(`${value ?? ''}`);
+}
+
+function trendFinishedBody(role, topic, title, fact) {
+  const intent = classifyContentIntent({ label: topic, keyword: topic, evidence: [{ title: fact }], sampleTitles: [title] });
+  if (intent.id === 'parent_social_issue') return parentSocialTrendBody(role, topic, fact);
+  if (intent.id === 'parent_safety_issue') return parentSafetyTrendBody(role, topic, fact);
+  const productLike = /쇼핑|추천템|생활|상품|제품|브랜드|아마존|틱톡|품절|구매|소비|템/.test(`${topic} ${title} ${fact}`);
+  if (productLike) return productTrendBody(role, topic, fact);
+  return ({
+    cover: `${topic}이 갑자기 보이기 시작했어요.\n이건 단순 유행보다 반응의 방향이 더 중요해요.`,
+    why_now: `지금 눈여겨볼 건 속도예요.\n${fact}에서 반응이 먼저 움직였어요.`,
+    community_signal: `댓글은 제품보다 이유에 몰렸어요.\n사람들이 궁금해한 건 “왜 갑자기 떴나”였어요.`,
+    comparison: `혼자 보면 그냥 화제예요.\n가격, 세대, 국가를 나란히 놓으면 진짜 포인트가 보여요.`,
+    data_scene: `${fact}\n숫자는 하나만 크게 잡아도 흐름이 선명해져요.`,
+    misconception: `많이 보인다고 바로 대세는 아니에요.\n시점과 출처가 같이 있어야 과장이 줄어요.`,
+    content_angle: `이 주제는 뉴스보다 저장형 정보에 가까워요.\n“나한테 뭐가 달라지나”로 바꾸면 힘이 생겨요.`,
+    checklist: `반응이 반복됐나\n비교 기준이 있나\n숫자로 확인되나`,
+    closing: `다음 이슈도 이 기준으로 보면 돼요.\n반응, 비교, 숫자만 남겨두세요.`
+  })[role] ?? `${title}에서 중요한 건 맥락이에요.\n${topic}은 반응과 비교 기준이 같이 움직여요.`;
+}
+
+function parentSocialTrendBody(role, topic, fact) {
+  const topicSubject = withSubjectJosa(topic);
+  return ({
+    cover: `${topicSubject} 부모에게 바로 닿는 문제예요.\n괜찮다/안 된다보다 기준이 먼저 필요해요.`,
+    why_now: `지금 반응이 붙은 이유는 현실감이에요.\n${shortFact(fact)}처럼 등원과 돌봄의 빈틈이 같이 보였어요.`,
+    community_signal: `아이는 콧물이 나고, 출근 시간은 다가와요.\n기관 기준과 회사 눈치 사이에서 부모가 먼저 멈춰요.`,
+    comparison: `맞벌이, 전업, 어린이집 기준을 따로 봐야 해요.\n같은 등원 문제도 상황에 따라 답이 달라져요.`,
+    data_scene: `확인된 수치가 없다면 사례를 숫자처럼 쓰면 안 돼요.\n반복된 등원 고민을 대표 신호로만 봐야 해요.`,
+    misconception: `부모 탓으로 몰면 콘텐츠가 약해져요.\n제도, 회사, 아이 컨디션을 함께 봐야 해요.`,
+    content_angle: `이 주제는 사건보다 “부모가 실제로 막히는 순간”이 핵심이에요.\n그 순간을 제목으로 잡아야 저장돼요.`,
+    checklist: `우리 집 상황과 맞나\n기관 기준이 있나\n아이 컨디션을 봤나`,
+    closing: `저장할 기준은 단정이 아니에요.\n상황, 기관 기준, 아이 컨디션을 나눠보는 거예요.`
+  })[role] ?? `${topic}은 부모 현실과 기관 기준을 같이 봐야 해요.\n한쪽 탓으로 단정하면 중요한 맥락이 사라져요.`;
+}
+
+function parentSafetyTrendBody(role, topic, fact) {
+  return ({
+    cover: `${topic}, 정말 괜찮을까요?\n부모가 먼저 봐야 할 건 불안보다 기준이에요.`,
+    why_now: `반응이 붙은 이유는 안전 기준이에요.\n${shortFact(fact)}처럼 아이 물건은 작은 의심도 크게 번져요.`,
+    community_signal: `댓글은 “살까 말까”보다\n“우리 아이한테 괜찮나”에 가까워요.`,
+    comparison: `제품명보다 성분, 사용 시기, 대체품을 나눠봐야 해요.\n비교 축이 있어야 불안이 줄어요.`,
+    data_scene: `확인된 수치가 없다면 논란을 숫자처럼 쓰면 안 돼요.\n성분, 인증, 사용 조건만 따로 확인해야 해요.`,
+    misconception: `논란이 있다고 모두 위험한 건 아니에요.\n확인된 기준과 의심되는 부분을 분리해야 해요.`,
+    content_angle: `이 주제는 공포보다 체크리스트가 좋아요.\n부모가 구매 전 확인할 기준으로 바꾸면 저장돼요.`,
+    checklist: `성분 기준이 확인됐나\n사용 연령이 맞나\n대체품이 있나`,
+    closing: `불안할수록 기준이 필요해요.\n성분, 연령, 대체품만 먼저 확인하세요.`
+  })[role] ?? `${topic}은 제품 논란보다 부모가 확인할 기준이 중요해요.\n성분과 사용 조건을 나눠봐야 해요.`;
+}
+
+function productTrendBody(role, topic, fact) {
+  return ({
+    cover: `${topic}이 저장 목록에 올라왔어요.\n사람들이 본 건 유행보다 “살 이유”였어요.`,
+    why_now: `눈에 띄는 건 구매 이유예요.\n${shortFact(fact)}에서 생활템 반응이 먼저 잡혔어요.`,
+    community_signal: `반응은 “예쁘다”보다 “쓸 만하다”에 가까워요.\n작고 바로 쓰는 물건일수록 저장돼요.`,
+    comparison: `관광 기념품보다 생활용품 쪽이 강해요.\n매일 쓰는 물건일수록 구매 명분이 생겨요.`,
+    data_scene: `확인된 판매량이 없다면 과장하면 안 돼요.\n반복 언급과 구매 이유를 대표 신호로 봐야 해요.`,
+    misconception: `유행템이라고 다 살 만한 건 아니에요.\n가격, 무게, 재구매 이유가 갈리는 지점이에요.`,
+    content_angle: `이 주제는 “뭐가 떴나”보다\n“왜 장바구니에 들어갔나”로 풀 때 힘이 생겨요.`,
+    checklist: `매일 쓸 수 있나\n가격이 납득되나\n다시 사고 싶나`,
+    closing: `저장할 포인트는 세 가지예요.\n용도, 가격, 재구매 이유만 남기면 돼요.`
+  })[role] ?? `${topic}은 유행보다 구매 이유가 중요해요.\n생활 속에서 바로 쓰일 때 저장돼요.`;
+}
+
+function manualFinishedBody(role, topic, title, fact) {
+  return ({
+    cover: `${topic}은 어렵게 시작하지 않아도 돼요.\n오늘 바로 써먹을 기준만 남겨볼게요.`,
+    why_now: `지금 필요한 건 많은 정보가 아니에요.\n헷갈리는 순서를 줄이는 기준이에요.`,
+    comparison: `좋은 방법과 헷갈리는 방법을 나란히 두면\n선택이 훨씬 빨라져요.`,
+    data_scene: `시간, 횟수, 비용 중 하나만 잡아도\n실천 기준이 훨씬 선명해져요.`,
+    misconception: `처음부터 완벽하게 하려 하면 오래 못 가요.\n작게 반복되는 기준이 더 오래 남아요.`,
+    content_angle: `${title}은 정보보다 적용 순서가 중요해요.\n읽고 바로 따라 할 수 있어야 저장돼요.`,
+    checklist: `오늘 바로 할 수 있나\n주의점이 분명한가\n다시 볼 이유가 있나`,
+    closing: `${topic}은 저장해두고 다시 볼 때 힘이 생겨요.\n필요한 순간에 기준만 꺼내면 돼요.`
+  })[role] ?? `${topic}에서 중요한 건 실행 순서예요.\n복잡한 설명보다 바로 쓸 기준을 남겨두세요.`;
+}
+
+function cleanShort(value) {
+  return `${value ?? ''}`
+    .replace(/\s+/g, ' ')
+    .replace(/\b(Search SERP|Naver News|Naver Blog|Google News|Brave Search|SERP)\b/gi, '')
+    .replace(/네이트판|더쿠|인스티즈|FMKOREA|에펨코리아/g, '')
+    .replace(/["“”]/g, '')
+    .trim()
+    .slice(0, 80);
+}
+
+function shortFact(value) {
+  const text = cleanShort(value);
+  if (!text) return '반복 언급';
+  return text.length > 42 ? `${text.slice(0, 42).trim()}...` : text;
 }
 
 function splitReadableLines(line, limit) {
@@ -604,7 +734,7 @@ function cleanTitle(value) {
 function compactTitle(value, input, limit) {
   const text = cleanTitle(value);
   if (text.length <= limit) return text;
-  const shortLabel = `${input.label ?? input.keyword ?? ''}`.replace(/\s+/g, ' ').trim();
+  const shortLabel = `${primaryTopic(input) ?? ''}`.replace(/\s+/g, ' ').trim();
   if (shortLabel && shortLabel.length <= limit && text.includes(shortLabel)) return shortLabel;
   return text.slice(0, limit).trim();
 }
@@ -613,39 +743,87 @@ function isGenericTitle(value) {
   return /^(영향|분석|정리|전망|핵심|포인트|콘텐츠|카드|주제)\s*\d*$/.test(value) || value.length < 2;
 }
 
-function hasCoverHookTitle(value) {
-  return /왜|진짜|믿기|착시|비교|놓쳐|달라|반전|한 줄|이게|요즘|갑자기|모르면|전에/.test(`${value ?? ''}`);
+function isInstructionalTitle(value) {
+  return /(해야|확인|작성|구성|보여줘|넣어|비교해야|만들기)/.test(`${value ?? ''}`);
 }
 
-function defaultTitleForRole(input, role, index) {
-  const label = input.label ?? input.keyword ?? '이 주제';
+function hasCoverHookTitle(value) {
+  return /왜|진짜|정말|괜찮|보내면|사도|써도|믿기|착시|비교|놓쳐|달라|반전|한 줄|이게|요즘|갑자기|모르면|전에/.test(`${value ?? ''}`);
+}
+
+function defaultTitleForRole(input, role, index, intent = classifyContentIntent(input)) {
+  const label = primaryTopic(input);
+  if (intent?.id === 'parent_social_issue') {
+    return {
+      cover: parentQuestionTitle(input, '정말 괜찮을까'),
+      why_now: '왜 지금 부모들이 반응할까',
+      community_signal: '부모들이 막힌 지점',
+      comparison: '상황마다 답이 달라요',
+      data_scene: '숫자보다 먼저 볼 것',
+      misconception: '부모 탓으로 끝내면 안 돼요',
+      content_angle: '내 얘기가 되는 순간',
+      checklist: '등원 전 체크 3개',
+      closing: '저장 기준'
+    }[role] ?? compactTitle(label, input, 18);
+  }
+  if (intent?.id === 'parent_safety_issue') {
+    return {
+      cover: parentQuestionTitle(input, '정말 괜찮을까'),
+      why_now: '왜 갑자기 불안해졌을까',
+      community_signal: '부모들이 물은 것',
+      comparison: '성분부터 나눠봐요',
+      data_scene: '확인된 기준만 보기',
+      misconception: '논란과 위험은 달라요',
+      content_angle: '공포보다 체크리스트',
+      checklist: '구매 전 체크 3개',
+      closing: '저장 기준'
+    }[role] ?? compactTitle(label, input, 18);
+  }
+  if (intent?.id === 'consumer_product_marketing') {
+    return {
+      cover: '왜 이걸 사갈까',
+      why_now: '왜 지금 팔릴까',
+      community_signal: '사람들이 저장한 이유',
+      comparison: '예쁜 것보다 쓸모',
+      data_scene: '반응이 붙은 이유',
+      misconception: '사지 말아야 할 때',
+      content_angle: '장바구니에 들어간 순간',
+      checklist: '구매 전 체크 3개',
+      closing: '저장 기준'
+    }[role] ?? compactTitle(label, input, 18);
+  }
   return {
     cover: '이게 왜 떴을까',
     why_now: '왜 지금일까',
     community_signal: '댓글이 말한 것',
-    comparison: '비교해야 보여요',
+    comparison: '혼자 보면 착시',
     data_scene: '숫자는 하나면 돼요',
     misconception: '오해하면 망해요',
-    content_angle: '콘텐츠 각도',
-    checklist: '이렇게 만들기',
+    content_angle: '내 얘기로 바뀌는 순간',
+    checklist: '확인할 기준 3개',
     closing: '저장 기준'
   }[role] ?? compactTitle(label, input, 16) ?? `카드 ${index + 1}`;
 }
 
 function strengthenCard(card, input, index) {
   if (hasConcreteBody(card.body)) return card;
-  const evidence = getEvidence(input);
-  const fact = evidence[index] ?? evidence[0] ?? input.label ?? input.keyword;
+  if (card.role === 'checklist' || card.role === 'closing') {
+    return { ...card, body: trendFinishedBody(card.role, primaryTopic(input), card.title, card.dataPoint || primaryTopic(input)) };
+  }
+  const intent = classifyContentIntent(input);
+  const evidence = getEvidence(input, intent);
+  const fact = evidence[index] ?? evidence[0] ?? primaryTopic(input);
   const body = [
     sentenceFromEvidence(fact, input),
-    card.insight || `${input.label ?? input.keyword}를 볼 때는 단순 화제보다 어떤 숫자가 움직였는지 확인해야 해요.`,
-    card.action || '저장할 때는 비교 기준, 적용 대상, 숫자 하나를 같이 적어두면 좋아요.'
+    card.insight || `${primaryTopic(input)}는 단순 화제보다 반응의 방향이 더 선명해요.`,
+    card.action || '비교 기준, 적용 대상, 숫자 하나가 저장 포인트예요.'
   ].filter(Boolean).join('\n');
   return { ...card, body: normalizeCardBody(body, card.role), dataPoint: card.dataPoint || fact };
 }
 
 function hasConcreteBody(value) {
   const text = `${value ?? ''}`;
+  if (isInstructionalBody(text) || isBadCardCopy(text)) return false;
   const hasEvidenceWord = /댓글|조회|추천|비중|지수|영업이익|가격|비교|확인|체크|검색|보도|수치|커뮤니티|반응|\d/.test(text);
   const hasAction = /봐야|확인|비교|나눠|저장|체크|주의|분리|적용|담아/.test(text);
   return text.length >= 45 && hasEvidenceWord && hasAction;
@@ -653,37 +831,279 @@ function hasConcreteBody(value) {
 
 function isWeakPlan(cards, input) {
   const text = cards.map((card) => `${card.title} ${card.body}`).join(' ');
-  const generic = /중심으로 배경|추가 검색|신뢰도가 높아집니다|중요합니다|주목받고 있습니다|알아보겠습니다|다음과 같습니다|종합하면|핵심입니다|살펴보겠습니다|영향을 미칩니다|필수적입니다|가능성이 있습니다/g;
+  const generic = /중심으로 배경|추가 검색|신뢰도가 높아집니다|중요합니다|주목받고 있습니다|알아보겠습니다|다음과 같습니다|종합하면|핵심입니다|살펴보겠습니다|영향을 미칩니다|필수적입니다|가능성이 있습니다/;
+  const hasGenericCopy = generic.test(text);
   const hasEvidence = /\d|%|조|억|만|증가|감소|전망|비교|확대|개편/.test(text);
   const concreteCount = cards.filter((card) => hasConcreteBody(card.body)).length;
   const structuredCount = cards.filter((card) => card.dataPoint || card.sourceLine || card.insight || card.action || card.visualItems?.length).length;
   const explicitRoleCount = cards.filter((card) => card._hadExplicitRole).length;
+  if (explicitRoleCount >= Math.ceil(cards.length * 0.8) && hasEvidence && !hasGenericCopy) return false;
   if (!explicitRoleCount && cards.length >= 7 && structuredCount >= Math.ceil(cards.length * 0.7) && hasEvidence) return false;
   if (cards.length >= 8 && hasEvidence && cards.some((card) => card.dataPoint || card.insight || card.action)) return false;
   if (cards.length >= 8 && hasEvidence && concreteCount >= Math.min(5, cards.length)) return false;
-  return generic.test(text) || !hasEvidence || concreteCount < Math.min(3, cards.length) || cards.every((card) => !card.dataPoint && !card.insight && !card.action);
+  return hasGenericCopy || !hasEvidence || concreteCount < Math.min(3, cards.length) || cards.every((card) => !card.dataPoint && !card.insight && !card.action);
+}
+
+function hasIntentMismatch(cards, input, intent = classifyContentIntent(input)) {
+  const text = cards.map((card) => `${card.title} ${card.body} ${card.dataPoint} ${card.sourceLine}`).join(' ');
+  if (intent.id === 'parent_safety_issue') {
+    return hasParentSocialTerms(text) || cards.some((card) => card.role === 'checklist' && !/성분|연령|월령|대체품|소재|인증/.test(`${card.title} ${card.body}`));
+  }
+  if (intent.id === 'parent_social_issue') {
+    return /환경호르몬|유해성분|소재|인증|대체품/.test(text) && !hasParentSocialTerms(text);
+  }
+  return false;
+}
+
+function enforceIntentCard(card, input, intent = classifyContentIntent(input), index = 0) {
+  if (intent.id !== 'parent_safety_issue' && intent.id !== 'parent_social_issue') return card;
+  const fallback = evidenceBackedCards(input)[index];
+  const text = `${card.title} ${card.body} ${card.dataPoint} ${card.sourceLine}`;
+  const mismatched = intent.id === 'parent_safety_issue'
+    ? hasParentSocialTerms(text) || (card.role === 'checklist' && !/성분|연령|월령|대체품|소재|인증/.test(text))
+    : /환경호르몬|유해성분|소재|인증|대체품/.test(text) && !hasParentSocialTerms(text);
+  if (!mismatched) {
+    return {
+      ...card,
+      sourceLine: isEvidenceRelevant(card.sourceLine, intent, input) ? card.sourceLine : fallback?.sourceLine ?? '',
+      dataPoint: isEvidenceRelevant(card.dataPoint, intent, input) ? card.dataPoint : fallback?.dataPoint ?? ''
+    };
+  }
+  return fallback ? { ...fallback, page: card.page ?? index + 1 } : card;
 }
 
 function evidenceBackedCards(input) {
-  const label = input.label ?? input.keyword;
-  const evidence = getEvidence(input);
+  const label = primaryTopic(input);
+  const intent = classifyContentIntent(input);
+  const evidence = getEvidence(input, intent);
   const fact = evidence.find((item) => /\d|%/.test(item))
     ?? evidence.find((item) => /조|억|만|전망|확대|개편/.test(item))
     ?? evidence[0]
     ?? `${label} 관련 신호가 반복 수집됨`;
-  const sourceText = (input.sources ?? []).join(', ') || '수집 채널';
+  if (intent.id === 'parent_social_issue') return parentSocialEvidenceCards(input, fact);
+  if (intent.id === 'parent_safety_issue') return parentSafetyEvidenceCards(input, fact);
+  if (intent.id === 'consumer_product_marketing' || intent.id === 'pet_consumer_product' || isProductTopic(`${label} ${fact}`)) return productEvidenceCards(input, fact);
   return [
-    makeCard(1, '이게 왜 떴을까', fact, `${label}은 그냥 뉴스보다\n커뮤니티 반응이 먼저 잡힌 주제예요.\n그래서 “사람들이 왜 눌렀는지”부터 봐야 해요.`, 'cover', 'cover_text', '반응 먼저'),
-    makeCard(2, '댓글이 말한 것', evidence[1] ?? fact, `${sourceText}에서 반복된 말은\n사실 하나의 불안이나 욕망에 가까워요.\n제목보다 반응의 방향을 먼저 잡아야 해요.`, 'community_signal', 'quote_card', '커뮤니티 반응'),
-    makeCard(3, '비교해야 보여요', evidence[2] ?? fact, `${label}만 보면 커 보이지만\n비슷한 대상과 나란히 놓으면 달라져요.\n지역, 제품, 세대, 가격대를 꼭 비교해요.`, 'comparison', 'comparison_board', '비교 프레임'),
-    makeCard(4, '숫자는 하나면 돼요', fact, `그래프는 많이 넣을수록 흐려져요.\n조회수, 가격, 성장률, 검색량 중\n가장 설득력 있는 숫자 하나를 크게 보여줘요.`, 'data_scene', 'data_chart', '대표 지표'),
-    makeCard(5, '오해하면 망해요', evidence[3] ?? fact, `커뮤니티 반응은 사실이 아니라 신호예요.\n시점과 비교 기준을 같이 봐야\n자극적이면서도 믿을 만해져요.`, 'misconception', 'quote_card', '과장 방지'),
-    makeCard(6, '콘텐츠 각도', label, `이 주제는 “무슨 일이냐”보다\n“나한테 어떤 변화냐”로 바꾸면 좋아요.\n그래야 저장하고 공유할 이유가 생겨요.`, 'content_angle', 'handwritten_research', '내 이야기화'),
-    makeCard(7, '이렇게 만들기', label, `저장용 기준은 세 가지예요.\n반응이 있었나, 비교가 가능한가,\n숫자 하나로 설명되나.`, 'checklist', 'checklist', '저장 기준')
+    makeCard(1, '이게 왜 떴을까', fact, `${label}은 뉴스보다 반응이 먼저 잡혔어요.\n사람들이 눌러본 이유가 이 흐름의 시작이에요.`, 'cover', 'cover_text', '반응 먼저', input),
+    makeCard(2, '사람들이 멈춘 이유', evidence[1] ?? fact, `${label}에서 먼저 보이는 건 반응의 방향이에요.\n사람들이 왜 저장했는지가 카드의 중심이에요.`, 'community_signal', 'quote_card', '커뮤니티 반응', input),
+    makeCard(3, '혼자 보면 착시', evidence[2] ?? fact, `${label}만 보면 그냥 화제예요.\n가격, 세대, 국가를 나란히 놓을 때\n진짜 차이가 드러나요.`, 'comparison', 'comparison_board', '비교 프레임', input),
+    makeCard(4, '숫자 하나만', fact, `조회수, 가격, 성장률, 검색량 중\n하나만 커져도 흐름이 달라 보여요.\n대표 지표가 카드의 중심이에요.`, 'data_scene', 'data_chart', '대표 지표', input),
+    makeCard(5, '오해 포인트', evidence[3] ?? fact, `커뮤니티 반응은 사실이 아니라 신호예요.\n시점과 비교 기준이 붙을 때\n자극보다 설득력이 생겨요.`, 'misconception', 'quote_card', '과장 방지', input),
+    makeCard(6, '내 얘기로 바뀌는 순간', label, `이 주제는 “무슨 일이냐”보다\n“나한테 어떤 변화냐”에서 힘이 생겨요.\n그 지점이 저장되는 이유예요.`, 'content_angle', 'handwritten_research', '내 이야기화', input),
+    makeCard(7, '확인할 기준 3개', label, `반응이 반복됐나\n비교할 대상이 있나\n숫자로 설명되나`, 'checklist', 'checklist', '확인 기준', input)
   ];
 }
 
-function makeCard(page, title, dataPoint, body, role, layout, emphasis) {
+function parentSocialEvidenceCards(input, fact) {
+  const label = primaryTopic(input) ?? '어린이집 등원 이슈';
+  const labelSubject = withSubjectJosa(label);
+  const questionTitle = parentQuestionTitle(input, '정말 괜찮을까');
+  return [
+    makeCard(1, questionTitle, fact, `${labelSubject} 부모에게 바로 닿는 문제예요.\n괜찮다/안 된다보다 기준이 먼저 필요해요.`, 'cover', 'cover_photo', '부모 현실', input),
+    makeCard(2, '부모들이 막힌 순간', fact, `아이는 콧물이 나고, 출근 시간은 다가와요.\n기관 기준과 회사 눈치 사이에서 부모가 먼저 멈춰요.`, 'community_signal', 'quote_card', '현실 압박', input),
+    makeCard(3, '왜 지금 반응할까', fact, `지금 반응이 붙은 이유는 현실감이에요.\n등원 시간, 아이 컨디션, 회사 눈치가 한 번에 겹쳐요.`, 'why_now', 'handwritten_research', '지금 보는 이유', input),
+    makeCard(4, '상황마다 답이 달라요', fact, `맞벌이, 전업, 첫돌 전후, 감기 증상을 나눠봐야 해요.\n같은 등원 문제도 집마다 기준이 달라져요.`, 'comparison', 'comparison_board', '비교 축', input),
+    makeCard(5, '숫자보다 먼저 볼 것', fact, `확인된 수치가 없다면 사례를 숫자처럼 쓰면 안 돼요.\n반복된 등원 고민을 대표 신호로만 봐야 해요.`, 'data_scene', 'data_chart', '대표 신호', input),
+    makeCard(6, '부모 탓으로 끝내면 안 돼요', fact, `이 이슈는 개인 선택만의 문제가 아니에요.\n제도, 회사, 아이 컨디션을 함께 봐야 해요.`, 'misconception', 'quote_card', '과장 방지', input),
+    makeCard(7, '등원 전 체크 3개', label, `우리 집 상황과 맞나\n기관 기준이 있나\n아이 컨디션을 봤나`, 'checklist', 'checklist', '등원 판단 기준', input)
+  ];
+}
+
+function parentSafetyEvidenceCards(input, fact) {
+  const label = parentProductSubject(input);
+  const labelSubject = withSubjectJosa(label);
+  const questionTitle = parentQuestionTitle(input, '정말 괜찮을까');
+  return [
+    makeCard(1, questionTitle, fact, `${labelSubject} 부모가 먼저 멈추는 주제예요.\n불안보다 확인 기준이 먼저 필요해요.`, 'cover', 'cover_photo', '안전 기준', input),
+    makeCard(2, '부모들이 물은 것', fact, `반응은 “유행템이냐”가 아니에요.\n“우리 아이한테 괜찮나”에 가까워요.`, 'community_signal', 'quote_card', '부모 질문', input),
+    makeCard(3, '왜 갑자기 불안해졌을까', fact, `아이 몸에 닿는 제품은 작은 의심도 크게 번져요.\n그래서 성분과 사용 조건이 먼저 보여야 해요.`, 'why_now', 'handwritten_research', '지금 보는 이유', input),
+    makeCard(4, '성분부터 나눠봐요', fact, `제품명보다 성분, 사용 연령, 대체품을 나눠봐야 해요.\n비교 축이 있어야 불안이 줄어요.`, 'comparison', 'comparison_board', '비교 축', input),
+    makeCard(5, '확인된 기준만 보기', fact, `확인된 수치가 없다면 논란을 숫자처럼 쓰면 안 돼요.\n성분, 인증, 사용 조건만 따로 확인해야 해요.`, 'data_scene', 'data_chart', '확인 기준', input),
+    makeCard(6, '논란과 위험은 달라요', fact, `논란이 있다고 모두 위험한 건 아니에요.\n확인된 기준과 의심되는 부분을 분리해야 해요.`, 'misconception', 'quote_card', '과장 방지', input),
+    makeCard(7, '구매 전 체크 3개', label, `성분 기준이 확인됐나\n사용 연령이 맞나\n대체품이 있나`, 'checklist', 'checklist', '구매 판단 기준', input)
+  ];
+}
+
+function productEvidenceCards(input, fact) {
+  const label = primaryTopic(input) ?? '쇼핑 추천템';
+  const labelSubject = withSubjectJosa(label);
+  const factLine = productFactLine(fact);
+  return [
+    makeCard(1, '왜 이걸 사갈까', fact, `${labelSubject} 유행보다 “살 이유”가 먼저 보여요.\n작고 바로 쓰는 물건일수록 저장돼요.`, 'cover', 'cover_text', '살 이유', input),
+    makeCard(2, '예쁜 것보다 쓸모', fact, `사람들이 저장하는 건 예쁜 사진보다\n집에서 바로 쓰는 장면이에요.\n생활템은 용도가 보일 때 강해요.`, 'community_signal', 'quote_card', '쓸모', input),
+    makeCard(3, '가방에 들어가는 기준', fact, `여행 쇼핑템은 무게에서 한 번 걸러져요.\n작고 가볍고 자주 쓰는 물건이\n마지막까지 남아요.`, 'comparison', 'comparison_board', '무게와 용도', input),
+    makeCard(4, '반응이 붙은 이유', fact, `${factLine}\n이런 신호는 “사도 되나”보다\n“어디에 쓰나”에서 힘이 생겨요.`, 'data_scene', 'data_chart', '반복 언급', input),
+    makeCard(5, '사지 말아야 할 때', fact, `귀여워도 용도가 흐리면 금방 잊혀요.\n가격보다 중요한 건\n다시 꺼내 쓸 장면이에요.`, 'misconception', 'quote_card', '구매 기준', input),
+    makeCard(6, '콘텐츠로 풀 포인트', label, `이 주제는 제품 소개보다\n“왜 장바구니에 들어갔나”가 더 좋아요.\n구매 이유가 보이면 저장돼요.`, 'content_angle', 'handwritten_research', '장바구니 이유', input),
+    makeCard(7, '사기 전 체크 3개', label, `매일 쓸 수 있나\n가방에 넣기 쉬운가\n다시 사고 싶나`, 'checklist', 'checklist', '구매 판단 기준', input)
+  ];
+}
+
+function productFactLine(value) {
+  const text = shortFact(value);
+  if (/\d|댓글|조회|판매|품절|억|만|%/.test(text)) return text;
+  return '여러 결과에서 생활 쇼핑템 맥락이 반복됐어요.';
+}
+
+function withSubjectJosa(value) {
+  const text = cleanShort(value || '이 주제');
+  return `${text}${hasFinalConsonant(text) ? '은' : '는'}`;
+}
+
+function hasFinalConsonant(value) {
+  const char = `${value ?? ''}`.trim().at(-1);
+  if (!char) return false;
+  const code = char.charCodeAt(0);
+  if (code < 0xac00 || code > 0xd7a3) return false;
+  return (code - 0xac00) % 28 > 0;
+}
+
+function isProductTopic(value) {
+  return /쇼핑|추천템|생활|상품|제품|브랜드|아마존|틱톡|품절|구매|소비|템|장바구니|편의점|육아템|펫|용품/.test(`${value ?? ''}`);
+}
+
+function classifyContentIntent(input = {}) {
+  const coverTitle = cleanManualText(input.selectedHookTitle);
+  const text = coverTitle || collectIntentText(input);
+  const parenting = /육아|부모|엄마|아빠|맘|워킹맘|아이|아기|신생아|유아|어린이|어린이집|유치원|등원|하원|돌봄|첫돌|소아|키즈/.test(text);
+  const safety = /환경호르몬|유해|성분|안전|독성|검출|리콜|욕조|젖병|기저귀|카시트|유모차|아기용품/.test(text);
+  const social = /등원|하원|어린이집|유치원|돌봄|지원|급여|제도|정부|기업|명단|워킹맘|일·가정|양립|감기|아픈|맘충|첫돌|출근|육아휴직/.test(text);
+  const product = isProductTopic(text) || /장난감|간식|자동|급식기|텀블러|브랜드|아마존|틱톡|라이브커머스|품절|매출|판매|구매|장바구니/.test(text);
+  const pet = /반려|강아지|고양이|펫|집사|산책|사료|간식|동물병원/.test(text);
+  if (parenting && safety) {
+    return {
+      id: 'parent_safety_issue',
+      audience: '아이 제품을 살 때 안전 기준을 먼저 확인하려는 부모',
+      angle: '부모가 불안해하는 제품 안전 이슈를 성분, 사용 조건, 대체 기준으로 풀어내는 카드뉴스',
+      titlePattern: '“아기 욕조 유해성분 괜찮을까?”처럼 부모가 실제로 묻는 질문형',
+      rule: '부모 안전 이슈로 쓴다. 공포 조장 금지, 성분/사용 연령/대체품 기준을 먼저 제시한다.'
+    };
+  }
+  if (parenting && social) {
+    return {
+      id: 'parent_social_issue',
+      audience: '육아 현실을 실용적으로 이해하고 저장해두려는 부모',
+      angle: '어린이집, 등원, 돌봄처럼 부모가 실제로 겪는 문제를 공감과 기준으로 풀어내는 카드뉴스',
+      titlePattern: '“첫돌 전 어린이집 정말 괜찮을까?”, “감기 걸리면 어린이집 보내면 안 될까?” 같은 현실 질문형',
+      rule: '사회 이슈+부모 공감형으로 쓴다. 부모 탓 단정 금지, 제도/회사/아이 컨디션을 함께 나눈다.'
+    };
+  }
+  if (pet && product) {
+    return {
+      id: 'pet_consumer_product',
+      audience: '반려동물 소비 기준을 저장해두려는 반려인',
+      angle: '반려동물 제품을 감정 소비와 실제 사용 기준으로 풀어내는 카드뉴스',
+      titlePattern: '“왜 이 장난감이 뜰까?”처럼 반려인이 구매 전에 묻는 질문형',
+      rule: '반려동물 소비형으로 쓴다. 귀여움보다 안전, 사용 장면, 재구매 이유를 먼저 보여준다.'
+    };
+  }
+  if (product) {
+    return {
+      id: 'consumer_product_marketing',
+      audience: '새로운 제품과 브랜드를 실용적으로 저장해두려는 소비자',
+      angle: '제품 유행을 구매 이유, 사용 장면, 비교 기준으로 풀어내는 카드뉴스',
+      titlePattern: '“왜 이걸 사갈까?”, “이 제품 살 이유가 있을까?” 같은 구매 질문형',
+      rule: '마케팅+소비 상품형으로 쓴다. 뉴스 요약보다 살 이유, 안 살 이유, 비교 기준을 제시한다.'
+    };
+  }
+  return {
+    id: 'general_trend_context',
+    audience: '트렌드를 실용적으로 이해하고 저장해두려는 20대 후반 여성',
+    angle: '트렌드의 배경과 근거, 비교 기준, 저장 포인트를 쉽게 풀어내는 카드뉴스',
+    titlePattern: '“왜 지금 뜰까?”처럼 변화의 이유를 묻는 질문형',
+    rule: '뉴스 요약 금지. 독자가 저장할 이유, 비교 기준, 실행 기준으로 바꾼다.'
+  };
+}
+
+function collectIntentText(input = {}) {
+  const title = cleanManualText(input.selectedHookTitle);
+  if (title) return title;
+  return [
+    input.label,
+    input.keyword,
+    input.category,
+    input.summary,
+    input.production?.suggestedAngle,
+    input.validation?.contentType,
+    input.aiAnalysis?.summary,
+    ...(input.sampleTitles ?? []),
+    ...getEvidence(input)
+  ].filter(Boolean).join(' ');
+}
+
+function normalizeHookTitles(value, input, intent = classifyContentIntent(input)) {
+  const fallback = titleCandidatesForIntent(input, intent);
+  const fromAi = ensureList(value, fallback)
+    .map((title) => compactTitle(title, input, 22))
+    .filter((title) => title && !isInstructionalTitle(title) && !isGenericTitle(title));
+  return [...new Set([...fallback, ...fromAi])].slice(0, 5);
+}
+
+function titleCandidatesForIntent(input, intent = classifyContentIntent(input)) {
+  const label = cleanShort(primaryTopic(input) ?? '이 주제');
+  if (intent.id === 'parent_social_issue') {
+    const title = parentQuestionTitle(input, '정말 괜찮을까');
+    return [
+      title,
+      inferParentSymptomQuestion(input),
+      '부모 탓으로 끝내면 안 돼요',
+      `${label} 기준부터 볼게요`
+    ].map((item) => compactTitle(item, input, 22)).filter(Boolean);
+  }
+  if (intent.id === 'parent_safety_issue') {
+    const title = parentQuestionTitle(input, '정말 괜찮을까');
+    return [
+      title,
+      `${parentProductSubject(input)} 유해성분 괜찮을까`,
+      `${parentProductSubject(input)} 사도 될까`,
+      '불안보다 기준부터 볼게요'
+    ].map((item) => compactTitle(item, input, 22)).filter(Boolean);
+  }
+  if (intent.id === 'consumer_product_marketing' || intent.id === 'pet_consumer_product') {
+    return ['왜 이걸 사갈까', '예쁜 것보다 쓸모', '살 이유가 있을까', `${label} 살 이유`]
+      .map((item) => compactTitle(item, input, 22))
+      .filter(Boolean);
+  }
+  return ['이게 왜 떴을까', '혼자 보면 착시', '사람들이 멈춘 이유', `${label} 지금 볼 이유`]
+    .map((item) => compactTitle(item, input, 22))
+    .filter(Boolean);
+}
+
+function parentQuestionTitle(input, suffix) {
+  const text = collectIntentText(input);
+  if (/감기|아픈|열나|기침/.test(text)) return '감기 걸리면 어린이집 보내면 안 될까';
+  if (/첫돌|돌 전|돌전|0세|영아/.test(text)) return '첫돌 전 어린이집 정말 괜찮을까';
+  if (/등원|하원|어린이집|유치원/.test(text)) return `어린이집 등원, ${suffix}`;
+  if (/환경호르몬|유해|성분|욕조/.test(text)) return `${parentProductSubject(input)} ${suffix}`;
+  const label = cleanShort(primaryTopic(input) ?? '이 문제');
+  return `${label} ${suffix}`;
+}
+
+function inferParentSymptomQuestion(input) {
+  const text = collectIntentText(input);
+  if (/감기|아픈|열나|기침/.test(text)) return '감기 걸리면 어린이집 보내면 안 될까';
+  if (/첫돌|돌 전|돌전|0세|영아/.test(text)) return '첫돌 전 어린이집 정말 괜찮을까';
+  return '어린이집 등원 기준, 어디까지 괜찮을까';
+}
+
+function parentProductSubject(input) {
+  const text = collectIntentText(input);
+  if (/욕조/.test(text)) return '아기 욕조';
+  if (/장난감/.test(text)) return '아이 장난감';
+  if (/젖병/.test(text)) return '젖병';
+  if (/기저귀/.test(text)) return '기저귀';
+  const label = cleanShort(primaryTopic(input) ?? '아기 제품');
+  return label.length > 12 ? '아기 제품' : label;
+}
+
+function primaryTopic(input = {}) {
+  return cleanManualText(input.selectedHookTitle)
+    || cleanManualText(input.label ?? input.keyword)
+    || '이 주제';
+}
+
+function makeCard(page, title, dataPoint, body, role, layout, emphasis, contextInput = {}) {
+  const input = { label: title, sources: [], ...contextInput };
   return {
     page,
     role,
@@ -694,8 +1114,8 @@ function makeCard(page, title, dataPoint, body, role, layout, emphasis) {
     body: cleanCardBody(body),
     insight: body,
     action: emphasis,
-    visualPrompt: `${title}를 한눈에 보여주는 ${layout} 카드`,
-    visualItems: normalizeVisualItems([], { label: title, sources: [] }, role, { body, dataPoint }),
+    visualPrompt: normalizeVisualPrompt('', input, role, layout, title, body, dataPoint, classifyContentIntent({ label: title, keyword: `${title} ${body} ${dataPoint}` })),
+    visualItems: normalizeVisualItems([], input, role, { body, dataPoint }),
     sourceLine: dataPoint,
     emphasis
   };
@@ -708,23 +1128,98 @@ function cleanAiTone(value) {
 function cleanCardBody(value) {
   return `${value ?? ''}`
     .split('\n')
-    .map((line) => line.replace(/^\s*(근거|해석|실행|데이터|출처)\s*[:：]\s*/g, '').trim())
+    .map((line) => line
+      .replace(/^\s*(근거|해석|실행|데이터|출처)\s*[:：]\s*/g, '')
+      .replace(/\b(Search SERP|Naver News|Naver Blog|Google News|Brave Search|SERP)\b/gi, '')
+      .replace(/네이트판|더쿠|인스티즈|FMKOREA|에펨코리아/g, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim())
     .filter(Boolean)
     .join('\n');
 }
 
 function sentenceFromEvidence(fact, input) {
   const cleanFact = `${fact ?? ''}`.replace(/^\s*(근거|해석|실행|데이터|출처)\s*[:：]\s*/g, '').trim();
-  if (!cleanFact) return `${input.label ?? input.keyword}는 지금 반응이 먼저 잡힌 주제예요.`;
-  if (/\d|댓글|조회|추천|HOT|실베|베스트/.test(cleanFact)) return `${cleanFact}처럼 반응이 숫자로 잡힌 지점부터 봐야 해요.`;
-  return `${cleanFact}라는 원문 맥락에서 사람들이 반응한 이유를 먼저 짚어야 해요.`;
+  if (!cleanFact) return `${primaryTopic(input)}는 지금 반응이 먼저 잡힌 주제예요.`;
+  if (/\d|댓글|조회|추천|HOT|실베|베스트/.test(cleanFact)) return `${cleanFact}에서 반응이 숫자로 먼저 잡혔어요.`;
+  return `${cleanFact}라는 원문 맥락에 사람들의 반응이 붙었어요.`;
 }
 
-function getEvidence(input) {
+function getEvidence(input, intent = null) {
   const verified = input.searchVerification?.verification?.keyFindings ?? input.searchVerification?.keyFindings ?? [];
   const evidenceItems = (input.evidence ?? []).map(formatEvidenceItem);
   const dataPoints = ensureList(input.aiAnalysis?.dataPoints, []);
-  return [...verified, ...dataPoints, ...(input.sampleTitles ?? []), ...evidenceItems].filter(Boolean).slice(0, 8);
+  const items = [...verified, ...dataPoints, ...(input.sampleTitles ?? []), ...evidenceItems].filter(Boolean);
+  if (cleanManualText(input.selectedHookTitle)) {
+    const selectedRelevant = items.filter((item) => isEvidenceRelevantToSelectedTitle(item, input, intent));
+    if (selectedRelevant.length) return selectedRelevant.slice(0, 8);
+    return fallbackEvidenceForIntent(intent, input).slice(0, 8);
+  }
+  if (!intent) return items.slice(0, 8);
+  return filterEvidenceForIntent(items, intent, input).slice(0, 8);
+}
+
+function filterEvidenceForIntent(items, intent, input = {}) {
+  if (!['parent_safety_issue', 'parent_social_issue'].includes(intent?.id)) return items;
+  const relevant = items.filter((item) => isEvidenceRelevant(item, intent, input));
+  if (relevant.length) return relevant;
+  return fallbackEvidenceForIntent(intent, input);
+}
+
+function fallbackEvidenceForIntent(intent, input = {}) {
+  if (intent?.id === 'parent_safety_issue') {
+    return [`${parentProductSubject(input)} 소재·사용 조건·대체 기준 확인 필요`];
+  }
+  if (intent?.id === 'parent_social_issue') {
+    return [`${primaryTopic(input) ?? '어린이집 등원 이슈'} 관련 부모 현실과 기관 기준 확인 필요`];
+  }
+  if (intent?.id === 'consumer_product_marketing' || intent?.id === 'pet_consumer_product') {
+    return [`${primaryTopic(input)} 관련 구매 이유·사용 장면·비교 기준 확인 필요`];
+  }
+  return [`${primaryTopic(input)} 관련 신호 확인 필요`];
+}
+
+function isEvidenceRelevantToSelectedTitle(value, input = {}, intent = null) {
+  const text = `${value ?? ''}`;
+  if (!text.trim()) return false;
+  if (['parent_safety_issue', 'parent_social_issue'].includes(intent?.id) && isEvidenceRelevant(text, intent, input)) return true;
+  const keywords = primaryTopicKeywords(input);
+  if (!keywords.length) return false;
+  return keywords.some((keyword) => text.includes(keyword));
+}
+
+function primaryTopicKeywords(input = {}) {
+  return cleanManualText(input.selectedHookTitle)
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .split(/\s+/)
+    .map((word) => word.trim())
+    .filter((word) => word.length >= 2)
+    .filter((word) => !/^(미국|일본|중국|한국|아이|아기|왜|정말|괜찮을까|팔릴까|사도|될까|유해성분|기준)$/.test(word));
+}
+
+function isEvidenceRelevant(value, intent, input = {}) {
+  const text = `${value ?? ''}`;
+  if (!text.trim()) return false;
+  if (intent?.id === 'parent_safety_issue') {
+    return hasParentSafetyTerms(text) || hasParentSafetyTerms(`${input.label ?? ''} ${input.keyword ?? ''} ${input.selectedHookTitle ?? ''}`) && !hasParentSocialTerms(text);
+  }
+  if (intent?.id === 'parent_social_issue') {
+    return hasParentSocialTerms(text) || hasParentSocialTerms(`${input.label ?? ''} ${input.keyword ?? ''} ${input.selectedHookTitle ?? ''}`) && !hasParentSafetyTerms(text);
+  }
+  return true;
+}
+
+function filterSourceNotes(items, intent, input = {}) {
+  const filtered = filterEvidenceForIntent((items ?? []).filter(Boolean), intent, input);
+  return filtered.slice(0, 5);
+}
+
+function hasParentSafetyTerms(value) {
+  return /환경호르몬|유해|성분|안전|독성|검출|리콜|욕조|젖병|기저귀|장난감|카시트|유모차|아기용품|소재|인증|사용 연령|월령|대체품/.test(`${value ?? ''}`);
+}
+
+function hasParentSocialTerms(value) {
+  return /등원|하원|어린이집|유치원|돌봄|지원|급여|제도|정부|기업|명단|워킹맘|일·가정|양립|감기|아픈|맘충|첫돌|출근|육아휴직|아침돌봄/.test(`${value ?? ''}`);
 }
 
 function formatEvidenceItem(item) {
@@ -748,22 +1243,25 @@ function metricText(value, label) {
 function fallbackPlan(input) {
   const manual = normalizeManualBrief(input);
   const desiredCardCount = getDesiredCardCount(input);
-  const label = input.label ?? input.keyword ?? manual?.topic ?? '사용자 입력 주제';
+  const label = manual?.topic ?? primaryTopic(input) ?? '사용자 입력 주제';
+  const daycareShortage = isDaycareShortageTopic(`${label} ${manual?.prompt ?? input.summary ?? ''}`);
   return {
     provider: 'fallback',
-    targetAudience: '트렌드를 저장해두고 싶은 20대 후반 여성 독자',
-    coreAngle: manual?.prompt || input.production?.suggestedAngle || input.summary || label,
+    primaryTopic: label,
+    selectedHookTitle: cleanManualText(input.selectedHookTitle),
+    targetAudience: daycareShortage ? '어린이집 입소와 대기 문제를 겪는 부모' : '트렌드를 저장해두고 싶은 20대 후반 여성 독자',
+    coreAngle: daycareShortage ? '어린이집 부족을 정원 문제가 아니라 위치, 시간, 신뢰 조건이 어긋나는 문제로 풀어냅니다.' : manual?.prompt || input.production?.suggestedAngle || input.summary || label,
     referenceStyle: chooseReferenceStyle(input),
     referencePattern: normalizeReferencePattern(undefined, chooseReferenceStyle(input)),
-    carouselBlueprint: defaultBlueprint(input).slice(0, desiredCardCount),
-    hookTitles: [`${input.label}, 왜 지금 뜰까?`, `${input.label} 핵심 포인트 5가지`],
+    carouselBlueprint: (daycareShortage ? daycareShortageBlueprint() : defaultBlueprint(input)).slice(0, desiredCardCount),
+    hookTitles: daycareShortage ? ['왜 어린이집은 늘 부족할까?', '자리보다 조건이 문제예요', '입소 전 볼 기준 3개'] : [`${label}, 왜 지금 뜰까?`, `${label} 핵심 포인트 5가지`],
     captionFirstLine: normalizeCaptionFirstLine('', input),
     captionBody: normalizeCaptionBody('', input),
     captionCTA: normalizeCaptionCTA(''),
     hashtags: normalizeHashtags([], input),
-    summary: `${input.label}의 배경과 근거, 저장해둘 포인트를 쉽게 풀어봅니다.`,
+    summary: daycareShortage ? '부모가 체감하는 어린이집 부족을 거리, 시간, 신뢰 조건으로 나눠 설명합니다.' : `${label}의 배경과 근거, 저장해둘 포인트를 쉽게 풀어봅니다.`,
     riskNotes: ['단일 근거 내용은 단정하지 마세요.'],
-    sourceNotes: input.sampleTitles ?? [],
+    sourceNotes: daycareShortage ? ['사용자 입력 기반 구조 설명'] : input.sampleTitles ?? [],
     cards: fallbackCardsForCount(input, desiredCardCount)
   };
 }
@@ -785,7 +1283,10 @@ function fallbackCardsForCount(input, desiredCardCount) {
 }
 
 function normalizeCaptionFirstLine(value, input) {
-  const fallback = `${input.label ?? input.keyword}, 그냥 넘기기 아까워요`;
+  const topic = primaryTopic(input);
+  const fallback = isDaycareShortageTopic(`${topic} ${input.summary ?? ''}`)
+    ? '어린이집 부족, 정원만의 문제가 아니에요'
+    : `${topic}, 그냥 넘기기 아까워요`;
   return cleanAiTone(`${value || fallback}`)
     .replace(/[#＃][^\s]+/g, '')
     .replace(/\s+/g, ' ')
@@ -794,18 +1295,56 @@ function normalizeCaptionFirstLine(value, input) {
 }
 
 function normalizeCaptionBody(value, input) {
-  const evidence = getEvidence(input).slice(0, 3);
-  const fallback = [
-    `${input.label ?? input.keyword}은 단순히 많이 언급된 이슈가 아니라, 사람들이 어떤 기준으로 판단하고 싶어 하는지 보여주는 신호예요.`,
-    evidence.length ? `이번 카드에서는 ${evidence[0]} 같은 근거를 바탕으로, 비교할 대상과 확인할 숫자를 나눠봤어요.` : '이번 카드에서는 비교할 대상과 확인할 숫자를 나눠봤어요.',
-    '저장해두고 비슷한 이슈를 볼 때 반응, 비교 기준, 숫자 하나를 같이 확인해보면 좋아요.'
-  ].join('\n\n');
+  const fallback = captionBodyFallback(input);
   const cleaned = cleanCardBody(cleanAiTone(value || fallback))
     .replace(/\n{3,}/g, '\n\n')
     .trim()
     .slice(0, 700);
-  if (cleaned.length < 120 || !/(반응|비교|근거|저장|숫자)/.test(cleaned)) return fallback.slice(0, 700);
+  if (cleaned.length < 120 || isBadCaptionBody(cleaned)) return fallback.slice(0, 700);
   return cleaned;
+}
+
+function captionBodyFallback(input) {
+  const topic = primaryTopic(input) ?? '이 주제';
+  const topicSubject = withSubjectJosa(topic);
+  const intent = classifyContentIntent(input);
+  if (isDaycareShortageTopic(`${topic} ${input.summary ?? ''} ${input.manualBrief?.prompt ?? ''}`)) {
+    return [
+      '어린이집이 늘 부족하게 느껴지는 건 자리 수 하나로 설명하기 어려워요.',
+      '부모가 찾는 자리는 가까워야 하고, 출근 시간과 맞아야 하고, 믿고 맡길 수 있어야 하니까요.',
+      '입소를 준비할 때는 대기 순번만 보지 말고 거리, 운영 시간, 실제 등하원 동선을 같이 확인해보세요.'
+    ].join('\n\n');
+  }
+  if (intent.id === 'parent_social_issue') {
+    return [
+      `${topicSubject} 부모가 아침마다 실제로 부딪히는 판단 문제예요.`,
+      '이번 카드에서는 아이 컨디션, 기관 기준, 돌봄 공백을 나눠서 봤어요.',
+      '저장해두고 등원 전 우리 집 상황과 기관 안내를 함께 확인해보세요.'
+    ].join('\n\n');
+  }
+  if (intent.id === 'parent_safety_issue') {
+    return [
+      `${topicSubject} 불안보다 확인 기준이 먼저 필요한 주제예요.`,
+      '이번 카드에서는 성분, 사용 조건, 대체 기준을 나눠서 봤어요.',
+      '저장해두고 구매 전 제품 표시와 우리 집 사용 상황을 함께 확인해보세요.'
+    ].join('\n\n');
+  }
+  if (intent.id === 'consumer_product_marketing' || intent.id === 'pet_consumer_product') {
+    return [
+      `${topicSubject} 많이 보인다는 사실보다 왜 사는지가 더 중요해요.`,
+      '이번 카드에서는 사용 장면, 가격 기준, 다시 살 이유를 나눠서 봤어요.',
+      '저장해두고 장바구니에 넣기 전 실제로 쓸 장면이 있는지 확인해보세요.'
+    ].join('\n\n');
+  }
+  return [
+    `${topicSubject} 반응만 보고 넘기기보다 판단 기준을 나눠볼 만한 주제예요.`,
+    '이번 카드에서는 내 상황, 비교 기준, 확인 근거를 따로 정리했어요.',
+    '저장해두고 비슷한 이슈를 볼 때 같은 기준으로 다시 확인해보세요.'
+  ].join('\n\n');
+}
+
+function isBadCaptionBody(value) {
+  return /단순히 많이 언급|반응, 비교 기준, 숫자 하나|확인할 숫자|까은|까이|제도 기준|Search SERP|네이트판|FMKorea/i.test(`${value ?? ''}`);
 }
 
 function normalizeCaptionCTA(value) {
@@ -815,13 +1354,26 @@ function normalizeCaptionCTA(value) {
 
 function normalizeHashtags(value, input) {
   const base = Array.isArray(value) ? value : [];
-  const labelWords = `${input.label ?? input.keyword ?? ''}`
+  if (isDaycareShortageTopic(`${primaryTopic(input)} ${input.summary ?? ''} ${input.manualBrief?.prompt ?? ''}`)) {
+    return [...new Set([...base, '어린이집', '어린이집입소', '입소대기', '육아정보', '육아현실', '맞벌이육아', '부모정보'].map((tag) => normalizeHashtag(tag)).filter(Boolean))].slice(0, 8);
+  }
+  const labelWords = `${primaryTopic(input) ?? ''}`
     .split(/\s+/)
     .map((word) => word.replace(/[^\p{L}\p{N}_]/gu, ''))
     .filter((word) => word.length >= 2)
     .slice(0, 3);
   const defaults = ['카드뉴스', '트렌드분석', '정보계정', '저장각', ...labelWords];
   return [...new Set([...base, ...defaults].map((tag) => normalizeHashtag(tag)).filter(Boolean))].slice(0, 8);
+}
+
+function daycareShortageBlueprint() {
+  return [
+    '부족이 자리 수만의 문제가 아니라는 표지 질문',
+    '우리 동네에 없으면 부족하게 느껴지는 위치 문제',
+    '운영 시간과 출근 시간이 맞지 않는 시간 문제',
+    '정원보다 거리, 신뢰, 운영 시간이 함께 작동하는 구조',
+    '입소 전 확인할 기준 3개로 마무리'
+  ];
 }
 
 function normalizeHashtag(value) {
@@ -884,6 +1436,7 @@ function manualFallbackCards(input, desiredCardCount = getDesiredCardCount(input
   const manual = normalizeManualBrief(input);
   const topic = manual?.topic ?? input.label ?? input.keyword ?? '사용자 입력 주제';
   const prompt = manual?.prompt || `${topic}을 카드뉴스로 정리`;
+  if (isDaycareShortageTopic(`${topic} ${prompt}`)) return daycareShortageCards(input, desiredCardCount);
   const base = [
     makeManualCard(1, `${topic} 시작하기`, `${topic}은 거창하게 시작하지 않아도 돼요.\n오늘 바로 해볼 수 있는 기준부터 잡아볼게요.`, 'cover', 'cover_text', '첫 장 후크'),
     makeManualCard(2, '먼저 기준을 정해요', `${prompt}\n핵심은 한 번에 많이 설명하는 게 아니라\n독자가 바로 이해할 순서로 나누는 거예요.`, 'content_angle', 'handwritten_research', '핵심 기준'),
@@ -891,7 +1444,7 @@ function manualFallbackCards(input, desiredCardCount = getDesiredCardCount(input
     makeManualCard(4, '비교하면 쉬워져요', `좋은 방법과 헷갈리는 방법을 나란히 두면\n무엇을 선택해야 하는지 금방 보여요.`, 'comparison', 'comparison_board', '비교 포인트'),
     makeManualCard(5, '숫자는 하나만', `시간, 횟수, 비용처럼 바로 판단할 숫자 하나를\n크게 보여주면 카드가 훨씬 선명해져요.`, 'data_scene', 'data_chart', '대표 숫자'),
     makeManualCard(6, '헷갈리는 점', `${topic}에서 자주 놓치는 건\n방법보다 순서예요.\n무리하지 않는 기준을 같이 적어주세요.`, 'misconception', 'quote_card', '주의점'),
-    makeManualCard(7, '저장 기준 3개', `오늘 할 수 있는가\n주의점이 분명한가\n다시 볼 이유가 있는가`, 'checklist', 'checklist', '저장 체크')
+    makeManualCard(7, '실행 전 체크 3개', `오늘 할 수 있는가\n주의점이 분명한가\n다시 볼 이유가 있는가`, 'checklist', 'checklist', '실행 기준')
   ];
   const cards = [];
   for (let index = 0; index < desiredCardCount; index += 1) {
@@ -918,6 +1471,105 @@ function makeManualCard(page, title, body, role, layout, emphasis) {
   };
 }
 
+function isDaycareShortageTopic(value) {
+  return /어린이집/.test(`${value ?? ''}`) && /부족|대기|입소|자리|정원|공급|수요/.test(`${value ?? ''}`);
+}
+
+function daycareShortageCards(input, desiredCardCount) {
+  const base = [
+    makeScenarioCard({
+      page: 1,
+      role: 'cover',
+      layout: 'cover_photo',
+      visualType: 'photo',
+      title: '왜 어린이집은 늘 부족할까?',
+      body: '자리 수만의 문제는 아니에요.\n원하는 자리와 실제 자리가 어긋나요.',
+      visualPrompt: '아침 등원 시간 어린이집 현관 앞. 작은 아이 가방, 대기표처럼 보이는 빈 번호 카드, 바쁜 부모의 손만 보이는 현실적인 사진/일러스트 배경. 하단 제목 영역은 비워둠.',
+      visualItems: ['등원 시간', '대기표', '빈 자리'],
+      emphasis: '부족의 구조'
+    }),
+    makeScenarioCard({
+      page: 2,
+      role: 'why_now',
+      layout: 'quote_card',
+      visualType: 'illustration',
+      title: '문제는 숫자보다 위치',
+      body: '전체 자리가 있어도 우리 동네에 없으면 부족해요.\n부모가 체감하는 부족은 거리에서 시작돼요.',
+      visualPrompt: '동네 지도 위에 집, 직장, 어린이집 핀 3개가 떨어져 있는 장면. 이동 동선은 흐린 선으로 표시하고 카드 문구가 올라갈 흰 영역 확보.',
+      visualItems: ['집', '직장', '어린이집'],
+      emphasis: '위치 격차'
+    }),
+    makeScenarioCard({
+      page: 3,
+      role: 'comparison',
+      layout: 'comparison_board',
+      visualType: 'table',
+      title: '시간이 안 맞아도 부족',
+      body: '운영 시간과 출근 시간이 맞지 않으면\n자리가 있어도 선택지가 아니에요.',
+      visualPrompt: '왼쪽은 어린이집 운영 시간, 오른쪽은 부모 출근 시간을 비교하는 2열 시간표. 시계 아이콘과 빈 시간 막대만 두고 텍스트 영역은 비움.',
+      visualItems: ['운영 시간', '출근 시간', '하원 시간'],
+      emphasis: '시간 격차'
+    }),
+    makeScenarioCard({
+      page: 4,
+      role: 'misconception',
+      layout: 'handwritten_research',
+      visualType: 'illustration',
+      title: '정원만 늘리면 될까',
+      body: '부모가 찾는 건 그냥 한 자리보다\n가깝고 믿을 수 있고 오래 맡길 수 있는 자리예요.',
+      visualPrompt: '리서치 노트 위에 정원, 거리, 신뢰, 운영 시간 칩이 나뉘어 있는 장면. 단순 막대그래프 대신 조건 카드 4개가 보이는 구성.',
+      visualItems: ['정원', '거리', '신뢰', '운영 시간'],
+      emphasis: '선호 격차'
+    }),
+    makeScenarioCard({
+      page: 5,
+      role: 'checklist',
+      layout: 'checklist',
+      visualType: 'checklist',
+      title: '입소 전 볼 기준 3개',
+      body: '집과 얼마나 가까운가\n출근 시간과 맞는가\n대기 순번만 보고 있진 않은가',
+      visualPrompt: '어린이집 안내문, 지도 핀, 작은 시계 아이콘이 들어간 3줄 체크리스트 카드. 각 줄은 텍스트가 들어갈 넓은 빈 영역으로 유지.',
+      visualItems: ['거리', '시간', '대기 순번'],
+      emphasis: '입소 판단 기준'
+    })
+  ];
+  return fitScenarioCards(base, desiredCardCount);
+}
+
+function makeScenarioCard(card) {
+  return {
+    dataPoint: '',
+    insight: card.body,
+    action: card.emphasis,
+    sourceLine: '사용자 입력 기반 구조 설명',
+    ...card
+  };
+}
+
+function fitScenarioCards(base, desiredCardCount) {
+  if (desiredCardCount <= base.length) {
+    const picked = base.slice(0, desiredCardCount);
+    if (picked.length) picked[picked.length - 1] = { ...base[base.length - 1], page: picked.length };
+    return picked.map((card, index) => ({ ...card, page: index + 1 }));
+  }
+  const cards = [...base];
+  while (cards.length < desiredCardCount) {
+    const page = cards.length + 1;
+    cards.splice(cards.length - 1, 0, makeScenarioCard({
+      page,
+      role: 'content_angle',
+      layout: 'quote_card',
+      visualType: 'illustration',
+      title: '부족은 조건의 문제',
+      body: '부족하다는 말 안에는\n거리, 시간, 신뢰가 한꺼번에 들어 있어요.',
+      visualPrompt: '거리, 시간, 신뢰 세 조건이 겹쳐지는 벤다이어그램 스타일 카드. 텍스트를 넣을 중앙 영역은 비워둠.',
+      visualItems: ['거리', '시간', '신뢰'],
+      emphasis: '조건 겹침'
+    }));
+  }
+  return cards.map((card, index) => ({ ...card, page: index + 1 }));
+}
+
 function ensureList(value, fallback) {
   return Array.isArray(value) && value.length ? value : fallback;
 }
@@ -929,21 +1581,113 @@ function normalizeVisualItems(value, input, role, card = {}) {
   return [...new Set(items)].slice(0, 4);
 }
 
+function normalizeVisualPrompt(value, input, role, layout, title, body, sourceLine, intent = classifyContentIntent(input)) {
+  const cleaned = cleanManualText(value);
+  if (cleaned && !isGenericVisualPrompt(cleaned)) return cleaned.slice(0, 420);
+  return visualPromptForCard({ input, role, layout, title, body, sourceLine, intent }).slice(0, 420);
+}
+
+function isGenericVisualPrompt(value) {
+  return /한눈에 보여주는|설명하는 인포그래픽|카드$|quote_card|cover_text|data_chart|comparison_board|handwritten_research|checklist/.test(`${value ?? ''}`);
+}
+
+function visualPromptForCard({ input, role, layout, title, body, sourceLine, intent }) {
+  const topic = primaryTopic(input);
+  if (intent?.id === 'parent_social_issue') return parentSocialVisualPrompt(role, title, sourceLine || body || topic);
+  if (intent?.id === 'parent_safety_issue') return parentSafetyVisualPrompt(role, title, sourceLine || body || topic);
+  if (intent?.id === 'consumer_product_marketing' || intent?.id === 'pet_consumer_product') return productVisualPrompt(role, title, topic);
+  return generalVisualPrompt(role, layout, title, topic, sourceLine || body);
+}
+
+function parentSocialVisualPrompt(role, title, fact) {
+  return ({
+    cover: '아침 출근 전 현관 앞, 부모가 아이 가방과 체온계를 챙기는 현실적인 사진/일러스트 배경. 얼굴은 특정 인물처럼 보이지 않게, 하단 큰 제목 영역은 비워둠.',
+    community_signal: '엄마들이 휴대폰으로 등원 기준을 검색하고 고민하는 장면. 말풍선 형태의 빈 카드 2~3개를 배치하되 글자는 넣지 않음.',
+    why_now: '시계, 출근 가방, 아이 외투, 어린이집 가방이 한 화면에 겹치는 아침 루틴 장면. 시간 압박이 느껴지는 구도.',
+    comparison: '맞벌이/전업, 아이 컨디션/기관 기준을 나누는 2x2 비교표 배경. 각 칸은 비워두고 TrLab이 텍스트를 올릴 공간 확보.',
+    data_scene: '숫자 그래프 대신 사례 신호 카드. 중심에는 기사/커뮤니티 반응을 의미하는 흐릿한 문서 더미와 작은 신호 막대 3개. 원문 제목이나 기사 문구는 넣지 않음.',
+    misconception: '부모 한 명을 탓하는 장면이 아니라, 회사 일정표·아이 체온계·기관 안내문이 같이 놓인 균형 잡힌 팩트체크 보드.',
+    content_angle: '편집자가 육아 이슈를 메모지에 정리하는 리서치 노트 장면. 부모 현실, 제도, 아이 컨디션을 각각 빈 칩으로 배치.',
+    checklist: '어린이집 가방, 체온계, 기관 안내문 아이콘이 들어간 3줄 체크리스트 카드. 각 줄은 텍스트가 들어갈 빈 영역으로 유지.',
+    closing: '저장용 체크리스트 느낌의 차분한 육아 정보 카드. 3개 기준을 넣을 빈 줄을 크게 확보.'
+  })[role] ?? generalVisualPrompt(role, '', title, title, fact);
+}
+
+function parentSafetyVisualPrompt(role, title, fact) {
+  return ({
+    cover: '욕실 선반 위 아기 욕조, 물방울, 제품 라벨을 연상시키는 클린한 사진/3D 배경. 불안 조장 없이 안전 점검 분위기, 하단 제목 영역 비움.',
+    community_signal: '부모가 제품 상세페이지와 라벨을 확인하는 장면. 말풍선/체크 아이콘은 비어 있고 글자는 넣지 않음.',
+    why_now: '아기 욕조, 따뜻한 물, 반복 사용을 암시하는 욕실 소품 클로즈업. 성분 확인이 필요한 분위기.',
+    comparison: '소재 표시, 안전 인증, 사용 연령, 대체품을 비교하는 2x2 표 배경. 각 칸은 텍스트 오버레이용으로 비워둠.',
+    data_scene: '확인된 수치가 없으면 막대그래프 금지. 대신 제품 라벨 확대, 체크 돋보기, 확인 필요 신호 3개로 구성. 원문 제목이나 기사 문구는 넣지 않음.',
+    misconception: '논란과 확인된 위험을 분리하는 팩트체크 보드. 한쪽은 물음표, 한쪽은 체크 표시만 두고 텍스트는 비움.',
+    content_angle: '구매 전 점검 메모지, 소재 라벨, 대체품 리스트가 놓인 리서치 노트 장면.',
+    checklist: '소재 기준, 사용 연령, 대체품을 넣을 3줄 체크리스트. 욕조 아이콘과 체크 박스만 배치하고 글자는 비움.',
+    closing: '육아용품 구매 전 저장 카드. 깨끗한 욕실 배경 위에 3개 체크 영역을 크게 배치.'
+  })[role] ?? generalVisualPrompt(role, '', title, title, fact);
+}
+
+function productVisualPrompt(role, title, topic) {
+  return ({
+    cover: `${topic} 주제를 실제 제품처럼 보여주는 쇼핑 매거진형 풀블리드 배경. 제품 실루엣, 장바구니, 사용 장면을 조합하고 제목 영역은 비워둠.`,
+    community_signal: 'SNS 저장/장바구니 반응을 암시하는 빈 카드와 제품 사진 영역. 실제 텍스트나 로고 없이 쇼핑 반응 분위기만 표현.',
+    why_now: '제품이 갑자기 주목받는 사용 장면. 손에 들고 쓰는 컷, 책상/집/외출 가방 위 배치.',
+    comparison: '가격, 용도, 휴대성, 재구매 이유를 비교하는 2x2 쇼핑 기준표. 칸은 비워두고 아이콘만 배치.',
+    data_scene: '판매량 수치가 없으면 그래프 대신 반복 언급 신호 카드. 저장 아이콘, 장바구니 아이콘, 검색 상승 느낌의 추상 막대 3개.',
+    misconception: '유행템과 실제 쓸모를 나누는 비교 보드. 예쁜 사진 영역과 실제 사용 장면 영역을 대비.',
+    content_angle: '장바구니에 들어가는 이유를 정리한 에디터 리서치 노트. 제품 이미지 빈 영역과 체크 칩 배치.',
+    checklist: '매일 쓸 수 있나, 가격이 납득되나, 다시 사고 싶나를 넣을 3줄 구매 체크리스트.',
+    closing: '쇼핑 저장 카드 느낌. 제품 실루엣과 3개 체크 항목 영역을 크게 확보.'
+  })[role] ?? generalVisualPrompt(role, '', title, topic, topic);
+}
+
+function generalVisualPrompt(role, layout, title, topic, fact) {
+  if (role === 'cover') return `${topic}을 상징하는 사진/일러스트 배경. 제목이 올라갈 하단 영역을 비워둔 4:5 표지 구도.`;
+  if (role === 'comparison' || layout === 'comparison_board') return `${title} 비교표. 2x2 빈 비교 칸, 기준/대상/주의점이 들어갈 공간 확보.`;
+  if (role === 'data_scene' || layout === 'data_chart') return `${title} 데이터 카드. 확인된 숫자가 있으면 단순 막대그래프, 숫자가 부족하면 반복 신호 3개로 표현. 원문 제목이나 기사 문구는 넣지 않음.`;
+  if (role === 'checklist') return `${title} 체크리스트 카드. 3개 항목이 들어갈 넓은 빈 줄과 체크 박스 배치.`;
+  if (role === 'community_signal') return `${title} 반응 카드. 말풍선/댓글 카드 2~3개를 배치하되 텍스트는 비워둠.`;
+  return `${title} 리서치 노트 카드. 핵심 메모, 작은 칩, 본문 영역이 들어갈 여백 중심 구성.`;
+}
+
 function compactVisualLabel(value) {
-  return `${value ?? ''}`
+  const text = `${value ?? ''}`
     .replace(/^\s*(근거|해석|실행|데이터|출처)\s*[:：]\s*/g, '')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 18);
+  if (isInternalVisualLabel(text)) return '';
+  return text;
+}
+
+function isInternalVisualLabel(value) {
+  const text = `${value ?? ''}`.trim();
+  if (!text) return true;
+  if (/Search SERP|Naver|Google|Brave|SERP|네이트판|더쿠|인스티즈|FMKOREA|에펨코리아/i.test(text)) return true;
+  if (/https?:|www\.|\.com|\.co\.kr|\.net|\.org/i.test(text)) return true;
+  if (/요즘 임출육|twig24|뉴시스|서울경제|데일리한국|비즈니스포스트/.test(text)) return true;
+  if (/[“”"']/.test(text) && text.length > 12) return true;
+  if (text.length >= 17 && /[?？…]|걸린|보내면|토로|논란|기사|원문/.test(text)) return true;
+  return false;
 }
 
 function defaultVisualItems(input, role, card = {}) {
-  const label = input.label ?? input.keyword ?? '주제';
-  const source = (input.sources ?? []).find(Boolean) ?? '커뮤니티';
+  const label = primaryTopic(input) ?? '주제';
+  const intent = classifyContentIntent(input);
   const dataPoint = `${card.dataPoint ?? ''}`.trim();
-  if (role === 'comparison') return [label, '비교 대상', '과거 기준', '독자 기준'];
-  if (role === 'data_scene') return [dataPoint || '대표 지표', '검색량', '댓글 반응', '가격/비중'];
-  if (role === 'community_signal') return [source, '댓글 반응', '반복 언급'];
+  if (intent.id === 'parent_social_issue') {
+    if (role === 'comparison') return ['맞벌이', '전업', '아이 컨디션', '기관 기준'];
+    if (role === 'data_scene') return ['반복 사례', '등원 고민', '부모 반응'];
+    if (role === 'community_signal') return ['출근 시간', '아이 컨디션', '기관 기준'];
+  }
+  if (intent.id === 'parent_safety_issue') {
+    if (role === 'comparison') return ['소재 표시', '안전 인증', '사용 연령', '대체품'];
+    if (role === 'data_scene') return ['성분 기준', '인증 확인', '사용 조건'];
+    if (role === 'community_signal') return ['부모 질문', '성분 걱정', '제품 확인'];
+  }
+  if (role === 'comparison') return [label, '비교 기준', '독자 기준'];
+  if (role === 'data_scene') return [/\d/.test(dataPoint) ? dataPoint : '대표 신호', '반복 언급', '댓글 반응'];
+  if (role === 'community_signal') return ['커뮤니티 반응', '댓글 반응', '반복 언급'];
   if (role === 'why_now') return ['타이밍', '반응 증가', '지금 볼 이유'];
   if (role === 'misconception') return ['커뮤니티 반응', '확인된 사실', '확인 필요'];
   if (role === 'checklist') {
@@ -951,19 +1695,54 @@ function defaultVisualItems(input, role, card = {}) {
     return bodyItems.length ? bodyItems : ['반응이 있었나', '비교가 가능한가', '숫자로 설명되나'];
   }
   if (role === 'content_angle') return ['내 이야기화', '비교 프레임', '저장 포인트'];
-  return [label, source];
+  return [label, '핵심 포인트'];
 }
 
 function chooseReferenceStyle(input) {
-  const text = `${input.label ?? ''} ${input.category ?? ''} ${input.summary ?? ''}`;
+  const intent = classifyContentIntent(input);
+  if (intent.id === 'parent_social_issue' || intent.id === 'parent_safety_issue') return 'photo_hook';
+  const text = `${primaryTopic(input) ?? ''} ${input.category ?? ''} ${input.summary ?? ''}`;
   if (/부동산|주식|투자|기업|앱|서비스|시장|가격|검색량|지표|코스피|코스닥|반도체|수급|금리|환율/.test(text)) return 'handdrawn_research';
   if (/연예|영화|음악|브랜드|문화|전시|인물/.test(text)) return 'magazine_story';
   if (/건강|의학|식품|다이어트|피부|운동/.test(text)) return 'meme_factcheck';
   return 'photo_hook';
 }
 
-function defaultBlueprint(input) {
-  const label = input.label ?? input.keyword ?? '이 주제';
+function defaultBlueprint(input, intent = classifyContentIntent(input)) {
+  const label = primaryTopic(input) ?? '이 주제';
+  if (intent.id === 'parent_social_issue') {
+    return [
+      `${parentQuestionTitle(input, '정말 괜찮을까')}를 표지에서 질문`,
+      '부모들이 실제로 막힌 지점을 짧게 요약',
+      '왜 지금 반응을 얻었는지 현실 이유 제시',
+      '맞벌이, 전업, 아이 컨디션처럼 비교 축 제시',
+      '확인된 수치나 반복 사례 중 대표 신호 1개 선택',
+      '부모 탓으로 단정하면 안 되는 지점 표시',
+      '저장해둘 등원 기준 3개로 마무리'
+    ];
+  }
+  if (intent.id === 'parent_safety_issue') {
+    return [
+      `${parentQuestionTitle(input, '정말 괜찮을까')}를 표지에서 질문`,
+      '부모들이 불안해한 지점을 짧게 요약',
+      '왜 지금 안전 기준을 봐야 하는지 제시',
+      '성분, 사용 연령, 대체품 비교 축 제시',
+      '확인된 기준이나 반복 사례 중 대표 신호 1개 선택',
+      '논란과 위험을 섞으면 안 되는 지점 표시',
+      '구매 전 체크 기준 3개로 마무리'
+    ];
+  }
+  if (intent.id === 'consumer_product_marketing' || intent.id === 'pet_consumer_product') {
+    return [
+      `${label}을 왜 사는지 표지에서 질문`,
+      '사람들이 저장한 구매 이유를 짧게 요약',
+      '왜 지금 반응이 붙었는지 사용 장면 제시',
+      '가격, 용도, 재구매 이유 비교 축 제시',
+      '반복 언급이나 판매 신호 중 대표 지표 1개 선택',
+      '유행템이라고 단정하면 안 되는 지점 표시',
+      '구매 전 체크 기준 3개로 마무리'
+    ];
+  }
   return [
     `${label}이 왜 지금 반응을 얻었는지 표지에서 약속`,
     '커뮤니티에서 반복된 반응을 짧게 요약',
@@ -983,6 +1762,13 @@ function canonicalRole(index, total) {
     return ['community_signal', 'comparison', 'data_scene', 'misconception', 'content_angle', 'closing'][index - 1] ?? 'content_angle';
   }
   return ['community_signal', 'why_now', 'comparison', 'data_scene', 'misconception', 'content_angle', 'community_signal', 'content_angle', 'data_scene', 'misconception'][index - 1] ?? 'content_angle';
+}
+
+function normalizeTrendRole(value, index, total) {
+  if (index === 0) return 'cover';
+  const allowed = ['why_now', 'community_signal', 'comparison', 'data_scene', 'misconception', 'content_angle', 'checklist', 'closing'];
+  if (allowed.includes(value) && value !== 'cover') return value;
+  return canonicalRole(index, total);
 }
 
 function canonicalManualRole(index, total, value) {
@@ -1016,7 +1802,7 @@ function compatibleLayouts(role, referenceStyle) {
     comparison: ['comparison_board'],
     data_scene: ['data_chart'],
     misconception: ['quote_card'],
-    content_angle: ['handwritten_research', 'quote_card'],
+    content_angle: ['handwritten_research'],
     closing: ['checklist'],
     checklist: ['checklist']
   }[role] ?? ['handwritten_research'];

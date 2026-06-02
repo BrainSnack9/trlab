@@ -2,10 +2,13 @@ import { Layers3, Lightbulb, Radar, SearchCheck, ServerCog } from 'lucide-react'
 
 export const steps = [
   ['dashboard', '트렌드 감지', '제작 후보', Radar],
-  ['collection', '수집 관리', '채널/저장소', ServerCog],
   ['search', '검색 검증', '근거 확인', SearchCheck],
   ['studio', '콘텐츠 설계', '아이디어', Lightbulb],
   ['cardnews', '카드뉴스 제작', '시나리오', Layers3]
+];
+
+export const utilitySteps = [
+  ['collection', '수집 관리', '채널/저장소', ServerCog]
 ];
 
 export const interestAreas = [
@@ -40,7 +43,14 @@ export const exclusionAreas = [
   ['adult', '성인물', ['19금', '19세', '성인', '노출', 'ㅇㅎ', '야짤', '음란']]
 ].map(([id, label, keywords]) => ({ id, label, keywords }));
 
-export const defaultSelectedAreas = interestAreas.map((area) => area.id);
+export const channelProfiles = [
+  ['us-consumer', '미국 소비 트렌드', '품절템, 대란템, 해외 구매 욕구를 만드는 상품 신호'],
+  ['parenting', '육아 트렌드', '부모가 저장하고 구매로 이어지는 장소, 지원금, 육아템 신호'],
+  ['pet', '반려동물 트렌드', '반려인이 반복 소비하는 펫용품, 보험, 병원, 해외 시장 신호']
+].map(([id, label, description]) => ({ id, label, description }));
+
+export const defaultSelectedProfiles = channelProfiles.map((profile) => profile.id);
+export const defaultSelectedAreas = [];
 export const defaultExcludedAreas = ['politics', 'incident', 'controversy', 'adult'];
 
 export const collectableSourceIds = [

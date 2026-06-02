@@ -59,7 +59,7 @@ async function toWebRequest(incoming) {
 async function send(outgoing, response) {
   outgoing.statusCode = response.status;
   outgoing.setHeader('Access-Control-Allow-Origin', '*');
-  outgoing.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  outgoing.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
   outgoing.setHeader('Access-Control-Allow-Headers', 'content-type,authorization');
   response.headers.forEach((value, key) => outgoing.setHeader(key, value));
   const body = response.body ? Buffer.from(await response.arrayBuffer()) : Buffer.alloc(0);

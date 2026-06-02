@@ -3,17 +3,18 @@ import { Copy, Download, ImagePlus, Loader2, Sparkles } from 'lucide-react';
 import { Button } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Button/Button';
 import { generateContentImage, previewContentImagePrompt } from '@/core/TrLab/modules/clients/api';
 
-export function CardImageGenerator({ card, selected, style, studio, plan }) {
-  const [image, setImage] = useState(null);
+export function CardImageGenerator({ card, selected, style, studio, plan, generatedImage, onGenerated }) {
   const [loading, setLoading] = useState(false);
   const [promptLoading, setPromptLoading] = useState(false);
   const [prompt, setPrompt] = useState('');
+  const [editInstruction, setEditInstruction] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
     let active = true;
     setPrompt('');
     setError('');
+    setEditInstruction('');
     setPromptLoading(true);
     previewContentImagePrompt({ card, index: selected, style, studio, plan })
       .then((data) => active && setPrompt(data.prompt ?? ''))
@@ -22,13 +23,22 @@ export function CardImageGenerator({ card, selected, style, studio, plan }) {
     return () => { active = false; };
   }, [card, selected, style, studio, plan]);
 
-  async function generate() {
+  async function generate(mode = 'fresh') {
     setLoading(true);
     setError('');
     try {
-      const data = await generateContentImage({ card, index: selected, style, studio, plan });
-      setImage(data.image);
+      const data = await generateContentImage({
+        card,
+        index: selected,
+        style,
+        studio,
+        plan,
+        editInstruction: mode === 'revision' ? editInstruction : '',
+        previousImagePrompt: mode === 'revision' ? generatedImage?.prompt : ''
+      });
+      onGenerated?.(data.image);
       if (data.image?.prompt) setPrompt(data.image.prompt);
+      if (mode === 'revision') setEditInstruction('');
     } catch (err) {
       setError(err instanceof Error ? err.message : '이미지 생성 실패');
     } finally {
@@ -45,7 +55,7 @@ export function CardImageGenerator({ card, selected, style, studio, plan }) {
             선택 카드 AI 이미지
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            카드 {selected + 1}의 시각 배경을 이미지 모델에 요청하고, 한글 문구는 TrLab이 정확히 오버레이합니다.
+            이미지 모델이 만든 배경 위에 한글 문구를 TrLab이 정확히 오버레이합니다. AI 이미지가 실패하면 생성되지 않습니다.
           </p>
         </div>
       </div>
@@ -62,14 +72,33 @@ export function CardImageGenerator({ card, selected, style, studio, plan }) {
           </Button>
         </details>
 
-        <Button className="h-full min-h-20 w-full" onClick={generate} disabled={loading || promptLoading}>
+        <Button className="h-full min-h-20 w-full" onClick={() => generate('fresh')} disabled={loading || promptLoading}>
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-          {loading ? '이미지 생성 중' : '이 카드 이미지 생성'}
+          {loading ? '이미지 생성 중' : generatedImage?.url ? '새로 생성' : '이 카드 이미지 생성'}
         </Button>
       </div>
 
-      {error && <p className="mt-2 rounded-md bg-red-50 p-2 text-xs font-semibold text-red-600">{error}</p>}
-      {image?.url && <GeneratedImage image={image} />}
+      {error && <p className="mt-2 rounded-md bg-red-50 p-2 text-xs font-semibold leading-5 text-red-600">{error}</p>}
+      {generatedImage?.url && (
+        <>
+          <div className="mt-3 grid gap-2 rounded-md border bg-white p-2">
+            <label className="grid gap-1.5 text-xs font-black text-slate-700">
+              수정 요청
+              <textarea
+                className="min-h-20 resize-y rounded-md border border-slate-200 p-2 text-xs font-semibold leading-5 outline-none focus:border-indigo-400"
+                value={editInstruction}
+                onChange={(event) => setEditInstruction(event.target.value)}
+                placeholder="예: 배경을 더 밝게, 제품을 더 크게, 표 영역은 비워줘"
+              />
+            </label>
+            <Button size="sm" onClick={() => generate('revision')} disabled={loading || promptLoading || !editInstruction.trim()}>
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              수정 반영 생성
+            </Button>
+          </div>
+          <GeneratedImage image={generatedImage} />
+        </>
+      )}
     </div>
   );
 }
@@ -102,7 +131,7 @@ function GeneratedImage({ image }) {
         </Button>
       </div>
       {saveError ? <p className="rounded-md bg-red-50 p-2 text-xs font-semibold text-red-600">{saveError}</p> : null}
-      <p className="text-[11px] text-muted-foreground">{image.model} · 한글 텍스트는 TrLab SVG 렌더러가 직접 출력합니다.</p>
+      <p className="text-[11px] text-muted-foreground">{image.model} · 생성 결과는 카드별로 유지됩니다.</p>
     </div>
   );
 }

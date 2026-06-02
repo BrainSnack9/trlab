@@ -41,8 +41,8 @@ describe('card-news export', () => {
     ['cover_text', '코스피 착시'],
     ['handwritten_research', '@trlab.insight · 01'],
     ['comparison_board', '기준'],
-    ['data_chart', '대표 지표'],
-    ['quote_card', '사람들이 반응한 지점'],
+    ['data_chart', '대표 신호'],
+    ['quote_card', '사람들이 멈춘 지점'],
     ['checklist', '✓']
   ])('renders %s as a 4:5 SVG with expected layout marker', (layout, marker) => {
     const svg = makeSvg({ ...baseCard, layout }, studio, style);
@@ -61,11 +61,10 @@ describe('card-news export', () => {
       visualItems: ['반응이 있었나', '비교가 가능한가', '숫자로 설명되나']
     }, studio, style);
 
-    expect(svg).toContain('저장해두고 볼 기준');
+    expect(svg).toContain('마지막으로 확인할 것');
     expect(svg).toContain('반응이 있었나');
     expect(svg).toContain('비교가 가능한가');
-    expect(svg).toContain('숫자 하나를 같이');
-    expect(svg).toContain('남겨요');
+    expect(svg).toContain('내 상황, 비교 기준, 확인 근거');
   });
 
   it('renders cover cards as hook-first posters with emphasis and visual chips', () => {
@@ -89,7 +88,7 @@ describe('card-news export', () => {
     expect(prompt).toContain('레퍼런스 리듬');
     expect(prompt).toContain('9~11장 권장');
     expect(prompt).toContain('레퍼런스 시각 가이드');
-    expect(prompt).toContain('@twojob_angel');
+    expect(prompt).toContain('메모형 정보 카드');
     expect(prompt).toContain('자료 칩');
     expect(prompt).toContain('본문에는 evidence, interpretation, action 같은 기획 라벨을 표시하지 말 것.');
     expect(prompt).not.toMatch(/근거:|해석:|실행:/);
@@ -115,7 +114,7 @@ describe('card-news export', () => {
     expect(brief).toContain('제작 브리프');
     expect(brief).toContain('레퍼런스 스타일: handdrawn_research');
     expect(brief).toContain('카드 길이: 9~11장 권장');
-    expect(brief).toContain('시각 계정: @twojob_angel');
+    expect(brief).toContain('시각 유형: 메모형 정보 카드');
     expect(brief).toContain('본문 시각');
     expect(brief).toContain('금지');
   });
@@ -132,7 +131,7 @@ describe('card-news export', () => {
     });
 
     expect(script).toContain('제작 브리프');
-    expect(script).toContain('@twojob_angel');
+    expect(script).toContain('메모형 정보 카드');
     expect(script).toContain('표지 리듬');
     expect(script).toContain('Card 1 · 표지');
     expect(script).toContain('Card 2 · 비교');
@@ -178,6 +177,7 @@ describe('card-news export', () => {
 
     expect(svg).toContain('width="1080" height="1350"');
     expect(svg).not.toMatch(/근거:|해석:|실행:|출처|참고\/확인|>근거<|>해석<|>행동</);
+    expect(svg).not.toMatch(/서울|판교|분당|\+467|\+1021|성장성이 중요|안정성이 중요/);
   });
 
   it('renders the power photo preset with a dark hook poster without a source box', () => {

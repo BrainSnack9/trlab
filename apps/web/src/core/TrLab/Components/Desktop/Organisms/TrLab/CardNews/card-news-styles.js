@@ -1,63 +1,69 @@
 export const cardStyles = {
-  map: {
-    name: '지역 비교 맵',
-    desc: '강남/홍콩/도쿄처럼 지역이나 시장을 비교해 보여줄 때',
-    bg: '#f7f7f2', ink: '#111111', accent: '#d12b2b', sub: '#2563eb',
-    slots: ['후크 제목', '비교 지도/범위', '지역 라벨', '확인 지표']
+  note: {
+    name: '메모형 정보 카드',
+    desc: '흰 여백, 짧은 메모, 자료 칩을 손으로 정리한 듯 보여주는 유형',
+    bg: '#fffdf7', ink: '#201817', accent: '#ef6f8f', sub: '#7c5b4a',
+    slots: ['짧은 후크', '메모 칩', '비교/자료 영역', '체크 기준'],
+    imageGuide: 'clean white editorial note board, small paper chips, comparison/data blocks, subtle hand-organized research mood'
   },
   ranking: {
-    name: '밈 팩트체크 보드',
-    desc: '@koreanmedicalmemed처럼 짧은 주장, 숫자, 반박을 강하게 보여줄 때',
+    name: '팩트체크 보드',
+    desc: '짧은 주장, 근거, 오해/반박을 강하게 구분해서 보여주는 유형',
     bg: '#ffffff', ink: '#080808', accent: '#e11d48', sub: '#2563eb',
-    slots: ['짧은 주장', '숫자/근거 보드', '반박 문장', '체크 라벨']
-  },
-  tree: {
-    name: '저장 기준 트리',
-    desc: '독자가 구매/투자/선택 기준을 저장하게 만들 때',
-    bg: '#f1f8e8', ink: '#19320d', accent: '#4f7f1a', sub: '#2453ff',
-    slots: ['기준 질문', '분기 노드', '선택 조건', '저장 CTA']
-  },
-  note: {
-    name: '핸드드로잉 리서치',
-    desc: '@twojob_angel처럼 흰 배경, 짧은 메모, 비교 자료를 손으로 정리한 느낌',
-    bg: '#fffaf3', ink: '#211816', accent: '#ef6f8f', sub: '#7c5b4a',
-    slots: ['짧은 후크', '자료 칩', '메모 본문', '저장 기준']
+    slots: ['짧은 주장', '근거 보드', '오해/반박', '체크 라벨'],
+    imageGuide: 'bold fact-check board, claim/check separation, red-blue contrast, strong empty zones for exact text'
   },
   photo: {
-    name: '파워 포토 훅',
-    desc: '@power_biolife처럼 사진/어두운 그라데이션 위에 반전 한 문장을 크게 꽂을 때',
+    name: '실사 이미지 배경',
+    desc: '카드 전체에 실제 사진 같은 배경을 깔고, 제목/본문을 강하게 얹는 방식',
     bg: '#09090b', ink: '#ffffff', accent: '#facc15', sub: '#e5e7eb',
-    slots: ['풀블리드 사진', '반전 한 문장', '큰 숫자/사실', '강조 라벨']
+    slots: ['풀블리드 실사 배경', '큰 제목', '짧은 본문', '강조 라벨'],
+    imageGuide: 'topic-specific realistic full-bleed photo background, dark calm lower safe area, strong visual subject'
   },
   story: {
-    name: '매거진 포토 후크',
-    desc: '@artart.today처럼 사진/사례를 앞세우고 짧은 제목으로 끌어당길 때',
+    name: '일러스트 배경',
+    desc: '주제를 설명하는 삽화나 장면 일러스트를 배경/상단 비주얼로 쓰는 방식',
     bg: '#ffffff', ink: '#111111', accent: '#222222', sub: '#6b7280',
-    slots: ['사진 영역', '짧은 제목', '맥락 문장', '계정 시그니처']
+    slots: ['일러스트 장면', '짧은 제목', '본문 영역', '시그니처'],
+    imageGuide: 'topic-specific editorial illustration scene, soft background depth, clear blank areas for title and body'
   }
 };
 
 export function autoStyle(studio, plan) {
+  if (cardStyles[plan?.recommendedStyle]) return plan.recommendedStyle;
+  if (cardStyles[plan?.visualStyle]) return plan.visualStyle;
   if (plan?.referenceStyle === 'handdrawn_research') return 'note';
-  if (plan?.referenceStyle === 'magazine_story') return 'story';
   if (plan?.referenceStyle === 'meme_factcheck') return 'ranking';
   if (plan?.referenceStyle === 'photo_hook') return 'photo';
+  if (plan?.referenceStyle === 'magazine_story') return 'story';
   const text = `${studio?.label ?? ''} ${studio?.category ?? ''} ${studio?.summary ?? ''}`;
-  if (/지역|부동산|아파트|상권|캠퍼스|지도|거리|서울|경기/.test(text)) return 'map';
-  if (/ETF|투자|주식|금리|환율|선택|성향/.test(text)) return 'tree';
-  if (/순위|랭킹|성적표|지표|통계|비교|시장/.test(text)) return 'ranking';
-  if (/이야기|사례|사람|역사|사고|구조/.test(text)) return 'story';
-  return 'ranking';
+  if (/육아용품|아기\s*욕조|욕조|유모차|젖병|카시트|기저귀|장난감|육아템|펫용품|자동급식기|제품|상품|브랜드|품절|아마존|틱톡|쇼핑|추천템|소비|생활용품|실사|사진/.test(text)) return 'photo';
+  if (/의학|건강|질환|증상|영양제|식품|운동|다이어트|체중|성분|안전|팩트|오해|반박|검증/.test(text)) return 'ranking';
+  if (/장소|여행|카페|놀이터|동네/.test(text)) return 'photo';
+  if (/육아|아이|아기|부모|반려|강아지|고양이|생활|일러스트|삽화/.test(text)) return 'story';
+  return 'note';
+}
+
+export function styleRecommendation(studio, plan) {
+  const key = autoStyle(studio, plan);
+  const text = `${studio?.label ?? ''} ${studio?.category ?? ''} ${studio?.summary ?? ''} ${plan?.coreAngle ?? ''} ${plan?.summary ?? ''}`;
+  const reason = (() => {
+    if (cardStyles[plan?.recommendedStyle] || cardStyles[plan?.visualStyle]) return '콘텐츠 설계에서 지정된 시각 유형입니다.';
+    if (key === 'photo') return '실제 제품, 장소, 브랜드처럼 눈으로 보여줘야 하는 주제에 적합합니다.';
+    if (key === 'story') return '육아 상황, 감정, 생활 장면처럼 맥락을 장면으로 보여주기 좋습니다.';
+    if (key === 'ranking') return '오해, 성분, 건강, 안전처럼 근거와 반박을 나눠야 하는 주제에 적합합니다.';
+    if (/비교|자료|트렌드|아이디어|사업|시장|흐름/.test(text)) return '정보를 짧은 메모와 자료 칩으로 정리하기 좋은 주제입니다.';
+    return '카드 내용을 간결한 메모와 비교 자료로 정리하기 좋은 기본 유형입니다.';
+  })();
+  return { key, style: cardStyles[key], reason };
 }
 
 export function styleTraits(key) {
   return {
-    map: ['지역명 칩', '비교 축', '지도 질감', '확인 지표'],
-    ranking: ['짧은 주장', '굵은 숫자', '팩트체크', '체크 라벨'],
-    tree: ['판단 질문', '분기 기준', '체크리스트', '저장 CTA'],
-    note: ['흰 여백', '메모 칩', '손글씨 무드', '저장 기준'],
-    photo: ['사진 풀블리드', '반전 문장', '큰 흰 제목', '강조 라벨'],
-    story: ['사진 표지', '짧은 제목', '사례 중심', '매거진 톤']
+    note: ['흰 여백', '메모 칩', '손글씨 무드', '비교 자료'],
+    ranking: ['짧은 주장', '근거 보드', '팩트체크', '오해 반박'],
+    photo: ['실사 배경', '큰 제목', '어두운 하단', '강조 라벨'],
+    story: ['일러스트 장면', '짧은 제목', '넓은 여백', '부드러운 톤']
   }[key] ?? [];
 }
 
@@ -68,7 +74,7 @@ export function templateSlots(style) {
 export function referenceVisualGuide(referenceStyle) {
   return {
     handdrawn_research: {
-      account: '@twojob_angel',
+      account: '메모형 정보 카드',
       cover: '흰 여백 위 짧은 주제명과 편집자 관찰 한 줄',
       body: '손으로 정리한 듯한 자료 칩, 비교표, 메모 주석',
       proof: '근거는 내부 판단에만 사용하고 카드에는 노출하지 않음',
@@ -76,23 +82,23 @@ export function referenceVisualGuide(referenceStyle) {
       avoid: 'PPT식 도형 과다, 원문 제목 복붙, 긴 문단'
     },
     photo_hook: {
-      account: '@power_biolife',
-      cover: '사진 풀블리드 또는 어두운 그라데이션 위 반전 한 문장',
-      body: '한 장에 사실 하나씩, 큰 숫자와 짧은 설명',
+      account: '실사 이미지형',
+      cover: '주제와 직접 연결되는 실사 느낌의 풀블리드 배경 위 큰 제목',
+      body: '사진 배경 위에 짧은 본문과 강조 라벨을 얹는 구성',
       proof: '검증 정보는 내부 판단에만 사용하고 카드에는 노출하지 않음',
-      typography: '큰 흰색 제목, 대비 강한 강조 라벨',
-      avoid: '밋밋한 리포트 배경, 표지의 긴 근거 문장'
+      typography: '큰 제목 + 대비 강한 짧은 본문',
+      avoid: '무관한 스톡 사진, 흐린 배경만 있는 분위기 컷, 긴 근거 문장'
     },
     magazine_story: {
-      account: '@artart.today',
-      cover: '매거진 표지처럼 사진/장면을 크게 쓰고 짧은 제목',
-      body: '문화/브랜드 맥락을 장면처럼 나누는 에디토리얼 구성',
-      proof: '검증 정보는 내부 판단에만 사용',
-      typography: '간결한 산세리프 제목, 넓은 여백',
-      avoid: '차트 과다, 밈 말투, 과한 장식'
+      account: '일러스트 장면형',
+      cover: '주제를 설명하는 삽화나 장면 일러스트를 크게 사용',
+      body: '일러스트 위/아래에 제목과 본문을 분리해 읽기 쉽게 배치',
+      proof: '검증 정보는 내부 판단에만 사용하고 카드에는 노출하지 않음',
+      typography: '간결한 제목 + 넓은 여백의 본문',
+      avoid: '장식만 있는 추상 배경, 텍스트와 겹치는 복잡한 삽화, 원문 제목 복붙'
     },
     meme_factcheck: {
-      account: '@koreanmedicalmemed',
+      account: '팩트체크 보드',
       cover: '짧은 키워드와 말풍선식 문제 제기',
       body: '주장/확인/오해를 보드처럼 강하게 구분',
       proof: '검증 정보는 내부 판단에만 사용',

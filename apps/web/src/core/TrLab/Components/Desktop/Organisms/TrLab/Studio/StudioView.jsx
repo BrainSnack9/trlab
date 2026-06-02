@@ -1,16 +1,48 @@
-import { useEffect, useState } from 'react';
-import { ArrowLeft, Loader2, Send } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ArrowLeft, Loader2, PencilLine, Send, Trash2, X } from 'lucide-react';
 import { Badge } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Badge/Badge';
 import { Button } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Button/Button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Card';
 import { formatCardText } from '@/lib/card-text';
-import { Empty, StageHead } from '@/core/TrLab/Components/Desktop/Molecules/TrLab/Common';
+import { StageHead } from '@/core/TrLab/Components/Desktop/Molecules/TrLab/Common';
 import { createContentPlan } from '@/core/TrLab/modules/clients/api';
-import { evaluateCardNewsPlan } from '../CardNews/card-news-quality';
+
+const DEFAULT_CARD_COUNT = 5;
 
 export function StudioView({ queue, studio, setView, setQueue, contentPlans, setContentPlans }) {
   const [manualState, setManualState] = useState({ loading: false, error: '' });
-  const { plan, loading, error, cached } = useContentPlan(studio, contentPlans, setContentPlans);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [generationState, setGenerationState] = useState({ loading: false, error: '', cached: false });
+  const [setup, setSetup] = useState(() => ({ cardCount: DEFAULT_CARD_COUNT, title: '' }));
+  const titleCandidates = useMemo(() => makeTitleCandidates(studio), [studio]);
+  const plan = studio?.id ? contentPlans[studio.id] : null;
+  const loading = generationState.loading;
+  const error = generationState.error;
+  const cached = generationState.cached;
+  useEffect(() => {
+    setSetup({ cardCount: studio?.cardCount ?? DEFAULT_CARD_COUNT, title: makeTitleCandidates(studio)[0] ?? '' });
+    setGenerationState({ loading: false, error: '', cached: false });
+  }, [studio?.id]);
+  const updateCurrentPlan = useCallback((updater) => {
+    if (!studio?.id) return;
+    setContentPlans((plans) => {
+      const current = plans[studio.id];
+      if (!current) return plans;
+      return { ...plans, [studio.id]: updater(current) };
+    });
+  }, [studio?.id, setContentPlans]);
+  const createTrendPlan = async () => {
+    if (!studio) return;
+    const selectedHookTitle = (setup.title || titleCandidates[0] || studio.label || '').trim();
+    setGenerationState({ loading: true, error: '', cached: false });
+    try {
+      const data = await createContentPlan({ ...studio, cardCount: Number(setup.cardCount) || DEFAULT_CARD_COUNT, selectedHookTitle }, { refresh: true });
+      setContentPlans((plans) => ({ ...plans, [studio.id]: data.plan }));
+      setGenerationState({ loading: false, error: '', cached: Boolean(data.cached) });
+    } catch (error) {
+      setGenerationState({ loading: false, error: error.message, cached: false });
+    }
+  };
   const createManualPlan = async (values) => {
     const manualStudio = makeManualStudio(values);
     setManualState({ loading: true, error: '' });
@@ -28,21 +60,25 @@ export function StudioView({ queue, studio, setView, setQueue, contentPlans, set
   if (!studio) {
     return (
       <div className="space-y-5">
+        <StageHead title="직접 콘텐츠 설계">
+          <Button variant="outline" onClick={() => setView('dashboard')}><ArrowLeft className="h-4 w-4" />트렌드 감지로</Button>
+        </StageHead>
         <ManualBriefPanel onSubmit={createManualPlan} loading={manualState.loading} error={manualState.error} />
-        <Empty title="콘텐츠 설계 대기열이 비어 있습니다" onClick={() => setView('dashboard')} />
       </div>
     );
   }
   return (
     <div className="space-y-5">
-      <StageHead label="Step 03 · Content Studio" title={`${studio.label} 콘텐츠 설계`} description="LLM이 후보를 카드뉴스 기획안으로 확장합니다.">
+      <StageHead title={`${studio.label} 콘텐츠 설계`}>
         <Button variant="outline" onClick={() => setView('search')}><ArrowLeft className="h-4 w-4" />검증으로</Button>
+        <Button variant="outline" onClick={() => setManualOpen((value) => !value)}>{manualOpen ? <X className="h-4 w-4" /> : <PencilLine className="h-4 w-4" />}{manualOpen ? '직접 설계 닫기' : '직접 설계'}</Button>
         <Button onClick={() => setView('cardnews')} disabled={!plan}><Send className="h-4 w-4" />카드뉴스 시나리오로</Button>
       </StageHead>
-      <ManualBriefPanel onSubmit={createManualPlan} loading={manualState.loading} error={manualState.error} compact />
+      {manualOpen ? <ManualBriefPanel onSubmit={createManualPlan} loading={manualState.loading} error={manualState.error} compact /> : null}
       {loading && <LoadingBox />}
       {error && <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
-      {plan && <PlanGrid plan={plan} queue={queue} cached={cached} />}
+      <PlanSetupPanel studio={studio} setup={setup} setSetup={setSetup} titleCandidates={titleCandidates} loading={loading} hasPlan={Boolean(plan)} onGenerate={createTrendPlan} />
+      {plan && <PlanGrid plan={plan} queue={queue} cached={cached} updatePlan={updateCurrentPlan} removeFromQueue={(id) => setQueue((items = []) => items.filter((item) => item?.id !== id))} />}
     </div>
   );
 }
@@ -67,7 +103,6 @@ function ManualBriefPanel({ onSubmit, loading, error, compact = false }) {
   return (
     <Card>
       <CardHeader>
-        <CardDescription>Manual Content Brief</CardDescription>
         <CardTitle>원하는 주제로 카드뉴스 설계</CardTitle>
       </CardHeader>
       <CardContent>
@@ -110,6 +145,45 @@ function ManualBriefPanel({ onSubmit, loading, error, compact = false }) {
             </Button>
           </div>
         </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PlanSetupPanel({ studio, setup, setSetup, titleCandidates, loading, hasPlan, onGenerate }) {
+  const selectedTitle = setup.title || titleCandidates[0] || studio.label;
+  const update = (patch) => setSetup((current) => ({ ...current, ...patch }));
+  return (
+    <Card className={hasPlan ? 'border-slate-200 bg-white' : 'border-indigo-200 bg-indigo-50/40'}>
+      <CardHeader><CardTitle>기획 요청</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 md:grid-cols-[140px_minmax(0,1fr)]">
+          <label className="grid gap-1.5">
+            <span className="text-xs font-black text-slate-500">컷 수</span>
+            <input className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm font-black outline-none focus:border-indigo-400" type="number" min="3" max="12" value={setup.cardCount} onChange={(event) => update({ cardCount: event.target.value })} />
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-xs font-black text-slate-500">표지 제목</span>
+            <input className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm font-black outline-none focus:border-indigo-400" value={selectedTitle} onChange={(event) => update({ title: event.target.value })} placeholder="표지 제목을 입력하세요" />
+          </label>
+        </div>
+        <div>
+          <div className="mb-2 text-xs font-black text-slate-500">제목 후보</div>
+          <div className="flex flex-wrap gap-2">
+            {titleCandidates.map((title, index) => (
+              <Button key={`${index}-${title}`} size="sm" variant={selectedTitle === title ? 'default' : 'outline'} onClick={() => update({ title })}>
+                {title}
+              </Button>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs font-semibold leading-5 text-muted-foreground">표지 제목과 컷 수를 기준으로 카드 문구와 제작 연출을 함께 작성합니다.</p>
+          <Button onClick={onGenerate} disabled={loading}>
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            {hasPlan ? '이 설정으로 다시 작성' : '기획안 작성'}
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
@@ -160,16 +234,53 @@ function hashString(value) {
   return result.toString(36);
 }
 
-function PlanGrid({ plan, queue, cached }) {
-  return <div className="grid gap-4 lg:grid-cols-[1fr_320px]"><div className="space-y-4"><PlanSummary plan={plan} cached={cached} /><HookList titles={plan.hookTitles} /><PublishPackage plan={plan} /><QualityPanel plan={plan} /><CardPreview cards={plan.cards} /></div><Card><CardHeader><CardDescription>Queue</CardDescription><CardTitle>제작 대기열</CardTitle></CardHeader><CardContent className="space-y-2">{queue.map((item) => <div key={item.id} className="rounded-lg border bg-slate-50 p-3"><strong>{item.label}</strong><p className="text-xs text-muted-foreground">{item.production?.tier ?? item.validation?.contentType}</p></div>)}</CardContent></Card></div>;
+function PlanGrid({ plan, queue, cached, updatePlan, removeFromQueue }) {
+  return (
+    <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+      <div className="space-y-4">
+        <PlanSummary plan={plan} cached={cached} />
+        <DesignControls plan={plan} updatePlan={updatePlan} />
+        <PublishPackage plan={plan} />
+        <CardPreview cards={plan.cards} />
+        <ReferenceData plan={plan} />
+      </div>
+      <QueuePanel queue={queue} removeFromQueue={removeFromQueue} />
+    </div>
+  );
+}
+
+function QueuePanel({ queue, removeFromQueue }) {
+  return (
+    <Card>
+      <CardHeader><CardTitle>제작 대기열</CardTitle></CardHeader>
+      <CardContent className="space-y-2">
+        {queue.length ? queue.map((item) => (
+          <div key={item.id} className="rounded-lg border bg-slate-50 p-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <strong className="line-clamp-2 break-words">{item.label}</strong>
+                <p className="mt-1 text-xs text-muted-foreground">{item.production?.tier ?? item.validation?.contentType}</p>
+              </div>
+              <Button size="sm" variant="outline" className="shrink-0" onClick={() => removeFromQueue(item.id)}>
+                <Trash2 className="h-3.5 w-3.5" />
+                제거
+              </Button>
+            </div>
+          </div>
+        )) : <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">대기 중인 후보가 없습니다.</div>}
+      </CardContent>
+    </Card>
+  );
 }
 
 function PlanSummary({ plan, cached }) {
   return (
     <Card>
       <CardHeader>
-        <CardDescription>Creative Brief · {plan.provider}{cached ? ' · 저장본' : ''}</CardDescription>
-        <CardTitle>{plan.coreAngle}</CardTitle>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <CardTitle>{plan.coreAngle}</CardTitle>
+          {cached ? <Badge variant="secondary">저장본</Badge> : null}
+        </div>
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm text-muted-foreground">{plan.summary}</p>
@@ -179,14 +290,101 @@ function PlanSummary({ plan, cached }) {
         </div>
         <Blueprint items={plan.carouselBlueprint} />
         <NoteList title="주의할 표현" items={plan.riskNotes} />
-        <NoteList title="활용 근거" items={plan.sourceNotes} />
       </CardContent>
     </Card>
   );
 }
 
-function HookList({ titles }) {
-  return <Card><CardHeader><CardDescription>Hooks</CardDescription><CardTitle>후킹 제목 후보</CardTitle></CardHeader><CardContent className="grid gap-2">{titles.map((title, index) => <div key={`${index}-${title}`} className="rounded-lg border bg-white p-3"><span className="text-xs font-black text-slate-500">HOOK {index + 1}</span><strong className="block">{title}</strong></div>)}</CardContent></Card>;
+function DesignControls({ plan, updatePlan }) {
+  const cards = plan.cards ?? [];
+  const coverTitle = cards[0]?.title ?? '';
+  const updateCards = (nextCards) => updatePlan((current) => ({
+    ...current,
+    cards: nextCards.map((card, index) => ({ ...card, page: index + 1 })),
+    carouselBlueprint: nextCards.map((card, index) => current.carouselBlueprint?.[index] ?? `${index + 1}. ${card.title || roleLabel(card.role)}`)
+  }));
+  const setCardCount = (event) => {
+    const count = Math.min(12, Math.max(3, Number(event.target.value) || cards.length || DEFAULT_CARD_COUNT));
+    updateCards(resizeCards(cards, count));
+  };
+  const applyTitle = (title) => {
+    const nextCards = cards.length ? [...cards] : resizeCards([], 3);
+    nextCards[0] = { ...nextCards[0], title };
+    updatePlan((current) => ({ ...current, selectedHookTitle: title, cards: nextCards }));
+  };
+  const updateCard = (index, patch) => updateCards(cards.map((card, cardIndex) => (cardIndex === index ? { ...card, ...patch } : card)));
+
+  return (
+    <Card>
+      <CardHeader><CardTitle>카드 설계</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 md:grid-cols-[140px_minmax(0,1fr)]">
+          <label className="grid gap-1.5">
+            <span className="text-xs font-black text-slate-500">컷 수</span>
+            <input className="h-10 rounded-md border border-slate-200 px-3 text-sm font-black outline-none focus:border-indigo-400" type="number" min="3" max="12" value={cards.length} onChange={setCardCount} />
+          </label>
+          <div className="grid gap-1.5">
+            <span className="text-xs font-black text-slate-500">표지 제목</span>
+            <input className="h-10 rounded-md border border-slate-200 px-3 text-sm font-black outline-none focus:border-indigo-400" value={coverTitle} onChange={(event) => applyTitle(event.target.value)} placeholder="표지 제목을 입력하세요" />
+          </div>
+        </div>
+        {plan.hookTitles?.length ? (
+          <div>
+            <div className="mb-2 text-xs font-black text-slate-500">제목 후보</div>
+            <div className="flex flex-wrap gap-2">
+              {plan.hookTitles.map((title, index) => (
+                <Button key={`${index}-${title}`} size="sm" variant={coverTitle === title ? 'default' : 'outline'} onClick={() => applyTitle(title)}>
+                  후보 {index + 1}
+                </Button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        <div className="space-y-2">
+          <div className="text-xs font-black text-slate-500">카드별 문구와 제작 연출</div>
+          {cards.map((card, index) => (
+            <div key={`${card.page}-${index}`} className="rounded-lg border bg-slate-50 p-3">
+              <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                <Badge variant="outline">카드 {index + 1}</Badge>
+              </div>
+              <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                <div className="rounded-md border border-slate-200 bg-white p-3">
+                  <div className="mb-2 text-xs font-black text-slate-500">카드 문구</div>
+                  <input className="h-9 w-full rounded-md border border-slate-200 px-3 text-sm font-black outline-none focus:border-indigo-400" value={card.title ?? ''} onChange={(event) => updateCard(index, { title: event.target.value })} placeholder="카드 제목" />
+                  <textarea className="mt-2 min-h-24 w-full resize-y rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold leading-6 outline-none focus:border-indigo-400" value={formatCardText(card.body)} onChange={(event) => updateCard(index, { body: event.target.value })} placeholder="카드 본문" />
+                </div>
+                <div className="rounded-md border border-slate-200 bg-white p-3">
+                  <div className="mb-2 text-xs font-black text-slate-500">제작 연출</div>
+                  <textarea className="min-h-24 w-full resize-y rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold leading-6 outline-none focus:border-indigo-400" value={card.visualPrompt ?? ''} onChange={(event) => updateCard(index, { visualPrompt: event.target.value })} placeholder="배경, 그림, 그래프, 표 구도" />
+                  <input className="mt-2 h-9 w-full rounded-md border border-slate-200 px-3 text-xs font-bold outline-none focus:border-indigo-400" value={(card.visualItems ?? []).join(', ')} onChange={(event) => updateCard(index, { visualItems: event.target.value.split(',').map((item) => item.trim()).filter(Boolean) })} placeholder="시각 요소, 쉼표로 구분" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function resizeCards(cards = [], count) {
+  const nextCards = cards.slice(0, count);
+  while (nextCards.length < count) {
+    const page = nextCards.length + 1;
+    const isLast = page === count;
+    nextCards.push({
+      page,
+      role: isLast ? 'checklist' : 'content_angle',
+      layout: isLast ? 'checklist' : 'quote_card',
+      title: isLast ? '저장 전 체크' : `카드 ${page} 제목`,
+      body: isLast ? '지금 확인할 것\n비교할 것\n저장할 것' : '핵심 내용을 입력하세요.',
+      emphasis: '',
+      sourceLine: '',
+      visualPrompt: '',
+      visualItems: []
+    });
+  }
+  return nextCards.map((card, index) => ({ ...card, page: index + 1 }));
 }
 
 function PublishPackage({ plan }) {
@@ -194,7 +392,6 @@ function PublishPackage({ plan }) {
   return (
     <Card>
       <CardHeader>
-        <CardDescription>Publish Package</CardDescription>
         <CardTitle>게시 문구 패키지</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -207,19 +404,21 @@ function PublishPackage({ plan }) {
   );
 }
 
-function QualityPanel({ plan }) {
-  const quality = evaluateCardNewsPlan(plan);
+function CardPreview({ cards }) {
   return (
     <Card>
-      <CardHeader>
-        <CardDescription>Reference QA</CardDescription>
-        <CardTitle className="flex items-center justify-between gap-3">카드뉴스 품질 점검 <Badge variant={quality.score >= 80 ? 'default' : 'destructive'}>{quality.label} {quality.score}</Badge></CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-2 md:grid-cols-2">
-        {quality.checks.map((item) => (
-          <div key={item.label} className={`rounded-lg border p-2 text-xs font-bold ${item.passed ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>
-            <span>{item.passed ? '✓' : '!'}</span> {item.label}
-            {item.detail ? <span className="ml-1 opacity-70">({item.detail})</span> : null}
+      <CardHeader><CardTitle>카드 구성 미리보기</CardTitle></CardHeader>
+      <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {cards.map((card) => (
+          <div key={card.page} className="rounded-lg border bg-white p-2 shadow-sm">
+            <div className="aspect-[4/5] rounded-md border bg-slate-50 p-4">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Badge variant="outline">카드 {card.page}</Badge>
+              </div>
+              <strong className="mt-5 block text-2xl font-black leading-tight tracking-normal">{card.title}</strong>
+              <p className="mt-5 whitespace-pre-line text-[15px] font-semibold leading-6 text-slate-700">{formatCardText(card.body)}</p>
+              {card.visualPrompt ? <p className="mt-4 rounded-md bg-white/80 p-2 text-[11px] font-bold leading-4 text-slate-500">{card.visualPrompt}</p> : null}
+            </div>
           </div>
         ))}
       </CardContent>
@@ -227,39 +426,27 @@ function QualityPanel({ plan }) {
   );
 }
 
-function CardPreview({ cards }) {
+function ReferenceData({ plan }) {
+  const items = [
+    ...(plan.sourceNotes ?? []).map((value) => ({ label: '근거', value })),
+    ...(plan.cards ?? []).flatMap((card, index) => [
+      card.sourceLine ? { label: `카드 ${index + 1} 출처`, value: card.sourceLine } : null,
+      card.dataPoint ? { label: `카드 ${index + 1} 참고`, value: card.dataPoint } : null
+    ]).filter(Boolean)
+  ].filter((item) => item.value);
+  if (!items.length) return null;
   return (
-    <Card>
-      <CardHeader><CardDescription>Storyboard</CardDescription><CardTitle>카드 구성 미리보기</CardTitle></CardHeader>
-      <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {cards.map((card) => (
-          <div key={card.page} className="rounded-lg border bg-white p-2 shadow-sm">
-            <div className="aspect-[4/5] rounded-md border bg-slate-50 p-4">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <Badge variant="outline">Card {card.page}</Badge>
-                <Badge variant="secondary">{roleLabel(card.role)}</Badge>
-              </div>
-              <strong className="mt-5 block text-2xl font-black leading-tight tracking-normal">{card.title}</strong>
-              {card.emphasis ? <p className="mt-2 text-xs font-black text-indigo-600">{card.emphasis}</p> : null}
-              <p className="mt-5 whitespace-pre-line text-[15px] font-semibold leading-6 text-slate-700">{formatCardText(card.body)}</p>
-              {card.sourceLine ? <p className="mt-5 border-t pt-2 text-[11px] font-bold leading-4 text-slate-400">{card.sourceLine}</p> : null}
-            </div>
-            {(card.insight || card.action) ? (
-              <details className="mt-2 rounded-md bg-white px-2 py-1.5 text-xs text-slate-600">
-                <summary className="cursor-pointer font-black text-slate-500">기획 메모</summary>
-                <div className="mt-2 grid gap-1.5">
-                  {card.layout ? <span>레이아웃: {layoutLabel(card.layout)}</span> : null}
-                  {card.visualPrompt ? <span>시각화: {card.visualPrompt}</span> : null}
-                  {card.dataPoint ? <span>참고: {card.dataPoint}</span> : null}
-                  {card.insight ? <span>해석: {card.insight}</span> : null}
-                  {card.action ? <span>실행: {card.action}</span> : null}
-                </div>
-              </details>
-            ) : null}
+    <details className="rounded-lg border bg-white p-4 text-sm">
+      <summary className="cursor-pointer font-black text-slate-600">참고 데이터</summary>
+      <div className="mt-3 grid gap-2">
+        {items.slice(0, 12).map((item, index) => (
+          <div key={`${item.label}-${index}`} className="rounded-md bg-slate-50 px-3 py-2">
+            <span className="text-xs font-black text-slate-400">{item.label}</span>
+            <p className="mt-1 break-words text-xs font-semibold leading-5 text-slate-600">{item.value}</p>
           </div>
         ))}
-      </CardContent>
-    </Card>
+      </div>
+    </details>
   );
 }
 
@@ -303,18 +490,6 @@ function roleLabel(value) {
   }[value] ?? '카드';
 }
 
-function layoutLabel(value) {
-  return {
-    cover_photo: '사진 표지',
-    cover_text: '텍스트 표지',
-    handwritten_research: '리서치 노트',
-    comparison_board: '비교 보드',
-    data_chart: '데이터 차트',
-    quote_card: '반응/인용',
-    checklist: '체크리스트'
-  }[value] ?? value;
-}
-
 function referenceLabel(value) {
   return {
     handdrawn_research: '리서치 노트형',
@@ -330,17 +505,91 @@ function normalizeChannelName(value) {
   return text.startsWith('@') ? text : `@${text}`;
 }
 
-function useContentPlan(studio, contentPlans, setContentPlans) {
-  const key = studio?.id;
-  const [state, setState] = useState({ loading: false, error: '', cached: false });
-  useEffect(() => {
-    if (!studio || contentPlans[key]) return;
-    let active = true;
-    setState({ loading: true, error: '', cached: false });
-    createContentPlan(studio)
-      .then((data) => { if (active) { setContentPlans((plans) => ({ ...plans, [key]: data.plan })); setState({ loading: false, error: '', cached: Boolean(data.cached) }); } })
-      .catch((error) => active && setState({ loading: false, error: error.message, cached: false }));
-    return () => { active = false; };
-  }, [studio, key, contentPlans, setContentPlans]);
-  return { plan: contentPlans[key], ...state };
+function makeTitleCandidates(studio) {
+  if (!studio) return [];
+  const label = cleanTitleCandidate(studio.label ?? studio.keyword ?? '이 주제');
+  const intent = classifyStudioIntent(studio);
+  const base = (() => {
+    if (intent === 'parent_social_issue') {
+      return [
+        parentQuestionTitle(studio, '정말 괜찮을까'),
+        inferParentSymptomQuestion(studio),
+        '부모 탓으로 끝내면 안 돼요',
+        `${label} 기준부터 볼게요`
+      ];
+    }
+    if (intent === 'parent_safety_issue') {
+      return [
+        parentQuestionTitle(studio, '정말 괜찮을까'),
+        `${parentProductSubject(studio)} 유해성분 괜찮을까`,
+        `${parentProductSubject(studio)} 사도 될까`,
+        '불안보다 기준부터 볼게요'
+      ];
+    }
+    if (intent === 'consumer_product_marketing' || intent === 'pet_consumer_product') {
+      return ['왜 이걸 사갈까', '예쁜 것보다 쓸모', '살 이유가 있을까', `${label} 살 이유`];
+    }
+    return ['이게 왜 떴을까', '혼자 보면 착시', '사람들이 멈춘 이유', `${label} 지금 볼 이유`];
+  })();
+  return [...new Set(base.map(cleanTitleCandidate).filter(Boolean))].slice(0, 5);
+}
+
+function cleanTitleCandidate(value) {
+  return `${value ?? ''}`.replace(/\s+/g, ' ').trim().slice(0, 26);
+}
+
+function classifyStudioIntent(studio = {}) {
+  const text = collectStudioIntentText(studio);
+  const parenting = /육아|부모|엄마|아빠|맘|워킹맘|아이|아기|신생아|유아|어린이|어린이집|유치원|등원|하원|돌봄|첫돌|소아|키즈/.test(text);
+  const safety = /환경호르몬|유해|성분|안전|독성|검출|리콜|욕조|젖병|기저귀|장난감|카시트|유모차|아기용품/.test(text);
+  const social = /등원|하원|어린이집|유치원|돌봄|지원|급여|제도|정부|기업|명단|워킹맘|일·가정|양립|감기|아픈|맘충|첫돌|출근|육아휴직/.test(text);
+  const product = /쇼핑|추천템|생활|상품|제품|브랜드|아마존|틱톡|품절|구매|소비|템|장바구니|편의점|육아템|펫|용품|장난감|간식|자동|급식기|텀블러|매출|판매/.test(text);
+  const pet = /반려|강아지|고양이|펫|집사|산책|사료|간식|동물병원/.test(text);
+  if (parenting && safety) return 'parent_safety_issue';
+  if (parenting && social) return 'parent_social_issue';
+  if (pet && product) return 'pet_consumer_product';
+  if (product) return 'consumer_product_marketing';
+  return 'general_trend_context';
+}
+
+function collectStudioIntentText(studio = {}) {
+  return [
+    studio.label,
+    studio.keyword,
+    studio.category,
+    studio.summary,
+    studio.production?.suggestedAngle,
+    studio.validation?.contentType,
+    studio.aiAnalysis?.summary,
+    ...(studio.sampleTitles ?? []),
+    ...(studio.evidence ?? []).map((item) => (typeof item === 'string' ? item : item?.title ?? item?.text ?? item?.label ?? '')),
+    ...(studio.searchVerification?.verification?.keyFindings ?? [])
+  ].filter(Boolean).join(' ');
+}
+
+function parentQuestionTitle(studio, suffix) {
+  const text = collectStudioIntentText(studio);
+  if (/감기|아픈|열나|기침/.test(text)) return '감기 걸리면 어린이집 보내면 안 될까';
+  if (/첫돌|돌 전|돌전|0세|영아/.test(text)) return '첫돌 전 어린이집 정말 괜찮을까';
+  if (/등원|하원|어린이집|유치원/.test(text)) return `어린이집 등원, ${suffix}`;
+  if (/환경호르몬|유해|성분|욕조/.test(text)) return `${parentProductSubject(studio)} ${suffix}`;
+  const label = cleanTitleCandidate(studio.label ?? studio.keyword ?? '이 문제');
+  return `${label} ${suffix}`;
+}
+
+function inferParentSymptomQuestion(studio) {
+  const text = collectStudioIntentText(studio);
+  if (/감기|아픈|열나|기침/.test(text)) return '감기 걸리면 어린이집 보내면 안 될까';
+  if (/첫돌|돌 전|돌전|0세|영아/.test(text)) return '첫돌 전 어린이집 정말 괜찮을까';
+  return '어린이집 등원 기준, 어디까지 괜찮을까';
+}
+
+function parentProductSubject(studio) {
+  const text = collectStudioIntentText(studio);
+  if (/욕조/.test(text)) return '아기 욕조';
+  if (/장난감/.test(text)) return '아이 장난감';
+  if (/젖병/.test(text)) return '젖병';
+  if (/기저귀/.test(text)) return '기저귀';
+  const label = cleanTitleCandidate(studio.label ?? studio.keyword ?? '아기 제품');
+  return label.length > 12 ? '아기 제품' : label;
 }

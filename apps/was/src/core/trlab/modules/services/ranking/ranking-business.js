@@ -8,6 +8,7 @@ const communitySources = new Set(['FMKorea', 'TheQoo', 'Nate Pann', 'DCInside', 
 export function compareCandidates(a, b) {
   return (b.production?.score ?? 0) - (a.production?.score ?? 0)
     || getBusinessPriority(b) - getBusinessPriority(a)
+    || getTopicSpecificity(b) - getTopicSpecificity(a)
     || b.score - a.score;
 }
 
@@ -31,5 +32,15 @@ function getBusinessPriority(candidate) {
   if (!candidate.sources.some((source) => communitySources.has(source))) score -= 14;
   if (['sports', 'entertainment'].includes(areaId)) score -= 10;
   if (noisePattern.test(`${candidate.keyword} ${candidate.sampleTitles.join(' ')}`)) score -= 14;
+  return score;
+}
+
+function getTopicSpecificity(candidate) {
+  const keyword = `${candidate.keyword ?? ''}`;
+  let score = 0;
+  if (keyword.includes(' ') || keyword.includes('·')) score += 8;
+  if (/(스타벅스|콜드컵|구다이글로벌|메디큐브|올영세일|K뷰티|틱톡발|칼디)/i.test(keyword)) score += 18;
+  if (/(품절난 상품|갑자기 뜬 브랜드|tiktok made me buy it|아마존 인기 상품)$/i.test(keyword)) score -= 12;
+  if (keyword.length <= 4) score -= 8;
   return score;
 }

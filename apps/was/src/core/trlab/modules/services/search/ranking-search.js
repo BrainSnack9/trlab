@@ -12,21 +12,29 @@ export async function verifySearch(keyword) {
   const tokens = cleanText(keyword).split(/\s+/).filter((token) => token.length >= 2).slice(0, 6);
   const sources = [settledSource('Google News', google), settledSource('Naver News', naver), settledSource('Naver Blog', blog), ...(external.status === 'fulfilled' ? external.value : [])].map((source) => filterSource(source, tokens));
   const results = sources.flatMap((source) => source.results.map((result) => ({ ...result, source: source.source })));
-  const matchedResults = results.filter((result) => tokens.some((token) => result.title.toLowerCase().includes(token.toLowerCase())));
+  const matchedResults = results.filter((result) => result.matchTokens?.length);
   const sourceCount = sources.filter((source) => source.status === 'ok' && source.count > 0).length;
   const score = Math.min(100, matchedResults.length * 12 + sourceCount * 15);
   const grade = score >= 60 ? '통과' : score >= 32 ? '보류' : '약함';
-  return { grade, score, scoreBoost: grade === '통과' ? 12 : grade === '보류' ? 5 : 0, matchedResults: matchedResults.length, sources, keyFindings: matchedResults.slice(0, 4).map((result) => result.title), checkedAt: new Date().toISOString() };
+  return { grade, score, scoreBoost: grade === '통과' ? 12 : grade === '보류' ? 5 : 0, tokens, matchedResults: matchedResults.length, sourceCount, sources, keyFindings: matchedResults.slice(0, 4).map((result) => result.title), checkedAt: new Date().toISOString() };
 }
 
 function filterSource(source, tokens) {
-  const results = source.results.filter((item) => isRelevantResult(item, tokens) && isFreshResult(item)).slice(0, 8);
+  const results = source.results
+    .filter((item) => isRelevantResult(item, tokens) && isFreshResult(item))
+    .slice(0, 8)
+    .map((item) => ({ ...item, matchTokens: getMatchTokens(item.title, tokens) }));
   return { ...source, count: results.length, results };
 }
 
 function isRelevantResult(item, tokens) {
   const title = `${item.title ?? ''}`.toLowerCase();
   return tokens.some((token) => title.includes(token.toLowerCase()));
+}
+
+function getMatchTokens(title, tokens) {
+  const normalized = `${title ?? ''}`.toLowerCase();
+  return tokens.filter((token) => normalized.includes(token.toLowerCase()));
 }
 
 async function searchGoogleNews(query) {
@@ -112,5 +120,9 @@ function decodeResponse(buffer, contentType = '') {
 }
 
 function decodeEntities(value) {
-  return `${value ?? ''}`.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ');
+  return `${value ?? ''}`
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)));
 }

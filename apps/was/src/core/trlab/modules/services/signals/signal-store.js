@@ -86,6 +86,22 @@ export async function getSignalStats() {
 }
 function repairSignal(signal) { return repairObjectText(signal, ['title', 'summary', 'metric', 'qualityLabel']); }
 
+export async function clearTrendCollectionData() {
+  const tables = ['signals', 'collection_runs', 'keyword_snapshots'];
+  await write((database) => {
+    database.run('BEGIN');
+    try {
+      tables.forEach((table) => database.run(`DELETE FROM ${table}`));
+      database.run("DELETE FROM sqlite_sequence WHERE name IN ('collection_runs', 'keyword_snapshots')");
+      database.run('COMMIT');
+    } catch (error) {
+      database.run('ROLLBACK');
+      throw error;
+    }
+  });
+  return { cleared: tables };
+}
+
 export async function saveKeywordSnapshots(trends, reason = 'manual-rank') {
   const createdAt = new Date().toISOString();
   await write((database) => {
