@@ -4,32 +4,85 @@ import { Badge } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Badge/
 import { Button } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Button/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Card';
 import { exclusionAreas, interestAreas } from '@/core/TrLab/modules/configs/constants';
+import { tuneChannelProfile } from '@/core/TrLab/modules/clients/api';
 
-export function ScopeFilter({ selectedSet, excludedSet, selectedChannelProfiles, setSelectedChannelProfiles, channelProfiles, setSelectedAreas, setExcludedAreas, saveChannelProfile, deleteChannelProfile, reset }) {
+export function ScopeFilter({ selectedSet, excludedSet, selectedChannelProfiles, setSelectedChannelProfiles, channelProfiles, accountSlots, setSelectedAreas, setExcludedAreas, setView, reset }) {
   const toggleSelected = (id) => setSelectedAreas((areas) => areas.includes(id) ? areas.filter((v) => v !== id) : [...areas, id]);
   const toggleProfile = (id) => setSelectedChannelProfiles((profiles) => profiles.includes(id) ? profiles.filter((v) => v !== id) : [...profiles, id]);
   const toggleExcluded = (id) => setExcludedAreas((areas) => areas.includes(id) ? areas.filter((v) => v !== id) : [...areas, id]);
   const selectedProfileSet = new Set(selectedChannelProfiles ?? []);
+  const profileItems = buildProfileFilterItems(channelProfiles ?? [], accountSlots ?? []);
   return (
     <Card className="bg-white/80">
-      <CardHeader className="border-b"><div className="flex flex-wrap items-center justify-between gap-3"><CardTitle className="flex items-center gap-2"><SlidersHorizontal className="h-5 w-5 text-indigo-600" />채널 프로필과 필터</CardTitle><Button variant="outline" size="sm" onClick={reset}>기본값</Button></div></CardHeader>
-      <CardContent className="space-y-5 pt-5">
-        <ChipGroup title={`운영 채널 프로필 · ${selectedProfileSet.size}개 선택`} items={channelProfiles ?? []} activeSet={selectedProfileSet} onToggle={toggleProfile} />
-        <ProfileEditor profiles={channelProfiles ?? []} saveChannelProfile={saveChannelProfile} deleteChannelProfile={deleteChannelProfile} />
-        <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-        <ChipGroup title={`보고 싶은 영역 · ${selectedSet.size ? `${selectedSet.size}개 영역` : '꺼짐'}`} items={interestAreas} activeSet={selectedSet} onToggle={toggleSelected} />
-        <ChipGroup title="자동 제외 영역" items={exclusionAreas} activeSet={excludedSet} onToggle={toggleExcluded} danger />
+      <CardHeader className="border-b">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <CardTitle className="flex items-center gap-2"><SlidersHorizontal className="h-5 w-5 text-indigo-600" />감지 범위</CardTitle>
+            <p className="mt-1 text-xs font-semibold text-muted-foreground">계정 프로필은 후보 필터와 수집 seed에만 적용하고, 세부 관리는 계정 프로필 화면에서 합니다.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => setView('profiles')}>계정 프로필</Button>
+            <Button variant="outline" size="sm" onClick={reset}>기본값</Button>
+          </div>
         </div>
+      </CardHeader>
+      <CardContent className="grid gap-4 pt-5 xl:grid-cols-[1.15fr_1fr_1fr]">
+        <ChipGroup
+          title={`계정 프로필 · ${selectedProfileSet.size ? `${selectedProfileSet.size}개 적용` : '전체 보기'}`}
+          items={profileItems}
+          activeSet={selectedProfileSet}
+          onToggle={toggleProfile}
+          emptyText="계정 프로필 화면에서 운영 계정을 먼저 배정하세요."
+        />
+        <ChipGroup title={`관심 영역 · ${selectedSet.size ? `${selectedSet.size}개` : '꺼짐'}`} items={interestAreas} activeSet={selectedSet} onToggle={toggleSelected} />
+        <ChipGroup title="제외 영역" items={exclusionAreas} activeSet={excludedSet} onToggle={toggleExcluded} danger />
       </CardContent>
     </Card>
   );
 }
 
-function ChipGroup({ title, items, activeSet, onToggle, danger }) {
-  return <div><div className="mb-2 text-sm font-bold">{title}</div><div className="flex max-h-28 flex-wrap gap-2 overflow-auto pr-1">{items.map((item) => <Button key={item.id} variant={activeSet.has(item.id) ? (danger ? 'destructive' : 'default') : 'outline'} size="sm" className="h-8 rounded-md px-2.5 text-xs" onClick={() => onToggle(item.id)}>{item.label}</Button>)}</div></div>;
+function buildProfileFilterItems(profiles, slots) {
+  const profileMap = new Map(profiles.map((profile) => [profile.id, profile]));
+  const assigned = slots
+    .filter((slot) => slot.profileId && profileMap.has(slot.profileId))
+    .map((slot) => {
+      const profile = profileMap.get(slot.profileId);
+      return {
+        id: profile.id,
+        key: slot.id,
+        label: `${slot.label} · ${profile.label}`
+      };
+    });
+  if (assigned.length) return assigned;
+  return profiles.map((profile) => ({
+    id: profile.id,
+    key: profile.id,
+    label: profile.label
+  }));
 }
 
-function ProfileEditor({ profiles, saveChannelProfile, deleteChannelProfile }) {
+function ChipGroup({ title, items, activeSet, onToggle, danger, emptyText = '선택 가능한 항목이 없습니다.' }) {
+  return (
+    <div className="min-w-0">
+      <div className="mb-2 text-sm font-bold">{title}</div>
+      <div className="flex max-h-24 flex-wrap gap-2 overflow-auto pr-1">
+        {items.length ? items.map((item) => (
+          <Button
+            key={item.key ?? item.id}
+            variant={activeSet.has(item.id) ? (danger ? 'destructive' : 'default') : 'outline'}
+            size="sm"
+            className="h-8 max-w-full rounded-md px-2.5 text-xs"
+            onClick={() => onToggle(item.id)}
+          >
+            <span className="truncate">{item.label}</span>
+          </Button>
+        )) : <span className="rounded-md border border-dashed bg-slate-50 px-3 py-2 text-xs font-semibold text-muted-foreground">{emptyText}</span>}
+      </div>
+    </div>
+  );
+}
+
+export function ProfileEditor({ profiles, saveChannelProfile, deleteChannelProfile }) {
   const [selectedId, setSelectedId] = useState(profiles[0]?.id ?? '');
   const selected = profiles.find((profile) => profile.id === selectedId) ?? profiles[0];
   const [editing, setEditing] = useState(false);
@@ -55,7 +108,15 @@ function ProfileEditor({ profiles, saveChannelProfile, deleteChannelProfile }) {
       ...current,
       seeds: lines(current.seeds),
       reddit: lines(current.reddit),
-      keywords: lines(current.keywords)
+      keywords: lines(current.keywords),
+      strategy: {
+        audience: current.audience,
+        goals: lines(current.goals),
+        voice: current.voice,
+        preferredFormats: lines(current.preferredFormats),
+        avoidKeywords: lines(current.avoidKeywords),
+        decisionRules: lines(current.decisionRules)
+      }
     });
     setSelectedId(saved?.id ?? current.id ?? '');
     setEditing(false);
@@ -84,7 +145,7 @@ function ProfileEditor({ profiles, saveChannelProfile, deleteChannelProfile }) {
             ))}
           </div>
         </div>
-        <ProfileDetail profile={selected} onEdit={startEdit} onDelete={remove} />
+        <ProfileDetail profile={selected} saveChannelProfile={saveChannelProfile} onEdit={startEdit} onDelete={remove} />
       </div>
       {editing && <div className="rounded-md border bg-slate-50 p-3">
         <div className="mb-2 text-sm font-bold">{current.id ? '프로필 수정' : '프로필 추가'}</div>
@@ -98,6 +159,14 @@ function ProfileEditor({ profiles, saveChannelProfile, deleteChannelProfile }) {
         <textarea className="min-h-20 rounded-md border p-2 text-sm outline-none" value={current.reddit} onChange={(event) => update({ reddit: event.target.value })} placeholder="레딧 채널명, 줄바꿈으로 입력" />
         <textarea className="min-h-20 rounded-md border p-2 text-sm outline-none" value={current.keywords} onChange={(event) => update({ keywords: event.target.value })} placeholder="판정 키워드, 줄바꿈으로 입력" />
         </div>
+        <div className="mt-3 grid gap-2 md:grid-cols-2">
+          <input className="h-9 rounded-md border px-3 text-sm outline-none" value={current.audience} onChange={(event) => update({ audience: event.target.value })} placeholder="타깃 독자: 예) 30대 부모, 저장형 정보 선호" />
+          <input className="h-9 rounded-md border px-3 text-sm outline-none" value={current.voice} onChange={(event) => update({ voice: event.target.value })} placeholder="말투: 예) 차분한 기준 제시형" />
+          <textarea className="min-h-20 rounded-md border p-2 text-sm outline-none" value={current.goals} onChange={(event) => update({ goals: event.target.value })} placeholder="성장 목표, 줄바꿈: 저장&#10;공유&#10;팔로우 전환" />
+          <textarea className="min-h-20 rounded-md border p-2 text-sm outline-none" value={current.preferredFormats} onChange={(event) => update({ preferredFormats: event.target.value })} placeholder="선호 포맷, 줄바꿈: 체크리스트형&#10;비교형&#10;랭킹형" />
+          <textarea className="min-h-20 rounded-md border p-2 text-sm outline-none" value={current.avoidKeywords} onChange={(event) => update({ avoidKeywords: event.target.value })} placeholder="수집/랭킹 제외 키워드, 줄바꿈: 정치&#10;성인&#10;루머" />
+          <textarea className="min-h-20 rounded-md border p-2 text-sm outline-none" value={current.decisionRules} onChange={(event) => update({ decisionRules: event.target.value })} placeholder="선정 기준, 줄바꿈: 저장할 기준이 있을 것&#10;구매/비교로 확장 가능할 것" />
+        </div>
         <div className="mt-2 flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={() => setEditing(false)}>취소</Button>
           <Button size="sm" onClick={submit}>{current.id ? '저장' : '추가'}</Button>
@@ -107,7 +176,7 @@ function ProfileEditor({ profiles, saveChannelProfile, deleteChannelProfile }) {
   );
 }
 
-function ProfileDetail({ profile, onEdit, onDelete }) {
+function ProfileDetail({ profile, saveChannelProfile, onEdit, onDelete }) {
   if (!profile) return <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">등록된 프로필이 없습니다.</div>;
   return (
     <div className="rounded-md border bg-slate-50 p-4">
@@ -127,6 +196,116 @@ function ProfileDetail({ profile, onEdit, onDelete }) {
         <ValueList title={`레딧 채널 ${profile.reddit?.length ?? 0}개`} values={profile.reddit} />
         <ValueList title={`키워드 ${profile.keywords?.length ?? 0}개`} values={profile.keywords} />
       </div>
+      <div className="mt-3 grid gap-3 lg:grid-cols-3">
+        <StrategyBlock title="타깃/말투" values={[profile.strategy?.audience, profile.strategy?.voice].filter(Boolean)} />
+        <StrategyBlock title="성장 목표/포맷" values={[...(profile.strategy?.goals ?? []), ...(profile.strategy?.preferredFormats ?? [])]} />
+        <StrategyBlock title="제외/선정 기준" values={[...(profile.strategy?.avoidKeywords ?? []).map((item) => `제외: ${item}`), ...(profile.strategy?.decisionRules ?? [])]} />
+      </div>
+      <ProfileTunePanel profile={profile} saveChannelProfile={saveChannelProfile} />
+    </div>
+  );
+}
+
+const tuneFields = [
+  { id: 'seeds', label: '검색 시드', hint: '수집 검색어를 넓힐 때' },
+  { id: 'keywords', label: '판정 키워드', hint: '랭킹 적합도를 세밀하게' },
+  { id: 'preferredFormats', label: '선호 포맷', hint: '콘텐츠화 방향 고정' },
+  { id: 'avoidKeywords', label: '제외 키워드', hint: '품질 낮은 후보 차단' },
+  { id: 'decisionRules', label: '선정 기준', hint: 'AI 판단 기준 보강' },
+  { id: 'reddit', label: '레딧 채널', hint: '영문권 보조 소스' },
+  { id: 'goals', label: '성장 목표', hint: '저장/공유/전환 목적' }
+];
+
+function ProfileTunePanel({ profile, saveChannelProfile }) {
+  const [field, setField] = useState('seeds');
+  const [context, setContext] = useState('');
+  const [state, setState] = useState({ loading: false, error: '', suggestions: [], provider: '' });
+  const selectedField = tuneFields.find((item) => item.id === field) ?? tuneFields[0];
+  const currentValues = getProfileFieldValues(profile, field);
+  const generate = async () => {
+    setState({ loading: true, error: '', suggestions: [], provider: '' });
+    try {
+      const data = await tuneChannelProfile({ profile, field, context });
+      setState({ loading: false, error: '', suggestions: data.suggestions ?? [], provider: data.provider ?? '' });
+    } catch (error) {
+      setState({ loading: false, error: error.message, suggestions: [], provider: '' });
+    }
+  };
+  const addItem = async (item) => {
+    const saved = await saveChannelProfile(addProfileFieldValue(profile, field, item));
+    setState((current) => ({
+      ...current,
+      suggestions: current.suggestions.filter((value) => value !== item && !getProfileFieldValues(saved, field).includes(value))
+    }));
+  };
+
+  return (
+    <div className="mt-4 rounded-lg border border-indigo-100 bg-white p-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 text-sm font-black text-slate-950">
+            <Sparkles className="h-4 w-4 text-indigo-600" />
+            AI 프로필 튜닝
+          </div>
+          <p className="mt-1 text-xs font-semibold leading-5 text-muted-foreground">필요한 항목만 추천받아 기존 프로필에 바로 추가합니다.</p>
+        </div>
+        {state.provider ? <Badge variant="outline">{state.provider}</Badge> : null}
+      </div>
+
+      <div className="mt-3 grid gap-3 xl:grid-cols-[220px_minmax(0,1fr)]">
+        <div className="grid gap-2">
+          {tuneFields.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`rounded-md border px-3 py-2 text-left transition ${field === item.id ? 'border-indigo-300 bg-indigo-50 text-indigo-950' : 'bg-white hover:bg-slate-50'}`}
+              onClick={() => {
+                setField(item.id);
+                setState({ loading: false, error: '', suggestions: [], provider: '' });
+              }}
+            >
+              <span className="block text-xs font-black">{item.label}</span>
+              <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">{item.hint}</span>
+            </button>
+          ))}
+        </div>
+        <div className="min-w-0 space-y-3">
+          <div className="rounded-md border bg-slate-50 p-3">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <strong className="text-sm font-black text-slate-900">{selectedField.label}</strong>
+              <Badge variant="secondary">현재 {currentValues.length}개</Badge>
+            </div>
+            <div className="flex max-h-24 flex-wrap gap-1.5 overflow-auto pr-1">
+              {currentValues.length ? currentValues.slice(0, 18).map((value) => <Badge key={value} variant="outline">{value}</Badge>) : <span className="text-xs font-semibold text-muted-foreground">아직 등록된 값이 없습니다.</span>}
+            </div>
+          </div>
+          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+            <input
+              className="h-10 rounded-md border px-3 text-sm font-semibold outline-none focus:border-indigo-300"
+              value={context}
+              onChange={(event) => setContext(event.target.value)}
+              placeholder="선택 입력: 예) 30대 직장인에게 맞게, 검색검증 잘 되는 표현으로"
+            />
+            <Button onClick={generate} disabled={state.loading}>
+              <Sparkles className="h-4 w-4" />
+              {state.loading ? '추천 중' : '추천 받기'}
+            </Button>
+          </div>
+          {state.error ? <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{state.error}</div> : null}
+          <div className="flex flex-wrap gap-2">
+            {state.suggestions.length ? state.suggestions.map((item) => (
+              <button
+                key={item}
+                type="button"
+                className="rounded-md border border-indigo-100 bg-indigo-50 px-2.5 py-1.5 text-xs font-black text-indigo-900 transition hover:border-indigo-300 hover:bg-indigo-100"
+                onClick={() => addItem(item)}
+              >
+                + {item}
+              </button>
+            )) : <div className="rounded-md border border-dashed bg-slate-50 p-3 text-xs font-semibold text-muted-foreground">추천을 받으면 추가 가능한 후보가 여기에 나타납니다.</div>}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -142,8 +321,47 @@ function ValueList({ title, values = [] }) {
   );
 }
 
+function StrategyBlock({ title, values = [] }) {
+  return (
+    <div className="rounded-md border bg-white p-3">
+      <div className="mb-2 text-xs font-black text-slate-500">{title}</div>
+      <div className="space-y-1">
+        {values.length ? values.slice(0, 8).map((value) => <div key={value} className="rounded bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-900">{value}</div>) : <div className="text-xs text-muted-foreground">없음</div>}
+      </div>
+    </div>
+  );
+}
+
+function getProfileFieldValues(profile, field) {
+  if (!profile) return [];
+  if (['goals', 'preferredFormats', 'avoidKeywords', 'decisionRules'].includes(field)) {
+    return profile.strategy?.[field] ?? [];
+  }
+  return profile[field] ?? [];
+}
+
+function addProfileFieldValue(profile, field, item) {
+  const value = `${item ?? ''}`.trim();
+  if (!value) return profile;
+  const currentValues = getProfileFieldValues(profile, field);
+  const nextValues = [...new Set([...currentValues, value])];
+  if (['goals', 'preferredFormats', 'avoidKeywords', 'decisionRules'].includes(field)) {
+    return {
+      ...profile,
+      strategy: {
+        ...(profile.strategy ?? {}),
+        [field]: nextValues
+      }
+    };
+  }
+  return {
+    ...profile,
+    [field]: nextValues
+  };
+}
+
 function emptyProfile() {
-  return { id: '', label: '', description: '', seeds: '', reddit: '', keywords: '' };
+  return { id: '', label: '', description: '', seeds: '', reddit: '', keywords: '', audience: '', goals: '저장\n공유', voice: '', preferredFormats: '체크리스트형\n비교형', avoidKeywords: '정치\n성인\n루머', decisionRules: '' };
 }
 
 function profileToDraft(profile) {
@@ -153,7 +371,13 @@ function profileToDraft(profile) {
     description: profile.description ?? '',
     seeds: (profile.seeds ?? []).join('\n'),
     reddit: (profile.reddit ?? []).join('\n'),
-    keywords: (profile.keywords ?? []).join('\n')
+    keywords: (profile.keywords ?? []).join('\n'),
+    audience: profile.strategy?.audience ?? '',
+    goals: (profile.strategy?.goals ?? []).join('\n'),
+    voice: profile.strategy?.voice ?? '',
+    preferredFormats: (profile.strategy?.preferredFormats ?? []).join('\n'),
+    avoidKeywords: (profile.strategy?.avoidKeywords ?? []).join('\n'),
+    decisionRules: (profile.strategy?.decisionRules ?? []).join('\n')
   };
 }
 

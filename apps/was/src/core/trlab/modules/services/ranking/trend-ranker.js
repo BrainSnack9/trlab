@@ -1,4 +1,4 @@
-import { adultPattern, politicsPattern } from './ranking-config.js';
+import { adultPattern, politicsPattern, spamPattern } from './ranking-config.js';
 import { compareCandidates, limitAreaDominance } from './ranking-business.js';
 import { evaluateContentPotential, evaluateProductionReadiness, isWeakContentCandidate, scoreCandidate } from './ranking-score.js';
 import { getChannelProfileFit, getRankingProfiles } from './ranking-profile-fit.js';
@@ -64,7 +64,7 @@ function isProfileBackedContentCandidate(candidate) {
 }
 
 function isProductionCandidate(candidate) {
-  if ((candidate.production?.score ?? 0) < 50 || candidate.production?.tier === '제외 후보') return false;
+  if ((candidate.production?.score ?? 0) < 66 || candidate.production?.tier === '제외 후보') return false;
   if (!candidate.channelFit?.bestProfile && candidate.area?.id === 'life' && candidate.sources.length === 1 && (candidate.production?.score ?? 0) < 82) return false;
   if (candidate.sources.length === 1 && !['Search SERP', 'Google Trends'].includes(candidate.sources[0]) && (candidate.production?.score ?? 0) < 70) return false;
   return true;
@@ -84,6 +84,7 @@ function buildCandidates(signals) {
   signals
     .filter((signal) => !adultPattern.test(`${signal.title ?? ''} ${signal.summary ?? ''}`))
     .filter((signal) => !politicsPattern.test(`${signal.title ?? ''} ${signal.summary ?? ''}`))
+    .filter((signal) => !spamPattern.test(`${signal.title ?? ''} ${signal.summary ?? ''} ${signal.url ?? ''}`))
     .filter((signal) => (signal.qualityScore ?? 60) >= 40)
     .forEach((signal) => addSignalCandidates(map, signal));
   return mergeRelatedCandidates([...map.values()]);

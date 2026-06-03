@@ -7,9 +7,13 @@ export default function Dashboard() {
   const workspace = useTrLabWorkspace();
 
   return (
-    <DashboardView
-      {...workspace}
-      onCollectSignals={() => workspace.collectSignals({ areas: workspace.selectedAreas, profiles: workspace.selectedChannelProfiles })}
-    />
+      <DashboardView
+        {...workspace}
+        refreshTrendRanking={() => workspace.refreshTrendRanking({ analysisDate: workspace.analysisDate })}
+        onCollectSignals={() => workspace.collectSignals({
+          areas: workspace.selectedAreas,
+          profiles: workspace.selectedChannelProfiles
+        })}
+      />
   );
 }

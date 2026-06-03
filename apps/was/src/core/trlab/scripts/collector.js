@@ -4,7 +4,7 @@ import { env, getWasBaseUrl } from '#trlab/modules/configs/env';
 
 const BASE_URL = getWasBaseUrl();
 const COLLECT_EVERY_MINUTES = env.COLLECT_EVERY_MINUTES;
-const RANK_TIMES = env.RANK_TIMES.split(',').map(parseTime).sort(compareTime);
+const RANK_TIMES = parseRankTimes(env.RANK_TIMES);
 const TEST_MODE = env.COLLECTOR_TEST === '1';
 
 let collectTimer;
@@ -53,17 +53,27 @@ async function processRanking(reason = 'scheduled-rank') {
 function start() {
   log('info', 'TrLab collector started', { baseUrl: BASE_URL });
   log('info', 'collection schedule ready', { every: TEST_MODE ? '30 seconds' : `${COLLECT_EVERY_MINUTES} minutes` });
-  log('info', 'trend reflection schedule ready', { times: RANK_TIMES.map(formatTime) });
+  log('info', RANK_TIMES.length ? 'trend reflection schedule ready' : 'trend reflection schedule disabled', { times: RANK_TIMES.map(formatTime) });
   setTimeout(() => collectAll('worker-start'), 1500);
   if (TEST_MODE) {
     collectTimer = setInterval(() => collectAll(), 30000);
-    rankTimer = setInterval(() => processRanking('scheduled-test'), 45000);
+    if (RANK_TIMES.length) rankTimer = setInterval(() => processRanking('scheduled-test'), 45000);
     return;
   }
   collectTask = cron.schedule(`*/${COLLECT_EVERY_MINUTES} * * * *`, () => collectAll(), { name: 'collect-signals' });
   RANK_TIMES.forEach((time) => {
     rankTasks.push(cron.schedule(`${time.minute} ${time.hour} * * *`, () => processRanking(`scheduled-${formatTime(time)}`), { name: `rank-${formatTime(time)}` }));
   });
+}
+
+function parseRankTimes(value = '') {
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map(parseTime)
+    .filter((time) => Number.isInteger(time.hour) && Number.isInteger(time.minute))
+    .sort(compareTime);
 }
 
 function parseTime(value) {

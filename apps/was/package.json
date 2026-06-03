@@ -17,7 +17,8 @@
     "worker:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File src/core/trlab/scripts/stop-worker.ps1",
     "worker:restart": "powershell -NoProfile -ExecutionPolicy Bypass -File src/core/trlab/scripts/restart-worker.ps1",
     "worker:test": "set COLLECTOR_TEST=1&& node src/core/trlab/scripts/collector.js",
-    "db:reset": "node src/core/trlab/scripts/reset-db.js"
+    "db:reset": "node src/core/trlab/scripts/reset-db.js",
+    "db:migrate:sqlite": "node src/core/trlab/scripts/migrate-sqlite-to-postgres.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.2",

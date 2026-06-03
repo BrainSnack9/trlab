@@ -18,6 +18,7 @@
     "dev:was": "npm --workspace apps/was run dev",
     "build": "npm run build:web",
     "build:web": "npm --workspace apps/web run build",
+    "check:encoding": "node scripts/check-source-encoding.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
@@ -31,7 +32,8 @@
     "worker:stop": "npm --workspace apps/was run worker:stop",
     "worker:restart": "npm --workspace apps/was run worker:restart",
     "worker:test": "npm --workspace apps/was run worker:test",
-    "db:reset": "npm --workspace apps/was run db:reset"
+    "db:reset": "npm --workspace apps/was run db:reset",
+    "db:migrate:sqlite": "npm --workspace apps/was run db:migrate:sqlite"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",

@@ -21,16 +21,32 @@ export function getChannelProfileFit(candidate, profiles = []) {
 function scoreProfile(profile, text) {
   const keywordHits = (profile.keywords ?? []).filter((keyword) => includes(text, keyword));
   const seedHits = (profile.seeds ?? []).filter((seed) => includes(text, seed));
+  const strategyHits = strategyTerms(profile).filter((keyword) => includes(text, keyword));
+  const avoidHits = (profile.strategy?.avoidKeywords ?? []).filter((keyword) => includes(text, keyword));
   if (profile.id === 'pet' && !/(강아지|고양이|반려|펫|pet|dog|cat|집사|산책)/i.test(text)) {
     return { id: profile.id, label: profile.label, score: 0, scores: emptyScores(), matched: [] };
   }
-  if (!keywordHits.length && !seedHits.length) return { id: profile.id, label: profile.label, score: 0, scores: emptyScores(), matched: [] };
+  if (avoidHits.length) return { id: profile.id, label: profile.label, score: 0, scores: emptyScores(), matched: [], avoid: avoidHits.slice(0, 5) };
+  if (!keywordHits.length && !seedHits.length && !strategyHits.length) return { id: profile.id, label: profile.label, score: 0, scores: emptyScores(), matched: [] };
   const base = profile.scoring ?? {};
-  const matchBoost = Math.min(24, keywordHits.length * 5 + seedHits.length * 3);
+  const matchBoost = Math.min(28, keywordHits.length * 5 + seedHits.length * 3 + strategyHits.length * 2);
   const commerceBoost = commercePattern.test(text) ? 8 : 0;
   const scores = Object.fromEntries(scoreKeys.map((key) => [key, clamp((base[key] ?? 12) + matchBoost + commerceBoost, 1, 100)]));
   const score = Math.round(Object.values(scores).reduce((sum, value) => sum + value, 0) / scoreKeys.length);
-  return { id: profile.id, label: profile.label, score, scores, matched: [...keywordHits, ...seedHits].slice(0, 8) };
+  return { id: profile.id, label: profile.label, score, scores, matched: [...keywordHits, ...seedHits, ...strategyHits].slice(0, 10) };
+}
+
+function strategyTerms(profile) {
+  const strategy = profile.strategy ?? {};
+  return [
+    ...(strategy.goals ?? []),
+    ...(strategy.preferredFormats ?? []),
+    ...(strategy.decisionRules ?? [])
+  ]
+    .flatMap((value) => `${value ?? ''}`.split(/\s+|\/|,|·/))
+    .map((value) => value.replace(/형$/, '').trim())
+    .filter((value) => value.length >= 2)
+    .filter((value) => !/^(있을|것|정보|기준|사용자|콘텐츠|인스타)$/.test(value));
 }
 
 function emptyScores() {

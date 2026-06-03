@@ -9,7 +9,110 @@ import { createContentPlan } from '@/core/TrLab/modules/clients/api';
 
 const DEFAULT_CARD_COUNT = 5;
 
-export function StudioView({ queue, studio, setView, setQueue, contentPlans, setContentPlans }) {
+export function StudioView({ studio, setView, setQueue }) {
+  const [selectedTitle, setSelectedTitle] = useState('');
+  const titleCandidates = useMemo(() => makeTitleCandidates(studio), [studio]);
+  const selected = selectedTitle || titleCandidates[0] || studio?.label || '';
+
+  useEffect(() => {
+    setSelectedTitle(makeTitleCandidates(studio)[0] ?? '');
+  }, [studio?.id]);
+
+  const chooseTitle = () => {
+    if (!studio) return;
+    const title = (selected || studio.label || studio.keyword || '').trim();
+    const nextStudio = {
+      ...studio,
+      selectedHookTitle: title,
+      contentSetup: {
+        ...(studio.contentSetup ?? {}),
+        title,
+        cardCount: studio.contentSetup?.cardCount ?? studio.cardCount ?? DEFAULT_CARD_COUNT
+      }
+    };
+    setQueue((items = []) => {
+      const rest = items.filter((item) => item?.id !== studio.id);
+      return [nextStudio, ...rest];
+    });
+    setView('plan');
+  };
+
+  if (!studio) {
+    return (
+      <div className="space-y-5">
+        <StageHead title="제목 후보 선택">
+          <Button variant="outline" onClick={() => setView('dashboard')}><ArrowLeft className="h-4 w-4" />트렌드 감지로</Button>
+          <Button onClick={() => setView('plan')}><PencilLine className="h-4 w-4" />직접 기획</Button>
+        </StageHead>
+        <Card>
+          <CardContent className="p-6">
+            <div className="rounded-lg border border-dashed p-6 text-sm font-semibold text-muted-foreground">검색 검증을 통과한 키워드를 먼저 선택하면 제목 후보를 고를 수 있습니다.</div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <StageHead title={`${studio.label} 제목 선택`}>
+        <Button variant="outline" onClick={() => setView('search')}><ArrowLeft className="h-4 w-4" />검증 근거로</Button>
+        <Button onClick={chooseTitle} disabled={!selected.trim()}><Send className="h-4 w-4" />이 제목으로 기획</Button>
+      </StageHead>
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <Card className="border-indigo-200 bg-indigo-50/40">
+          <CardHeader>
+            <CardTitle>콘텐츠 제목 후보</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3">
+              {titleCandidates.map((title, index) => (
+                <button
+                  key={`${index}-${title}`}
+                  type="button"
+                  className={[
+                    'w-full rounded-lg border bg-white p-4 text-left transition',
+                    selected === title ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-slate-200 hover:border-indigo-200'
+                  ].join(' ')}
+                  onClick={() => setSelectedTitle(title)}
+                >
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <Badge variant={index === 0 ? 'default' : 'secondary'}>후보 {index + 1}</Badge>
+                    <Badge variant="outline">{inferFormat(title)}</Badge>
+                  </div>
+                  <strong className="block break-words text-lg font-black leading-snug text-slate-950">{title}</strong>
+                  <p className="mt-2 text-xs font-semibold leading-5 text-muted-foreground">{scoreTitle(title, studio)}</p>
+                </button>
+              ))}
+            </div>
+            <label className="grid gap-1.5">
+              <span className="text-xs font-black text-slate-500">직접 수정</span>
+              <input className="h-11 rounded-md border border-slate-200 bg-white px-3 text-sm font-black outline-none focus:border-indigo-400" value={selected} onChange={(event) => setSelectedTitle(event.target.value)} placeholder="선택할 콘텐츠 제목" />
+            </label>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>선택 기준</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm font-semibold leading-6 text-slate-600">
+            <InfoLine label="원본 키워드" value={studio.keyword ?? studio.label} />
+            <InfoLine label="검색 검증" value={studio.searchVerification?.verification?.grade ?? studio.searchVerification?.grade ?? '검증 완료'} />
+            <InfoLine label="제작 점수" value={`${studio.production?.score ?? studio.score ?? '-'}점`} />
+            <InfoLine label="추천 포맷" value={inferFormat(selected)} />
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs font-semibold leading-5 text-slate-500">
+              이 단계에서는 카드 본문을 만들지 않습니다. 검증된 키워드를 인스타 콘텐츠로 확장할 제목 하나만 고릅니다.
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+export function PlanView({ queue, studio, setView, setQueue, contentPlans, setContentPlans }) {
   const [manualState, setManualState] = useState({ loading: false, error: '' });
   const [manualOpen, setManualOpen] = useState(false);
   const [generationState, setGenerationState] = useState({ loading: false, error: '', cached: false });
@@ -20,7 +123,10 @@ export function StudioView({ queue, studio, setView, setQueue, contentPlans, set
   const error = generationState.error;
   const cached = generationState.cached;
   useEffect(() => {
-    setSetup({ cardCount: studio?.cardCount ?? DEFAULT_CARD_COUNT, title: makeTitleCandidates(studio)[0] ?? '' });
+    setSetup({
+      cardCount: studio?.contentSetup?.cardCount ?? studio?.cardCount ?? DEFAULT_CARD_COUNT,
+      title: studio?.selectedHookTitle ?? studio?.contentSetup?.title ?? makeTitleCandidates(studio)[0] ?? ''
+    });
     setGenerationState({ loading: false, error: '', cached: false });
   }, [studio?.id]);
   const updateCurrentPlan = useCallback((updater) => {
@@ -50,7 +156,7 @@ export function StudioView({ queue, studio, setView, setQueue, contentPlans, set
       const data = await createContentPlan(manualStudio, { refresh: true });
       setQueue((items = []) => [manualStudio, ...items.filter((item) => item?.id !== manualStudio.id)]);
       setContentPlans((plans) => ({ ...plans, [manualStudio.id]: data.plan }));
-      setView('studio');
+      setView('plan');
     } catch (error) {
       setManualState({ loading: false, error: error.message });
       return;
@@ -70,9 +176,9 @@ export function StudioView({ queue, studio, setView, setQueue, contentPlans, set
   return (
     <div className="space-y-5">
       <StageHead title={`${studio.label} 콘텐츠 설계`}>
-        <Button variant="outline" onClick={() => setView('search')}><ArrowLeft className="h-4 w-4" />검증으로</Button>
+        <Button variant="outline" onClick={() => setView('studio')}><ArrowLeft className="h-4 w-4" />제목 선택으로</Button>
         <Button variant="outline" onClick={() => setManualOpen((value) => !value)}>{manualOpen ? <X className="h-4 w-4" /> : <PencilLine className="h-4 w-4" />}{manualOpen ? '직접 설계 닫기' : '직접 설계'}</Button>
-        <Button onClick={() => setView('cardnews')} disabled={!plan}><Send className="h-4 w-4" />카드뉴스 시나리오로</Button>
+        <Button onClick={() => setView('cardnews')} disabled={!plan}><Send className="h-4 w-4" />이미지 제작으로</Button>
       </StageHead>
       {manualOpen ? <ManualBriefPanel onSubmit={createManualPlan} loading={manualState.loading} error={manualState.error} compact /> : null}
       {loading && <LoadingBox />}
@@ -148,6 +254,36 @@ function ManualBriefPanel({ onSubmit, loading, error, compact = false }) {
       </CardContent>
     </Card>
   );
+}
+
+function InfoLine({ label, value }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-3">
+      <span className="text-xs font-black text-slate-400">{label}</span>
+      <strong className="mt-1 block break-words text-sm font-black text-slate-800">{value || '-'}</strong>
+    </div>
+  );
+}
+
+function inferFormat(title = '') {
+  const text = `${title}`;
+  if (/비교|차이|vs|VS|기준/.test(text)) return '비교형';
+  if (/체크|준비|리스트|주의|조심/.test(text)) return '체크리스트형';
+  if (/추천|순위|BEST|베스트/.test(text)) return '랭킹형';
+  if (/비용|가격|계산|얼마/.test(text)) return '비용계산형';
+  if (/왜|이유|뜰까|뜨는/.test(text)) return '해설형';
+  return '저장형';
+}
+
+function scoreTitle(title, studio = {}) {
+  const format = inferFormat(title);
+  const score = Math.min(96, Math.max(72,
+    74
+    + (/체크|비교|추천|비용|주의|기준/.test(title) ? 8 : 0)
+    + ((studio.searchVerification || studio.production?.score >= 75) ? 6 : 0)
+    + (title.length <= 24 ? 4 : 0)
+  ));
+  return `${format} · 저장/공유 예상 ${score}점 · 계정 톤에 맞게 다음 단계에서 카드 구조만 생성`;
 }
 
 function PlanSetupPanel({ studio, setup, setSetup, titleCandidates, loading, hasPlan, onGenerate }) {
@@ -507,6 +643,11 @@ function normalizeChannelName(value) {
 
 function makeTitleCandidates(studio) {
   if (!studio) return [];
+  const aiIdeas = [
+    ...(studio.contentIdeas ?? []),
+    ...(studio.aiAnalysis?.contentIdeas ?? [])
+  ].map(cleanTitleCandidate).filter(Boolean);
+  if (aiIdeas.length) return [...new Set(aiIdeas)].slice(0, 6);
   const label = cleanTitleCandidate(studio.label ?? studio.keyword ?? '이 주제');
   const intent = classifyStudioIntent(studio);
   const base = (() => {

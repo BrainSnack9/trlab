@@ -9,23 +9,31 @@ import { TrendHistory } from './TrendHistory';
 
 export function CollectionTabs(props) {
   const [activeTab, setActiveTab] = useState('channels');
-  const tabs = [['channels', '수집 채널'], ['signals', '저장 데이터'], ['history', '트렌드 이력'], ['runs', '수집 로그'], ['blocked', '연동 대기']];
+  const tabs = [['channels', '채널별 상태'], ['signals', '저장 신호'], ['runs', '수집 실행 로그'], ['history', '분석 이력'], ['blocked', '연동 대기']];
   return (
     <Card>
-      <CardHeader className="border-b"><div className="flex flex-wrap items-center justify-between gap-3"><CardTitle>수집 저장소 모니터</CardTitle><div className="flex flex-wrap gap-2">{tabs.map(([id, label]) => <Button key={id} size="sm" variant={activeTab === id ? 'default' : 'outline'} onClick={() => setActiveTab(id)}>{label}</Button>)}</div></div></CardHeader>
+      <CardHeader className="border-b">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <CardTitle>저장소 상세</CardTitle>
+            <p className="mt-1 text-xs font-semibold text-muted-foreground">수집된 신호, 실행 로그, 분석 이력을 필요할 때만 열어 확인합니다.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">{tabs.map(([id, label]) => <Button key={id} size="sm" variant={activeTab === id ? 'default' : 'outline'} onClick={() => setActiveTab(id)}>{label}</Button>)}</div>
+        </div>
+      </CardHeader>
       <CardContent className="pt-5">{activeTab === 'channels' && <ChannelGrid {...props} />}{activeTab === 'signals' && <StoredSignals signals={props.signals} />}{activeTab === 'history' && <TrendHistory />}{activeTab === 'runs' && <RunLog runs={props.collectionRuns} />}{activeTab === 'blocked' && <BlockedSources sources={props.sources} />}</CardContent>
     </Card>
   );
 }
 
-function ChannelGrid({ sources, signalSources, signals, sourceRunStates, collectSource, selectedAreas, selectedChannelProfiles }) {
+function ChannelGrid({ sources, signalSources, signals, sourceRunStates, collectSource }) {
   const statusBySource = useMemo(() => new Map(signalSources.map((source) => [source.source, source])), [signalSources]);
   const countBySource = useMemo(() => signals.reduce((map, signal) => map.set(signal.source, (map.get(signal.source) ?? 0) + 1), new Map()), [signals]);
   const useful = sources.filter((source) => collectableSourceIds.includes(source.id));
-  return <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{useful.map((source) => <SourceCard key={source.id} source={source} statusBySource={statusBySource} countBySource={countBySource} running={sourceRunStates[source.id]} collectSource={collectSource} selectedAreas={selectedAreas} selectedChannelProfiles={selectedChannelProfiles} />)}</div>;
+  return <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{useful.map((source) => <SourceCard key={source.id} source={source} statusBySource={statusBySource} countBySource={countBySource} running={sourceRunStates[source.id]} collectSource={collectSource} />)}</div>;
 }
 
-function SourceCard({ source, statusBySource, countBySource, running, collectSource, selectedAreas, selectedChannelProfiles }) {
+function SourceCard({ source, statusBySource, countBySource, running, collectSource }) {
   const meta = sourceMetaById[source.id] ?? ['기타', source.name];
   const name = sourceNameById[source.id] ?? source.name;
   const status = statusBySource.get(name);
@@ -35,7 +43,7 @@ function SourceCard({ source, statusBySource, countBySource, running, collectSou
       <div className="flex items-start justify-between gap-3"><div><strong className="block">{source.name}</strong><span className="text-xs text-muted-foreground">{meta[0]} · {meta[1]}</span></div><Badge variant={status?.status === 'ok' ? 'default' : 'secondary'}>{statusText}</Badge></div>
       <div className="mt-3 grid grid-cols-3 gap-2 text-xs"><Mini label="저장" value={countBySource.get(name) ?? 0} /><Mini label="최근" value={status?.count ?? 0} /><Mini label="주기" value={`${source.interval}분`} /></div>
       {status?.finishedAt && <p className="mt-2 text-xs text-muted-foreground">마지막 수집: {formatTime(status.finishedAt)}</p>}
-      <Button className="mt-3 w-full" variant="outline" size="sm" disabled={running} onClick={() => collectSource(source.id, 'storage-tab', selectedAreas, selectedChannelProfiles)}>{running ? '수집 중' : '지금 수집'}</Button>
+      <Button className="mt-3 w-full" variant="outline" size="sm" disabled={running} onClick={() => collectSource(source.id, 'storage-tab')}>{running ? '수집 중' : '지금 수집'}</Button>
     </div>
   );
 }

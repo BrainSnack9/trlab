@@ -2,7 +2,7 @@ import { lowIntentCuePattern, marketingCuePattern, riskPattern, sourceWeights, s
 import { cleanKeyword } from './ranking-text.js';
 import {
   getBurstScore, getCommunityReactionScore, getKeywordQualityScore, getRecencyScore, getRiskPenalty, getSeenCount,
-  hasStoryContext, inferContentRisks, inferContentType, makeCardPlan, makeSuggestedTitle, parseMetric
+  hasStoryContext, inferContentRisks, inferContentType, makeSuggestedTitle, parseMetric
 } from './ranking-score-utils.js';
 
 const strongAreas = ['tech', 'brand', 'economy', 'finance', 'shopping', 'travel', 'health', 'food', 'auto', 'education', 'local'];
@@ -35,7 +35,7 @@ export function evaluateContentPotential(candidate, area, scoring) {
   const readable = hasStoryContext(candidate) ? 14 : 2;
   const score = Math.max(1, Math.min(100, Math.round(scoring.quality + scoring.story + sourceContext + visual + readable - scoring.riskPenalty)));
   const contentType = inferContentType(candidate.keyword, area);
-  return { score, grade: score >= 82 ? 'A' : score >= 68 ? 'B' : score >= 52 ? 'C' : 'D', contentType, risks: inferContentRisks(candidate, area), suggestedTitle: makeSuggestedTitle(candidate.keyword, contentType), reason: sourceCount >= 2 ? '여러 채널에서 동시에 감지된 후보입니다.' : '단일 채널 후보라 검색 검증이 필요합니다.', cardPlan: makeCardPlan(candidate.keyword, contentType) };
+  return { score, grade: score >= 82 ? 'A' : score >= 68 ? 'B' : score >= 52 ? 'C' : 'D', contentType, risks: inferContentRisks(candidate, area), suggestedTitle: makeSuggestedTitle(candidate.keyword, contentType), reason: sourceCount >= 2 ? '여러 채널에서 동시에 감지된 후보입니다.' : '단일 채널 후보라 검색 검증이 필요합니다.' };
 }
 
 export function evaluateProductionReadiness(candidate) {

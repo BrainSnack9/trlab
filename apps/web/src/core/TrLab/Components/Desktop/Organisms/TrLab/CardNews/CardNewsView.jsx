@@ -9,9 +9,9 @@ export function CardNewsView({ studio, setView, contentPlans }) {
   return (
     <div className="space-y-5">
       <StageHead title={`${studio.label} 카드뉴스 제작`}>
-        <Button variant="outline" onClick={() => setView('studio')}><ArrowLeft className="h-4 w-4" />콘텐츠 설계로</Button>
+        <Button variant="outline" onClick={() => setView('plan')}><ArrowLeft className="h-4 w-4" />콘텐츠 설계로</Button>
       </StageHead>
-      {plan ? <CardNewsMaker studio={studio} plan={plan} /> : <Empty title="먼저 콘텐츠 설계에서 기획안을 작성해주세요" onClick={() => setView('studio')} />}
+      {plan ? <CardNewsMaker studio={studio} plan={plan} /> : <Empty title="먼저 콘텐츠 설계에서 기획안을 작성해주세요" onClick={() => setView('plan')} />}
     </div>
   );
 }

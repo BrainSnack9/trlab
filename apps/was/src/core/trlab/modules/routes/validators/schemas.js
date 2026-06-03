@@ -43,6 +43,10 @@ export const latestTrendQuerySchema = z.object({
   scheduled: z.string().optional()
 });
 
+export const signalSummaryQuerySchema = z.object({
+  dates: z.string().default('')
+});
+
 export const trendHistoryQuerySchema = z.object({
   limit: positiveIntParam(18, 60)
 });
@@ -54,6 +58,8 @@ export const trendRankQuerySchema = z.object({
   ai: booleanFlagSchema,
   aiLimit: positiveIntParam(8, 10),
   signalLimit: positiveIntParam(500, 2000),
+  window: z.enum(['business-day', '24h', 'all', 'latest']).default('business-day'),
+  analysisDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   reason: z.string().default('manual-rank'),
   save: z.string().optional()
 });

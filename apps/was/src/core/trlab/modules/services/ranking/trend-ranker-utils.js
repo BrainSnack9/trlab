@@ -38,7 +38,10 @@ export function limitRelatedEvidence(candidate, index, candidates) {
 export function isStrongFinalCandidate(candidate) {
   const text = `${candidate.keyword} ${candidate.sampleTitles.join(' ')}`;
   if (broadKeywordPattern.test(candidate.keyword)) return false;
+  if (isEnglishSentenceCandidate(candidate)) return false;
   if (weakStandaloneKeywordPattern.test(candidate.keyword)) return false;
+  if (isVagueModifierCandidate(candidate)) return false;
+  if (isThinSearchSeedCandidate(candidate)) return false;
   if (/(네이버페이|캐시워크|포인트|적립|랜덤|눌러|라이브보고|\d+원)/i.test(text) && !/(가격|인상|인하|소비|구매|브랜드|시장)/i.test(text)) return false;
   if (incidentPattern.test(text) && !/(전략|시장|비교|가격|소비|브랜드|AI|반도체|전기차)/i.test(text)) return false;
   if (candidate.sources.length === 1 && incidentPattern.test(text)) return false;
@@ -77,6 +80,7 @@ export function refineKeyword(candidate) {
   const title = candidate.sampleTitles.find((sample) => cleanKeyword(sample).length >= keyword.length + 10);
   if (!title) return keyword;
   const text = cleanKeyword(title);
+  if (/top\s*10/i.test(keyword) && /라면|ramen/i.test(text) && /판매량|순위|랭킹|top\s*10/i.test(text)) return '한국 라면 판매량 Top10';
   if (/장모님.*환갑여행|환갑여행.*장모님|환갑.*여행.*가족/.test(text)) return '환갑여행 가족 갈등';
   if (/건강염려증.*배우자|배우자.*건강염려증/.test(text)) return '배우자 건강염려증 갈등';
   if (/영화할인쿠폰|영화.*할인쿠폰|쿠폰.*소진|225만장/.test(text)) return '정부 영화할인쿠폰 소진';
@@ -148,4 +152,45 @@ function cleanTitleTopic(text) {
     .filter((token) => !weakStandaloneKeywordPattern.test(token))
     .filter((token) => !/(제가|진짜|그냥|어떻게|그리고|근데|이거|저거)$/.test(token));
   return tokens.slice(0, 4).join(' ') || text.slice(0, 18);
+}
+
+function isEnglishSentenceCandidate(candidate) {
+  const keyword = `${candidate.keyword ?? ''}`.trim();
+  if (!/^[a-z0-9\s-]+$/i.test(keyword) || !keyword.includes(' ')) return false;
+  const words = keyword.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length < 4) return false;
+  return /^(i|we|you|they|he|she|asked|ask|generate|generated|make|made|using|with|about|average|users?)\b/i.test(keyword)
+    || words.length >= 5;
+}
+
+function isVagueModifierCandidate(candidate) {
+  const keyword = `${candidate.keyword ?? ''}`.trim();
+  if (!keyword.includes(' ') && /^(난리난|난리|난리남|화제|화제의|분위기|반응|근황|대박|핫한|뜨는|인기|인기템|고급진|이국적인|차별받았어요|차별받음|받았어요|억울해요|하소연)$/i.test(keyword)) return true;
+  if (/(받았어요|당했어요|억울해요|서러워요|하소연)$/i.test(keyword)) return true;
+  if (keyword.length <= 4 && candidate.sampleTitles.every((title) => {
+    const cleaned = cleanKeyword(title);
+    return cleaned.length >= keyword.length + 8 && !new RegExp(`${escapeRegex(keyword)}\\s*(가격|할인|출시|지원금|비교|전망|체크|순위|신청|주의|선택|변화|전략|정리|분석|영향|비결|성장|인상|인하|예약|스펙|업데이트)`, 'i').test(cleaned);
+  })) return true;
+  return false;
+}
+
+function isThinSearchSeedCandidate(candidate) {
+  if (candidate.sources.length !== 1 || !candidate.sources.includes('Search SERP')) return false;
+  const keyword = `${candidate.keyword ?? ''}`.trim();
+  const evidence = candidate.evidence ?? candidate.signals ?? [];
+  if (!evidence.length) return false;
+  const titles = evidence.map((item) => cleanKeyword(item.title ?? ''));
+  const exactMetricMatches = evidence.filter((item) => cleanKeyword(item.metric ?? '').toLowerCase() === keyword.toLowerCase()).length;
+  const allTitlesOnlyEchoSeed = titles.every((title) => {
+    const lowerTitle = title.toLowerCase();
+    const lowerKeyword = keyword.toLowerCase();
+    return lowerTitle.includes(lowerKeyword) || title.length <= keyword.length + 14;
+  });
+  return exactMetricMatches >= Math.max(2, Math.ceil(evidence.length * 0.6))
+    && allTitlesOnlyEchoSeed
+    && !/(AI|K-?뷰티|반도체|지원금|품절|대란템|콜드컵|올리브영|올영|전기차|금리|환율|부동산|자동급식기|스킨케어|다이퍼|기저귀)/i.test(`${keyword} ${titles.join(' ')}`);
+}
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

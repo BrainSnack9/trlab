@@ -9,7 +9,7 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['apps/**/*.test.js'],
+    include: ['apps/**/*.test.js', 'test/**/*.test.js'],
     setupFiles: ['./test/setup-msw.js']
   }
 });

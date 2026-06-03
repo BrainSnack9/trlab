@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { clearCollectedTrends as clearCollectedTrendsApi, collectSignals as collectSignalsApi, deleteChannelProfile as deleteChannelProfileApi, getChannelProfiles, getLatestSignals, getLatestTrendSnapshot, rankTrends, saveChannelProfile as saveChannelProfileApi } from '@/core/TrLab/modules/clients/api';
+import { clearCollectedTrends as clearCollectedTrendsApi, collectSignals as collectSignalsApi, deleteChannelProfile as deleteChannelProfileApi, getAccountSlots, getChannelProfiles, getLatestSignals, getLatestTrendSnapshot, rankTrends, saveAccountSlots as saveAccountSlotsApi, saveChannelProfile as saveChannelProfileApi } from '@/core/TrLab/modules/clients/api';
 import { collectableSourceIds, initialSources, interestAreas, sourceNameById } from '@/core/TrLab/modules/configs/constants';
 import { classifyText } from '@/core/TrLab/modules/helpers/utils';
 
@@ -9,6 +9,8 @@ export function useTrLabData() {
   const [rankedTrends, setRankedTrends] = useState([]);
   const [processingMeta, setProcessingMeta] = useState(null);
   const [channelProfiles, setChannelProfiles] = useState([]);
+  const [accountSlots, setAccountSlotsState] = useState([]);
+  const accountSlotsRef = useRef([]);
   const [signalSources, setSignalSources] = useState([]);
   const [signalStats, setSignalStats] = useState({ total: 0 });
   const [collectionRuns, setCollectionRuns] = useState([]);
@@ -53,14 +55,21 @@ export function useTrLabData() {
     return data;
   }, []);
 
-  const refreshTrendRanking = useCallback(async () => {
+  const loadAccountSlots = useCallback(async () => {
+    const data = await getAccountSlots();
+    accountSlotsRef.current = data.slots ?? [];
+    setAccountSlotsState(accountSlotsRef.current);
+    return data;
+  }, []);
+
+  const refreshTrendRanking = useCallback(async ({ analysisDate } = {}) => {
     collectionClearedRef.current = false;
     setRankingLoading(true);
     setCollectError('');
     try {
-      const data = await rankTrends();
+      const data = await rankTrends({ analysisDate });
       setRankedTrends(data.trends ?? []);
-      setProcessingMeta({ processedAt: data.processedAt, inputCount: data.inputCount ?? 0, candidateCount: data.candidateCount ?? 0, verifiedCount: data.verifiedCount ?? 0, mode: 'live', ai: data.ai });
+      setProcessingMeta({ processedAt: data.processedAt, inputCount: data.inputCount ?? 0, candidateCount: data.candidateCount ?? 0, verifiedCount: data.verifiedCount ?? 0, mode: 'live', ai: data.ai, analysisWindow: data.analysisWindow });
       return data;
     } catch (error) {
       setCollectError(error.message ?? 'AI 분석 중 오류가 발생했습니다.');
@@ -111,6 +120,16 @@ export function useTrLabData() {
     await loadChannelProfiles();
   }, [loadChannelProfiles]);
 
+  const saveAccountSlots = useCallback(async (slotsOrUpdater) => {
+    const nextSlots = typeof slotsOrUpdater === 'function' ? slotsOrUpdater(accountSlotsRef.current) : slotsOrUpdater;
+    accountSlotsRef.current = nextSlots ?? [];
+    setAccountSlotsState(accountSlotsRef.current);
+    const data = await saveAccountSlotsApi(nextSlots);
+    accountSlotsRef.current = data.slots ?? nextSlots;
+    setAccountSlotsState(accountSlotsRef.current);
+    return data.slots;
+  }, []);
+
   const clearCollectedTrends = useCallback(async () => {
     setClearingCollection(true);
     collectionClearedRef.current = true;
@@ -132,8 +151,8 @@ export function useTrLabData() {
     }
   }, []);
 
-  useEffect(() => { Promise.all([loadLatestCollection(), loadLatestTrendSnapshot(), loadChannelProfiles()]).catch(() => {}); }, [loadLatestCollection, loadLatestTrendSnapshot, loadChannelProfiles]);
-  return { sources, setSources, signals, signalStats, rankedTrends, processingMeta, channelProfiles, signalSources, collectionRuns, collectingSignals, clearingCollection, rankingLoading, collectError, sourceRunStates, timerEvents, collectSource, collectSignals, clearCollectedTrends, refreshTrendRanking, saveChannelProfile, deleteChannelProfile, collectableSourceIds };
+  useEffect(() => { Promise.all([loadLatestCollection(), loadLatestTrendSnapshot(), loadChannelProfiles(), loadAccountSlots()]).catch(() => {}); }, [loadLatestCollection, loadLatestTrendSnapshot, loadChannelProfiles, loadAccountSlots]);
+  return { sources, setSources, signals, signalStats, rankedTrends, processingMeta, channelProfiles, accountSlots, setAccountSlots: saveAccountSlots, signalSources, collectionRuns, collectingSignals, clearingCollection, rankingLoading, collectError, sourceRunStates, timerEvents, refreshCollection: loadLatestCollection, collectSource, collectSignals, clearCollectedTrends, refreshTrendRanking, saveChannelProfile, deleteChannelProfile, collectableSourceIds };
 }
 
 function snapshotToTrend(item) {

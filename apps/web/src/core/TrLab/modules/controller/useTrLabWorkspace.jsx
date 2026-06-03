@@ -7,8 +7,8 @@ import { trendToRadarItem } from '@/core/TrLab/modules/helpers/utils';
 
 const TrLabWorkspaceContext = createContext(null);
 const WORKSPACE_STORAGE_KEY = 'trlab.workspace.v1';
-const WORKSPACE_STATE_VERSION = 2;
-const PERSISTABLE_VIEWS = new Set(['dashboard', 'collection', 'search', 'studio', 'cardnews']);
+const WORKSPACE_STATE_VERSION = 5;
+const PERSISTABLE_VIEWS = new Set(['dashboard', 'profiles', 'collection', 'settings', 'search', 'studio', 'plan', 'cardnews']);
 
 function useTrLabWorkspaceImpl() {
   const data = useTrLabData();
@@ -17,6 +17,7 @@ function useTrLabWorkspaceImpl() {
   const [queue, setQueue] = useState([]);
   const [contentPlans, setContentPlans] = useState({});
   const [selectedTrend, setSelectedTrend] = useState(null);
+  const [analysisDate, setAnalysisDate] = useState(todayKstDate());
   const [selectedChannelProfiles, setSelectedChannelProfiles] = useState(defaultSelectedProfiles);
   const [selectedAreas, setSelectedAreas] = useState(defaultSelectedAreas);
   const [excludedAreas, setExcludedAreas] = useState(defaultExcludedAreas);
@@ -27,6 +28,7 @@ function useTrLabWorkspaceImpl() {
     if (persisted.queue) setQueue(persisted.queue);
     if (persisted.contentPlans) setContentPlans(persisted.contentPlans);
     if (persisted.selectedTrend) setSelectedTrend(persisted.selectedTrend);
+    if (persisted.analysisDate) setAnalysisDate(persisted.analysisDate);
     if (persisted.selectedChannelProfiles) setSelectedChannelProfiles(persisted.selectedChannelProfiles);
     if (persisted.selectedAreas) setSelectedAreas(persisted.selectedAreas);
     if (persisted.excludedAreas) setExcludedAreas(persisted.excludedAreas);
@@ -62,8 +64,8 @@ function useTrLabWorkspaceImpl() {
 
   useEffect(() => {
     if (!hydrated) return;
-    saveWorkspaceState({ view, queue, contentPlans, selectedTrend, selectedChannelProfiles, selectedAreas, excludedAreas });
-  }, [hydrated, view, queue, contentPlans, selectedTrend, selectedChannelProfiles, selectedAreas, excludedAreas]);
+    saveWorkspaceState({ view, queue, contentPlans, selectedTrend, analysisDate, selectedChannelProfiles, selectedAreas, excludedAreas });
+  }, [hydrated, view, queue, contentPlans, selectedTrend, analysisDate, selectedChannelProfiles, selectedAreas, excludedAreas]);
 
   return {
     ...data,
@@ -75,8 +77,12 @@ function useTrLabWorkspaceImpl() {
     setContentPlans,
     selectedTrend,
     setSelectedTrend,
+    analysisDate,
+    setAnalysisDate,
     selectedChannelProfiles,
     setSelectedChannelProfiles,
+    accountSlots: data.accountSlots,
+    setAccountSlots: data.setAccountSlots,
     selectedAreas,
     setSelectedAreas,
     excludedAreas,
@@ -157,6 +163,7 @@ function loadWorkspaceState() {
       queue: Array.isArray(parsed.queue) ? parsed.queue : [],
       contentPlans: isPlainObject(parsed.contentPlans) ? parsed.contentPlans : {},
       selectedTrend: parsed.selectedTrend && typeof parsed.selectedTrend === 'object' ? parsed.selectedTrend : null,
+      analysisDate: isDateText(parsed.analysisDate) ? parsed.analysisDate : todayKstDate(),
       selectedChannelProfiles: Array.isArray(parsed.selectedChannelProfiles) ? parsed.selectedChannelProfiles : defaultSelectedProfiles,
       selectedAreas: Array.isArray(parsed.selectedAreas) ? parsed.selectedAreas : defaultSelectedAreas,
       excludedAreas: Array.isArray(parsed.excludedAreas) ? parsed.excludedAreas : defaultExcludedAreas
@@ -176,6 +183,7 @@ function saveWorkspaceState(state) {
       queue: Array.isArray(state.queue) ? state.queue.slice(0, 12) : [],
       contentPlans: isPlainObject(state.contentPlans) ? state.contentPlans : {},
       selectedTrend: state.selectedTrend ?? null,
+      analysisDate: isDateText(state.analysisDate) ? state.analysisDate : todayKstDate(),
       selectedChannelProfiles: Array.isArray(state.selectedChannelProfiles) ? state.selectedChannelProfiles : defaultSelectedProfiles,
       selectedAreas: Array.isArray(state.selectedAreas) ? state.selectedAreas : defaultSelectedAreas,
       excludedAreas: Array.isArray(state.excludedAreas) ? state.excludedAreas : defaultExcludedAreas
@@ -192,4 +200,13 @@ function isPlainObject(value) {
 function getDefaultProfileIds(profiles = []) {
   const ids = profiles.filter((profile) => profile.enabled !== false).map((profile) => profile.id);
   return ids.length ? ids : defaultSelectedProfiles;
+}
+
+function todayKstDate() {
+  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  return `${kst.getUTCFullYear()}-${String(kst.getUTCMonth() + 1).padStart(2, '0')}-${String(kst.getUTCDate()).padStart(2, '0')}`;
+}
+
+function isDateText(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(`${value ?? ''}`);
 }

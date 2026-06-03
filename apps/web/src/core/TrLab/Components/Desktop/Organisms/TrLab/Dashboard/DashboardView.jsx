@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FileText } from 'lucide-react';
+import { CalendarDays, FileText } from 'lucide-react';
 import { Badge } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Badge/Badge';
 import { Button } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Button/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Card';
@@ -7,12 +7,16 @@ import { defaultExcludedAreas, defaultSelectedAreas } from '@/core/TrLab/modules
 import { isSignalVisible, isTrendVisible } from '@/core/TrLab/modules/helpers/utils';
 import { PageHero } from '@/core/TrLab/Components/Desktop/Molecules/TrLab/Common';
 import { CandidateBoard, ScopeFilter, TrendProcessingStatus } from './DashboardWidgets';
+import { getSignalDateSummary } from '@/core/TrLab/modules/clients/api';
 
 export function DashboardView(props) {
   const selectedSet = useMemo(() => new Set(props.selectedAreas), [props.selectedAreas]);
   const excludedSet = useMemo(() => new Set(props.excludedAreas), [props.excludedAreas]);
+  const selectedProfileSet = useMemo(() => new Set(props.selectedChannelProfiles ?? []), [props.selectedChannelProfiles]);
   const visibleSignals = useMemo(() => props.signals.filter((s) => isSignalVisible(s, selectedSet, excludedSet)), [props.signals, selectedSet, excludedSet]);
-  const candidates = useMemo(() => props.rankedTrends.filter((t) => isTrendVisible(t, selectedSet, excludedSet)), [props.rankedTrends, selectedSet, excludedSet]);
+  const candidates = useMemo(() => props.rankedTrends
+    .filter((t) => isTrendVisible(t, selectedSet, excludedSet))
+    .filter((t) => isProfileVisible(t, selectedProfileSet)), [props.rankedTrends, selectedSet, excludedSet, selectedProfileSet]);
   const [selectedCandidateId, setSelectedCandidateId] = useState('');
   const selectedCandidate = useMemo(() => candidates.find((candidate) => getCandidateId(candidate) === selectedCandidateId) ?? candidates[0], [candidates, selectedCandidateId]);
   const resetScope = () => {
@@ -35,21 +39,92 @@ export function DashboardView(props) {
     <div className="space-y-5">
       <AnalysisOverlay show={props.rankingLoading} />
       <section className="grid gap-4 md:grid-cols-[minmax(0,1fr)_360px] md:items-end">
-        <PageHero title="트렌드 감지" description="수집된 신호를 교차검증하고 카드뉴스로 만들 만한 주제를 우선 정렬합니다." />
+        <PageHero title="트렌드 감지" description="수집은 통합으로 실행하고, 결과는 계정 프로필 기준으로 나눠 봅니다." />
         <SignalSummary
           total={props.signalStats?.total ?? props.signals.length}
           visible={visibleSignals.length}
           candidates={props.rankingLoading ? '...' : candidates.length}
         />
       </section>
+      <AnalysisDatePicker analysisDate={props.analysisDate} setAnalysisDate={props.setAnalysisDate} meta={props.processingMeta} />
       <TrendProcessingStatus meta={props.processingMeta} trends={candidates} loading={props.rankingLoading} onRefresh={props.refreshTrendRanking} onCollect={props.onCollectSignals} onClear={props.clearCollectedTrends} collecting={props.collectingSignals} clearing={props.clearingCollection} hasSignals={Boolean(props.signals.length)} />
+      <ScopeFilter {...props} selectedSet={selectedSet} excludedSet={excludedSet} reset={resetScope} />
       <section className="grid items-stretch gap-5 md:h-[calc(100vh-220px)] md:min-h-[720px] md:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_380px]">
         <CandidateBoard candidates={candidates} selectedCandidate={selectedCandidate} onSelectCandidate={(candidate) => setSelectedCandidateId(getCandidateId(candidate))} />
         <CandidateDetailPanel candidate={selectedCandidate} chooseTrend={props.chooseTrend} loading={props.rankingLoading} />
       </section>
-      <ScopeFilter {...props} selectedSet={selectedSet} excludedSet={excludedSet} reset={resetScope} />
     </div>
   );
+}
+
+function AnalysisDatePicker({ analysisDate, setAnalysisDate, meta }) {
+  const dates = useMemo(() => recentKstDates(7), []);
+  const selected = analysisDate || dates[0]?.id;
+  const [summary, setSummary] = useState({});
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const windowLabel = meta?.analysisWindow?.date === selected
+    ? meta?.analysisWindow?.label
+    : `${selected} 05:00 KST`;
+
+  const refreshSummary = async () => {
+    setSummaryLoading(true);
+    try {
+      const data = await getSignalDateSummary(dates.map((item) => item.id));
+      setSummary(Object.fromEntries((data.summaries ?? []).map((item) => [item.date, item])));
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    refreshSummary().catch(() => {});
+  }, []);
+
+  const selectedCount = summary[selected]?.count ?? 0;
+
+  return (
+    <Card className="bg-white">
+      <CardContent className="grid gap-3 p-4 lg:grid-cols-[1fr_auto] lg:items-center">
+        <div>
+          <div className="flex items-center gap-2 text-sm font-black text-slate-950">
+            <CalendarDays className="h-4 w-4 text-indigo-600" />
+            분석 기준일
+          </div>
+          <p className="mt-1 text-xs font-semibold text-muted-foreground">선택한 날짜의 05:00 KST부터 다음날 05:00 KST 전까지 수집된 신호만 AI 분석에 사용합니다.</p>
+          <div className="mt-2 flex flex-wrap gap-2 text-xs font-bold text-slate-500">
+            <span>현재 기준: {windowLabel}</span>
+            <span>분석 가능 신호: {summaryLoading ? '확인 중' : `${selectedCount}건`}</span>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {dates.map((item) => (
+            <Button key={item.id} size="sm" variant={selected === item.id ? 'default' : 'outline'} onClick={() => setAnalysisDate(item.id)}>
+              {item.label} {formatCount(summary[item.id]?.count)}
+            </Button>
+          ))}
+          <input
+            className="h-9 rounded-md border bg-white px-2 text-sm font-bold outline-none focus:border-indigo-300"
+            type="date"
+            value={selected}
+            onChange={(event) => {
+              setAnalysisDate(event.target.value);
+              if (!summary[event.target.value]) {
+                getSignalDateSummary([event.target.value]).then((data) => {
+                  setSummary((current) => ({ ...current, ...Object.fromEntries((data.summaries ?? []).map((item) => [item.date, item])) }));
+                }).catch(() => {});
+              }
+            }}
+          />
+          <Button size="sm" variant="outline" onClick={refreshSummary} disabled={summaryLoading}>개수 확인</Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function formatCount(value) {
+  if (!Number.isFinite(value)) return '';
+  return `· ${value}건`;
 }
 
 function AnalysisOverlay({ show }) {
@@ -91,6 +166,7 @@ function CandidateDetailPanel({ candidate, chooseTrend, loading }) {
   const score = candidate?.production?.score ?? candidate?.score ?? 0;
   const profile = candidate?.channelFit?.bestProfile;
   const ai = candidate?.aiAnalysis;
+  const contentIdeas = getContentIdeas(candidate);
 
   return (
     <Card className="flex h-full min-h-0 flex-col">
@@ -113,8 +189,14 @@ function CandidateDetailPanel({ candidate, chooseTrend, loading }) {
             <DetailMetric label="언급" value={candidate.mentions} />
             <DetailMetric label="출처" value={candidate.sources?.length ?? 0} />
           </div>
-          {ai && <div className="rounded-md border border-indigo-100 bg-indigo-50 p-3">
-            <div className="text-xs font-black text-indigo-700">AI 판단</div>
+          {contentIdeas.length ? <div className="rounded-md border border-indigo-100 bg-indigo-50 p-3">
+            <div className="text-xs font-black text-indigo-700">콘텐츠 제목 후보</div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {contentIdeas.map((idea) => <Badge key={idea} variant="outline">{idea}</Badge>)}
+            </div>
+          </div> : null}
+          {ai && <div className="rounded-md border border-slate-100 bg-slate-50 p-3">
+            <div className="text-xs font-black text-slate-600">키워드 검증 판단</div>
             <p className="mt-1 text-sm font-bold leading-6 text-indigo-950">{ai.angle ?? ai.summary ?? ai.reason ?? 'AI 분석 결과가 반영된 후보입니다.'}</p>
           </div>}
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -139,11 +221,25 @@ function CandidateDetailPanel({ candidate, chooseTrend, loading }) {
               {!evidence.length && <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">이 후보에 연결된 근거가 아직 없습니다.</p>}
             </div>
           </div>
-          <Button className="w-full min-h-[42px]" onClick={() => chooseTrend(candidate)}>이 후보로 제작 준비</Button>
+          <Button className="w-full min-h-[42px]" onClick={() => chooseTrend(candidate)}>제목 후보 선택하러 가기</Button>
         </>}
       </CardContent>
     </Card>
   );
+}
+
+function getContentIdeas(candidate) {
+  return [...new Set([
+    ...(candidate?.contentIdeas ?? []),
+    ...(candidate?.aiAnalysis?.contentIdeas ?? [])
+  ].filter(Boolean))].slice(0, 6);
+}
+
+function isProfileVisible(candidate, selectedProfileSet) {
+  if (!selectedProfileSet?.size) return true;
+  const bestId = candidate?.channelFit?.bestProfile?.id;
+  const profileIds = (candidate?.channelFit?.profiles ?? []).map((profile) => profile.id);
+  return (bestId && selectedProfileSet.has(bestId)) || profileIds.some((id) => selectedProfileSet.has(id));
 }
 
 function DetailMetric({ label, value }) {
@@ -182,4 +278,16 @@ function getCandidateEvidence(candidate) {
 
 function getCandidateId(candidate) {
   return candidate?.id ?? `${candidate?.keyword ?? candidate?.label ?? ''}`;
+}
+
+function recentKstDates(count) {
+  const today = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  return Array.from({ length: count }, (_, index) => {
+    const date = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - index));
+    const id = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+    return {
+      id,
+      label: index === 0 ? '오늘' : index === 1 ? '어제' : `${date.getUTCMonth() + 1}/${date.getUTCDate()}`
+    };
+  });
 }

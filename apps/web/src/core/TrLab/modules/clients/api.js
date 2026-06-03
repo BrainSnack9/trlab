@@ -25,18 +25,28 @@ export function getLatestSignals() {
   return api.get(apiPath('/api/signals/latest'), { cache: 'no-store' }).json();
 }
 
+export function getSignalDateSummary(dates = []) {
+  return api.get(apiPath('/api/signals/summary'), {
+    cache: 'no-store',
+    searchParams: { dates: dates.join(',') }
+  }).json();
+}
+
 export function getLatestTrendSnapshot() {
   return api.get(apiPath('/api/trends/latest'), { cache: 'no-store' }).json();
 }
 
-export function rankTrends() {
+export function rankTrends({ analysisDate } = {}) {
   return api.get(apiPath('/api/trends/rank'), {
     cache: 'no-store',
     searchParams: {
-      verify: '0',
+      verify: '1',
+      verifyLimit: '5',
       ai: '1',
-      aiLimit: '5',
+      aiLimit: '8',
       limit: '12',
+      window: 'business-day',
+      ...(analysisDate ? { analysisDate } : {}),
       save: '1',
       reason: 'manual-rank'
     }
@@ -54,6 +64,22 @@ export function collectSignals({ source, reason, areas, profiles } = {}) {
 
 export function clearCollectedTrends() {
   return api.post(apiPath('/api/signals/clear')).json();
+}
+
+export function getDatabaseStatus() {
+  return api.get(apiPath('/api/admin/db'), { cache: 'no-store' }).json();
+}
+
+export function runDatabaseAction(payload) {
+  return api.post(apiPath('/api/admin/db'), { json: payload, timeout: 180000 }).json();
+}
+
+export function getCollectorRuntimeStatus() {
+  return api.get(apiPath('/api/admin/collector'), { cache: 'no-store' }).json();
+}
+
+export function runCollectorRuntimeAction(payload) {
+  return api.post(apiPath('/api/admin/collector'), { json: payload, timeout: 180000 }).json();
 }
 
 export function collectFmKoreaWithBrowser({ auth = true } = {}) {
@@ -85,8 +111,24 @@ export function getChannelProfiles() {
   return api.get(apiPath('/api/channel-profiles'), { cache: 'no-store' }).json();
 }
 
+export function getAccountSlots() {
+  return api.get(apiPath('/api/accounts/slots'), { cache: 'no-store' }).json();
+}
+
+export function saveAccountSlots(slots) {
+  return api.post(apiPath('/api/accounts/slots'), { json: { slots } }).json();
+}
+
 export function saveChannelProfile(profile) {
   return api.post(apiPath('/api/channel-profiles'), { json: profile }).json();
+}
+
+export function suggestChannelProfile(title) {
+  return api.post(apiPath('/api/channel-profiles/suggest'), { json: { title } }).json();
+}
+
+export function tuneChannelProfile({ profile, field, context }) {
+  return api.post(apiPath('/api/channel-profiles/tune'), { json: { profile, field, context } }).json();
 }
 
 export function deleteChannelProfile(id) {
@@ -102,6 +144,13 @@ export function createContentPlan(payload, { refresh = false } = {}) {
 
 export function generateContentImage(payload) {
   return api.post(apiPath('/api/content/image'), { json: payload }).json();
+}
+
+export function listContentImages({ planId, limit = 60 } = {}) {
+  const searchParams = new URLSearchParams();
+  if (planId) searchParams.set('planId', planId);
+  if (limit) searchParams.set('limit', String(limit));
+  return api.get(apiPath('/api/content/image'), { cache: 'no-store', searchParams }).json();
 }
 
 export function previewContentImagePrompt(payload) {

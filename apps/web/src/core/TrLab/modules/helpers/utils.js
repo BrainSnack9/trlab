@@ -43,6 +43,7 @@ export function trendToRadarItem(trend, index) {
     score,
     production: trend.production,
     validation: trend.validation,
+    contentIdeas: trend.contentIdeas ?? trend.aiAnalysis?.contentIdeas ?? [],
     searchVerification: trend.searchVerification,
     aiAnalysis: trend.aiAnalysis,
     channelFit: trend.channelFit,
@@ -94,7 +95,7 @@ export function getHostname(value) {
 }
 
 export function makeScenario(studio) {
-  const plan = studio?.validation?.cardPlan ?? [`${studio?.label} 핵심 신호`, '왜 지금 반응하는가', '콘텐츠 각도', '검증 포인트', '요약'];
+  const plan = [`${studio?.label} 핵심 신호`, '왜 지금 반응하는가', '콘텐츠 각도', '검증 포인트', '요약'];
   return plan.map((title, index) => ({
     page: index + 1,
     title,
@@ -103,6 +104,11 @@ export function makeScenario(studio) {
 }
 
 export function buildContentIdeas(studio) {
+  const aiIdeas = [
+    ...(studio?.contentIdeas ?? []),
+    ...(studio?.aiAnalysis?.contentIdeas ?? [])
+  ].filter(Boolean);
+  if (aiIdeas.length) return [...new Set(aiIdeas)].slice(0, 6);
   return [
     studio?.validation?.suggestedTitle ?? `${studio?.label} 카드뉴스 초안`,
     studio?.production?.suggestedAngle,

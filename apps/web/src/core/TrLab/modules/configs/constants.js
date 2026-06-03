@@ -1,14 +1,17 @@
-import { Layers3, Lightbulb, Radar, SearchCheck, ServerCog } from 'lucide-react';
+import { Database, FileJson2, Images, Lightbulb, Radar, SearchCheck, ServerCog, UserRoundCog } from 'lucide-react';
 
 export const steps = [
   ['dashboard', '트렌드 감지', '제작 후보', Radar],
   ['search', '검색 검증', '근거 확인', SearchCheck],
-  ['studio', '콘텐츠 설계', '아이디어', Lightbulb],
-  ['cardnews', '카드뉴스 제작', '시나리오', Layers3]
+  ['studio', '제목 선택', '아이디어', Lightbulb],
+  ['plan', '콘텐츠 설계', 'JSON 기획', FileJson2],
+  ['cardnews', '이미지 제작', '카드 생성', Images]
 ];
 
 export const utilitySteps = [
-  ['collection', '수집 관리', '채널/저장소', ServerCog]
+  ['profiles', '계정 프로필', '전략/Seed', UserRoundCog],
+  ['collection', '수집 관리', '채널/저장소', ServerCog],
+  ['settings', '설정', 'DB 관리', Database]
 ];
 
 export const interestAreas = [

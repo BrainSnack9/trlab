@@ -13,6 +13,13 @@ export function SearchView({ selected, addToQueue, queued, setView }) {
 
   useEffect(() => {
     if (!selected) return;
+    const cached = searchCheckFromSelected(selected);
+    if (cached) {
+      setSearchCheck(cached);
+      setCheckingSearch(false);
+      setSearchError('');
+      return;
+    }
     let active = true;
     setCheckingSearch(true);
     setSearchError('');
@@ -41,10 +48,34 @@ export function SearchView({ selected, addToQueue, queued, setView }) {
   );
 }
 
+function searchCheckFromSelected(selected) {
+  const verification = selected?.searchVerification;
+  if (!verification) return null;
+  if (verification.verification) return verification;
+  const sources = verification.sources ?? [];
+  const results = sources.flatMap((source) => (source.results ?? []).map((item) => ({ ...item, source: source.source })));
+  return {
+    query: selected.keyword ?? selected.label,
+    checkedAt: verification.checkedAt,
+    sources,
+    results,
+    verification: {
+      score: verification.score,
+      grade: verification.grade,
+      tokens: verification.tokens ?? [],
+      summary: `${selected.label} 관련 검색 매칭 ${verification.matchedResults ?? results.length}건을 확인했습니다.`,
+      reason: `강한 근거 ${verification.matchedResults ?? results.length}건 · 확인 출처 ${verification.sourceCount ?? sources.filter((source) => source.status === 'ok' && source.count > 0).length}곳`,
+      recommendedAction: verification.grade === '통과' ? '제목 후보 선택으로 넘겨도 됩니다.' : '원문 확인 후 보류 판단을 권장합니다.',
+      draftReady: verification.grade === '통과',
+      keyFindings: verification.keyFindings ?? []
+    }
+  };
+}
+
 function queueLabel(queued, checking, canQueue) {
-  if (queued) return '스튜디오에 담김';
+  if (queued) return '제목 선택 대기';
   if (checking) return '검색 검증 중';
-  return canQueue ? '콘텐츠 설계 진행' : '검증 통과 필요';
+  return canQueue ? '제목 후보 선택' : '검증 통과 필요';
 }
 
 function SummaryCard({ selected }) {

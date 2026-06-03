@@ -12,7 +12,7 @@ export default function HeaderNavigator() {
   return (
     <header className="shrink-0 border-b border-slate-200 bg-white/95 px-4 py-3 shadow-[0_1px_0_rgba(15,23,42,0.04)] backdrop-blur-xl md:px-6">
       <div className="mx-auto grid w-full max-w-[1480px] gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
-        <nav className="grid w-full gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1 md:grid-cols-4">
+        <nav className="grid w-full gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1 md:grid-cols-5">
           {steps.map(([id, label, , Icon]) => (
             <Button key={id} variant={view === id ? 'secondary' : 'ghost'} className={navClass(view === id)} onClick={() => setView(id)}>
               <Icon className="h-4 w-4 shrink-0" />
