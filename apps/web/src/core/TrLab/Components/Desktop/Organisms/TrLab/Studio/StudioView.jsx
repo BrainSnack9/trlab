@@ -410,25 +410,70 @@ function QueuePanel({ queue, removeFromQueue }) {
 }
 
 function PlanSummary({ plan, cached }) {
+  const generation = plan.generation ?? {};
+  const enrichment = effectiveVisualDataEnrichment(plan);
   return (
     <Card>
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <CardTitle>{plan.coreAngle}</CardTitle>
-          {cached ? <Badge variant="secondary">저장본</Badge> : null}
+          <div className="flex flex-wrap gap-1.5">
+            {generation.source ? <Badge variant={generationBadgeVariant(generation)}>{generationLabel(generation)}</Badge> : null}
+            {enrichment.enabled ? <Badge variant={enrichment.cardCount ? 'default' : 'outline'}>{visualDataEnrichmentLabel(enrichment)}</Badge> : null}
+            {generation.provider ? <Badge variant="outline">{generation.provider}</Badge> : null}
+            {cached ? <Badge variant="secondary">저장본</Badge> : null}
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
+        {generation.source === 'fallback' ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold leading-6 text-red-700">
+            {generation.message || 'AI 생성에 실패해 로컬 대체 문구가 표시 중입니다. 다시 작성이 필요합니다.'}
+          </div>
+        ) : null}
         <p className="text-sm text-muted-foreground">{plan.summary}</p>
         <div className="flex flex-wrap gap-1.5">
           <Badge variant="secondary">타깃 {plan.targetAudience}</Badge>
           {plan.referenceStyle ? <Badge variant="outline">레퍼런스 {referenceLabel(plan.referenceStyle)}</Badge> : null}
+          {enrichment.searchStatus ? <Badge variant="outline">검색 {searchStatusLabel(enrichment)}</Badge> : null}
         </div>
         <Blueprint items={plan.carouselBlueprint} />
         <NoteList title="주의할 표현" items={plan.riskNotes} />
       </CardContent>
     </Card>
   );
+}
+
+function visualDataEnrichmentLabel(enrichment = {}) {
+  if (enrichment.mode === 'curated_verified_profile') return `검증 데이터 ${enrichment.cardCount ?? 0}장`;
+  if (enrichment.mode === 'ai_researched_visualData') return `AI 데이터 보강 ${enrichment.aiAppliedCount ?? enrichment.cardCount ?? 0}장`;
+  if (enrichment.aiStatus === 'skipped_no_source_material') return '데이터 근거 없음';
+  if (enrichment.aiStatus === 'failed') return '데이터 보강 실패';
+  return `데이터 보강 ${enrichment.cardCount ?? 0}장`;
+}
+
+function searchStatusLabel(enrichment = {}) {
+  if (enrichment.searchStatus === 'searched') return `${enrichment.searchResultCount ?? 0}건`;
+  if (enrichment.searchStatus === 'searched_no_results') return '결과 없음';
+  if (enrichment.searchStatus === 'skipped_no_queries') return '질의 없음';
+  if (enrichment.searchStatus === 'failed') return '실패';
+  return enrichment.searchStatus;
+}
+
+function generationLabel(generation = {}) {
+  if (generation.source === 'fallback') {
+    if (generation.reason === 'no_provider') return 'AI 설정 없음';
+    return 'AI 생성 실패';
+  }
+  if (generation.source === 'ai_with_local_rewrite') return `AI 후 보강 ${generation.aiCardCount ?? 0}/${generation.requestedCardCount ?? '-'}`;
+  if (generation.source === 'ai') return `AI 원문 ${generation.aiCardCount ?? 0}/${generation.requestedCardCount ?? '-'}`;
+  return generation.source;
+}
+
+function generationBadgeVariant(generation = {}) {
+  if (generation.source === 'fallback') return 'destructive';
+  if (generation.replacedCards) return 'secondary';
+  return 'outline';
 }
 
 function DesignControls({ plan, updatePlan }) {
@@ -493,6 +538,7 @@ function DesignControls({ plan, updatePlan }) {
                   <div className="mb-2 text-xs font-black text-slate-500">제작 연출</div>
                   <textarea className="min-h-24 w-full resize-y rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold leading-6 outline-none focus:border-indigo-400" value={card.visualPrompt ?? ''} onChange={(event) => updateCard(index, { visualPrompt: event.target.value })} placeholder="배경, 그림, 그래프, 표 구도" />
                   <input className="mt-2 h-9 w-full rounded-md border border-slate-200 px-3 text-xs font-bold outline-none focus:border-indigo-400" value={(card.visualItems ?? []).join(', ')} onChange={(event) => updateCard(index, { visualItems: event.target.value.split(',').map((item) => item.trim()).filter(Boolean) })} placeholder="시각 요소, 쉼표로 구분" />
+                  <VerifiedDataPanel data={card.visualData} compact />
                 </div>
               </div>
             </div>
@@ -554,6 +600,7 @@ function CardPreview({ cards }) {
               <strong className="mt-5 block text-2xl font-black leading-tight tracking-normal">{card.title}</strong>
               <p className="mt-5 whitespace-pre-line text-[15px] font-semibold leading-6 text-slate-700">{formatCardText(card.body)}</p>
               {card.visualPrompt ? <p className="mt-4 rounded-md bg-white/80 p-2 text-[11px] font-bold leading-4 text-slate-500">{card.visualPrompt}</p> : null}
+              <VerifiedDataPanel data={card.visualData} compact />
             </div>
           </div>
         ))}
@@ -563,13 +610,17 @@ function CardPreview({ cards }) {
 }
 
 function ReferenceData({ plan }) {
+  const enrichment = effectiveVisualDataEnrichment(plan);
   const items = [
+    enrichment.mode ? { label: '검증 데이터 보강', value: summarizeVisualDataEnrichment(enrichment) } : null,
+    ...(enrichment.searchQueries ?? []).map((value, index) => ({ label: `데이터 검색 질의 ${index + 1}`, value })),
     ...(plan.sourceNotes ?? []).map((value) => ({ label: '근거', value })),
     ...(plan.cards ?? []).flatMap((card, index) => [
       card.sourceLine ? { label: `카드 ${index + 1} 출처`, value: card.sourceLine } : null,
-      card.dataPoint ? { label: `카드 ${index + 1} 참고`, value: card.dataPoint } : null
+      card.dataPoint ? { label: `카드 ${index + 1} 참고`, value: card.dataPoint } : null,
+      card.visualData ? { label: `카드 ${index + 1} 검증 데이터`, value: summarizeVisualData(card.visualData) } : null
     ]).filter(Boolean)
-  ].filter((item) => item.value);
+  ].filter((item) => item?.value);
   if (!items.length) return null;
   return (
     <details className="rounded-lg border bg-white p-4 text-sm">
@@ -584,6 +635,89 @@ function ReferenceData({ plan }) {
       </div>
     </details>
   );
+}
+
+function VerifiedDataPanel({ data, compact = false }) {
+  if (!data || typeof data !== 'object') return null;
+  const rows = visualDataRows(data);
+  const sources = Array.isArray(data.sources) ? data.sources.map((source) => source.label).filter(Boolean).slice(0, 2) : [];
+  return (
+    <div className={`mt-3 rounded-md border border-emerald-100 bg-emerald-50 p-2 ${compact ? 'text-[11px]' : 'text-xs'}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <strong className="font-black text-emerald-800">검증 데이터</strong>
+        <span className="rounded-full bg-white px-2 py-0.5 font-black text-emerald-700">{data.type === 'bar_chart' ? '그래프 SVG' : '표 SVG'}</span>
+      </div>
+      <p className="mt-1 font-black leading-4 text-slate-800">{data.title}</p>
+      {data.subtitle ? <p className="mt-0.5 font-semibold leading-4 text-emerald-700">{data.subtitle}</p> : null}
+      {rows.length ? (
+        <div className="mt-2 grid gap-1">
+          {rows.slice(0, compact ? 3 : 6).map((row, index) => (
+            <div key={`${row}-${index}`} className="rounded bg-white/80 px-2 py-1 font-semibold leading-4 text-slate-700">{row}</div>
+          ))}
+        </div>
+      ) : null}
+      {sources.length ? <p className="mt-2 font-bold leading-4 text-emerald-700">출처: {sources.join(', ')}</p> : null}
+    </div>
+  );
+}
+
+function visualDataRows(data = {}) {
+  if (Array.isArray(data.items)) {
+    return data.items.map((item) => `${item.label}: ${item.display ?? item.value ?? ''}${item.note ? ` · ${item.note}` : ''}`);
+  }
+  if (Array.isArray(data.rows)) {
+    return data.rows.map((row) => Array.isArray(row) ? row.join(' / ') : `${row}`);
+  }
+  return [];
+}
+
+function summarizeVisualData(data = {}) {
+  const rows = visualDataRows(data);
+  const sources = Array.isArray(data.sources) ? data.sources.map((source) => source.label).filter(Boolean).join(', ') : '';
+  return [
+    data.title ? `${data.title}${data.subtitle ? ` · ${data.subtitle}` : ''}` : '',
+    rows.join('\n'),
+    sources ? `출처: ${sources}` : ''
+  ].filter(Boolean).join('\n');
+}
+
+function summarizeVisualDataEnrichment(enrichment = {}) {
+  const cards = Array.isArray(enrichment.cards) ? enrichment.cards : [];
+  const aiCards = Array.isArray(enrichment.aiCards) ? enrichment.aiCards : [];
+  const cardLines = (aiCards.length ? aiCards : cards)
+    .map((card) => `카드 ${card.page}: ${card.title || card.type}${card.sources?.length ? ` · ${card.sources.join(', ')}` : ''}`)
+    .join('\n');
+  return [
+    `방식: ${enrichment.mode}`,
+    enrichment.profiles?.length ? `프로필: ${enrichment.profiles.join(', ')}` : '',
+    enrichment.aiStatus ? `AI 보강: ${enrichment.aiStatus}` : '',
+    enrichment.searchStatus ? `검색: ${searchStatusLabel(enrichment)}` : '',
+    cardLines,
+    enrichment.sourcePolicy
+  ].filter(Boolean).join('\n');
+}
+
+function effectiveVisualDataEnrichment(plan = {}) {
+  const explicit = plan.generation?.visualDataEnrichment;
+  if (explicit?.enabled || explicit?.mode) return explicit;
+  const cards = (plan.cards ?? [])
+    .filter((card) => card?.visualData)
+    .map((card) => ({
+      page: card.page,
+      role: card.role,
+      layout: card.layout,
+      type: card.visualData.type,
+      title: card.visualData.title,
+      sources: (card.visualData.sources ?? []).map((source) => source.label).filter(Boolean).slice(0, 3)
+    }));
+  if (!cards.length) return {};
+  return {
+    enabled: true,
+    mode: 'existing_visualData',
+    cardCount: cards.length,
+    cards,
+    sourcePolicy: '이 플랜에는 검증 데이터 구조가 포함되어 있으며 이미지 제작 단계에서 SVG 오버레이로 렌더링됩니다.'
+  };
 }
 
 function Blueprint({ items }) {

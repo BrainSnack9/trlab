@@ -12,7 +12,8 @@ export default function Dashboard() {
         refreshTrendRanking={() => workspace.refreshTrendRanking({ analysisDate: workspace.analysisDate })}
         onCollectSignals={() => workspace.collectSignals({
           areas: workspace.selectedAreas,
-          profiles: workspace.selectedChannelProfiles
+          profiles: workspace.selectedChannelProfiles,
+          analysisDate: workspace.analysisDate
         })}
       />
   );

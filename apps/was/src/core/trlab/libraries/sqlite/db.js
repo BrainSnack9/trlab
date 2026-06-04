@@ -125,6 +125,24 @@ function initialize(database) {
     CREATE INDEX IF NOT EXISTS idx_keyword_snapshots_created
       ON keyword_snapshots(created_at DESC);
 
+    CREATE TABLE IF NOT EXISTS candidate_feedback (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      candidate_id TEXT DEFAULT '',
+      keyword TEXT NOT NULL,
+      keyword_key TEXT NOT NULL,
+      action TEXT NOT NULL,
+      weight INTEGER NOT NULL DEFAULT 0,
+      profile_id TEXT DEFAULT '',
+      area_id TEXT DEFAULT '',
+      reason TEXT DEFAULT '',
+      source TEXT DEFAULT '',
+      candidate_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_candidate_feedback_keyword
+      ON candidate_feedback(keyword_key, created_at DESC);
+
     CREATE TABLE IF NOT EXISTS content_plans (
       id TEXT PRIMARY KEY,
       candidate_id TEXT DEFAULT '',
@@ -184,6 +202,8 @@ function initialize(database) {
   `);
   ensureColumn(database, 'keyword_snapshots', 'reason', "TEXT DEFAULT ''");
   ensureColumn(database, 'keyword_snapshots', 'trend_json', "TEXT NOT NULL DEFAULT '{}'");
+  ensureColumn(database, 'candidate_feedback', 'candidate_json', "TEXT NOT NULL DEFAULT '{}'");
+  ensureColumn(database, 'candidate_feedback', 'source', "TEXT DEFAULT ''");
   ensureColumn(database, 'signals', 'quality_score', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(database, 'signals', 'quality_label', "TEXT DEFAULT ''");
   ensureColumn(database, 'signals', 'quality_reasons_json', "TEXT NOT NULL DEFAULT '[]'");

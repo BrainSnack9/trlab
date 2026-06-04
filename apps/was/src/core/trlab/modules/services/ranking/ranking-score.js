@@ -1,13 +1,13 @@
 import { lowIntentCuePattern, marketingCuePattern, riskPattern, sourceWeights, storyCuePattern, weakBareKeywordPattern, weakContentKeywordPattern } from './ranking-config.js';
 import { cleanKeyword } from './ranking-text.js';
 import {
-  getBurstScore, getCommunityReactionScore, getKeywordQualityScore, getRecencyScore, getRiskPenalty, getSeenCount,
+  getBurstScore, getCommunityReactionScore, getContentOpportunityScore, getEvidenceCohesionPenalty, getKeywordQualityScore, getRecencyScore, getRiskPenalty, getSeenCount,
   hasStoryContext, inferContentRisks, inferContentType, makeSuggestedTitle, parseMetric
 } from './ranking-score-utils.js';
 
-const strongAreas = ['tech', 'brand', 'economy', 'finance', 'shopping', 'travel', 'health', 'food', 'auto', 'education', 'local'];
-const monetizableAreas = ['beauty', 'auto', 'tech', 'shopping', 'health', 'finance', 'education', 'local', 'brand'];
-const channelGrowthPattern = /(K-?뷰티|화장품|성분|올리브영|전기차|구독|모빌리티|AI|AX|반도체|건강 식품|비교|가격|소비|브랜드|전략)/i;
+const strongAreas = ['tech', 'brand', 'economy', 'finance', 'shopping', 'travel', 'health', 'food', 'auto', 'education', 'local', 'parenting', 'pet', 'home', 'work', 'culture'];
+const monetizableAreas = ['beauty', 'auto', 'tech', 'shopping', 'health', 'finance', 'education', 'local', 'brand', 'parenting', 'pet', 'home', 'work'];
+const channelGrowthPattern = /(K-?뷰티|화장품|성분|올리브영|전기차|구독|모빌리티|AI|AX|반도체|건강 식품|비교|가격|소비|브랜드|전략|반려동물|펫|강아지|고양이|육아|출산|어린이집|가전|채용|이직)/i;
 const communitySources = new Set(['FMKorea', 'TheQoo', 'Nate Pann', 'DCInside', 'Ruliweb', 'BobaeDream', 'MLBPark', 'Clien', 'Reddit']);
 
 export function scoreCandidate(candidate, area) {
@@ -22,9 +22,11 @@ export function scoreCandidate(candidate, area) {
   const quality = getKeywordQualityScore(candidate.keyword, area);
   const story = getStoryScore(candidate);
   const intent = getMarketingIntentScore(candidate, area);
-  const penalty = getRiskPenalty(candidate, area) + getThinTopicPenalty(candidate) + getLowIntentPenalty(candidate, area) + Math.max(0, candidate.bestPhraseRank - 1) * 2;
-  const total = Math.max(1, Math.min(100, Math.round((sourceStrength + traffic + recency + burst + communityReaction + diversity + repetition + quality + story + intent - penalty) * 0.68)));
-  return { total, sourceStrength, traffic, recency, burst, communityReaction, diversity, repetition, quality, story, intent, riskPenalty: penalty, search: 0, confidence: Math.min(99, 38 + diversity + Math.min(story, 24) + Math.min(quality, 20) + Math.min(intent, 12) + Math.min(communityReaction, 10)) };
+  const opportunity = getContentOpportunityScore(candidate, area);
+  const cohesionPenalty = getEvidenceCohesionPenalty(candidate);
+  const penalty = getRiskPenalty(candidate, area) + getThinTopicPenalty(candidate) + getLowIntentPenalty(candidate, area) + cohesionPenalty + Math.max(0, candidate.bestPhraseRank - 1) * 2;
+  const total = Math.max(1, Math.min(100, Math.round((sourceStrength + traffic + recency + burst + communityReaction + diversity + repetition + quality + story + intent + opportunity - penalty) * 0.64)));
+  return { total, sourceStrength, traffic, recency, burst, communityReaction, diversity, repetition, quality, story, intent, opportunity, cohesionPenalty, riskPenalty: penalty, search: 0, confidence: Math.min(99, 34 + diversity + Math.min(story, 24) + Math.min(quality, 20) + Math.min(intent, 12) + Math.min(opportunity, 16) + Math.min(communityReaction, 10) - Math.min(cohesionPenalty, 20)) };
 }
 
 export function evaluateContentPotential(candidate, area, scoring) {
@@ -33,7 +35,7 @@ export function evaluateContentPotential(candidate, area, scoring) {
   const sourceContext = sourceCount >= 2 ? 16 : sourceSet.has('Google Trends') ? 10 : 6;
   const visual = ['auto', 'fashion', 'beauty', 'food', 'travel', 'sports', 'game', 'home', 'culture'].includes(area.id) ? 13 : 8;
   const readable = hasStoryContext(candidate) ? 14 : 2;
-  const score = Math.max(1, Math.min(100, Math.round(scoring.quality + scoring.story + sourceContext + visual + readable - scoring.riskPenalty)));
+  const score = Math.max(1, Math.min(100, Math.round(scoring.quality + scoring.story + scoring.opportunity + sourceContext + visual + readable - scoring.riskPenalty)));
   const contentType = inferContentType(candidate.keyword, area);
   return { score, grade: score >= 82 ? 'A' : score >= 68 ? 'B' : score >= 52 ? 'C' : 'D', contentType, risks: inferContentRisks(candidate, area), suggestedTitle: makeSuggestedTitle(candidate.keyword, contentType), reason: sourceCount >= 2 ? '여러 채널에서 동시에 감지된 후보입니다.' : '단일 채널 후보라 검색 검증이 필요합니다.' };
 }
@@ -53,7 +55,13 @@ export function evaluateProductionReadiness(candidate) {
   if (areaId === 'beauty' && candidate.mentions >= 5) add(8, '뷰티 상품/비교 콘텐츠 확장 가능');
   if (areaId === 'auto' && candidate.mentions >= 5) add(4, '자동차 구매/구독 비교 콘텐츠 확장 가능');
   if (candidate.channelFit?.bestProfile) add(12, `${candidate.channelFit.bestProfile.label} 채널과 적합`);
+  if ((candidate.feedback?.bias ?? 0) >= 8) add(8, '사용자 선택 피드백 우수');
+  if ((candidate.feedback?.bias ?? 0) <= -8) add(-12, '사용자 제외 피드백 반영');
+  if ((candidate.scoring?.opportunity ?? 0) >= 28) add(16, '콘텐츠로 확장하기 좋은 명확한 키워드');
+  else if ((candidate.scoring?.opportunity ?? 0) >= 18) add(10, '콘텐츠 기획성 확인');
   if (hasMarketingIntent(candidate, areaId)) add(14, '마케팅 콘텐츠 각도 존재');
+  if ((candidate.scoring?.cohesionPenalty ?? 0) >= 24) add(-28, '근거 주제가 여러 갈래로 섞임');
+  else if ((candidate.scoring?.cohesionPenalty ?? 0) >= 12) add(-14, '근거 일관성 확인 필요');
   if (!hasCommunitySource(candidate) && candidate.sources.some((source) => ['Search SERP', 'Google Trends'].includes(source))) add(-16, '커뮤니티 반응 미확인');
   if (isLowIntentTopic(candidate, areaId)) add(-24, '순간 반응형이라 활용성 낮음');
   if (isWeakContentCandidate(candidate)) add(-34, '카드뉴스 문맥이 약한 단어 후보');

@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { Eraser, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { SlidersHorizontal, Sparkles } from 'lucide-react';
 import { Badge } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Badge/Badge';
 import { Button } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Button/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Card';
 import { exclusionAreas, interestAreas } from '@/core/TrLab/modules/configs/constants';
 import { tuneChannelProfile } from '@/core/TrLab/modules/clients/api';
+
+const trendButtonClass = 'h-10 px-3 text-xs';
 
 export function ScopeFilter({ selectedSet, excludedSet, selectedChannelProfiles, setSelectedChannelProfiles, channelProfiles, accountSlots, setSelectedAreas, setExcludedAreas, setView, reset }) {
   const toggleSelected = (id) => setSelectedAreas((areas) => areas.includes(id) ? areas.filter((v) => v !== id) : [...areas, id]);
@@ -21,8 +23,8 @@ export function ScopeFilter({ selectedSet, excludedSet, selectedChannelProfiles,
             <p className="mt-1 text-xs font-semibold text-muted-foreground">계정 프로필은 후보 필터와 수집 seed에만 적용하고, 세부 관리는 계정 프로필 화면에서 합니다.</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => setView('profiles')}>계정 프로필</Button>
-            <Button variant="outline" size="sm" onClick={reset}>기본값</Button>
+            <Button variant="outline" size="sm" className={trendButtonClass} onClick={() => setView('profiles')}>계정 프로필</Button>
+            <Button variant="outline" size="sm" className={trendButtonClass} onClick={reset}>기본값</Button>
           </div>
         </div>
       </CardHeader>
@@ -71,7 +73,7 @@ function ChipGroup({ title, items, activeSet, onToggle, danger, emptyText = '선
             key={item.key ?? item.id}
             variant={activeSet.has(item.id) ? (danger ? 'destructive' : 'default') : 'outline'}
             size="sm"
-            className="h-8 max-w-full rounded-md px-2.5 text-xs"
+            className={`${trendButtonClass} max-w-full rounded-md`}
             onClick={() => onToggle(item.id)}
           >
             <span className="truncate">{item.label}</span>
@@ -386,41 +388,26 @@ function lines(value) {
 }
 
 
-export function TrendProcessingStatus({ trends, loading, onRefresh, onCollect, onClear, collecting, clearing, hasSignals }) {
-  const clearDisabled = loading || collecting || clearing || (!hasSignals && !trends.length);
+export function CandidateBoard({ candidates, selectedCandidate, onSelectCandidate, feedbackActions = {} }) {
   return (
-    <Card className="border-indigo-200 bg-indigo-50/55">
-      <CardContent className="grid gap-3 p-4 lg:grid-cols-[1fr_auto] lg:items-center">
-        <div>
-          <h2 className="text-base font-black leading-tight text-slate-950">AI 트렌드 분석</h2>
-          <p className="mt-1 text-sm font-bold leading-5 text-slate-700">기본 화면은 최신 저장 랭킹을 빠르게 보여주고, 필요할 때 AI 재분석을 실행합니다.</p>
+    <Card>
+      <CardHeader className="border-b">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <CardTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-indigo-600" />
+            제작 후보 보드
+          </CardTitle>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Badge variant="secondary">{candidates.length}개 후보</Badge>
+          </div>
         </div>
-        <div className="grid gap-2 sm:grid-cols-3">
-          <Button variant="outline" className="min-h-[42px]" onClick={onCollect} disabled={collecting || clearing}>
-            {collecting ? '수집 중' : '트렌드 수집'}
-          </Button>
-          <Button variant="outline" className="min-h-[42px]" onClick={onClear} disabled={clearDisabled}>
-            <Eraser className="h-4 w-4" />{clearing ? '비우는 중' : '비우기'}
-          </Button>
-          <Button className="min-h-[42px]" onClick={onRefresh} disabled={loading || clearing}>
-            {loading ? '분석 중' : 'AI 분석'}
-          </Button>
-        </div>
-      </CardContent>
+      </CardHeader>
+      <CardContent className="pt-5">{candidates.length ? <div data-testid="keyword-candidates" className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">{candidates.map((candidate, index) => <CandidateCard key={`${index}-${candidate.keyword}`} candidate={candidate} index={index} selected={getCandidateId(candidate) === getCandidateId(selectedCandidate)} feedbackAction={feedbackActions[getCandidateId(candidate)]} onSelectCandidate={onSelectCandidate} />)}</div> : <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">수집 데이터가 들어오면 제작 가능한 후보 카드가 표시됩니다.</p>}</CardContent>
     </Card>
   );
 }
 
-export function CandidateBoard({ candidates, selectedCandidate, onSelectCandidate }) {
-  return (
-    <Card className="flex h-full min-h-0 flex-col">
-      <CardHeader className="border-b"><div className="flex items-center justify-between gap-3"><CardTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-indigo-600" />제작 후보 보드</CardTitle><Badge variant="secondary">{candidates.length}개 후보</Badge></div></CardHeader>
-      <CardContent className="min-h-0 flex-1 overflow-auto pt-5">{candidates.length ? <div data-testid="keyword-candidates" className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">{candidates.slice(0, 8).map((candidate, index) => <CandidateCard key={`${index}-${candidate.keyword}`} candidate={candidate} index={index} selected={getCandidateId(candidate) === getCandidateId(selectedCandidate)} onSelectCandidate={onSelectCandidate} />)}</div> : <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">수집 데이터가 들어오면 제작 가능한 후보 카드가 표시됩니다.</p>}</CardContent>
-    </Card>
-  );
-}
-
-function CandidateCard({ candidate, index, selected, onSelectCandidate }) {
+function CandidateCard({ candidate, index, selected, feedbackAction, onSelectCandidate }) {
   const evidence = getCandidateEvidence(candidate);
   const score = candidate.production?.score ?? candidate.score ?? 0;
   const reaction = candidate.scoring?.communityReaction ?? 0;
@@ -437,7 +424,7 @@ function CandidateCard({ candidate, index, selected, onSelectCandidate }) {
             </div>
             <ScoreBadge score={score} />
           </div>
-          <div className="flex flex-wrap gap-1.5"><Badge variant="secondary">{candidate.area?.label}</Badge>{profile && <Badge variant="outline">{profile.label}</Badge>}<TierBadge tier={candidate.production?.tier ?? '검증'} />{candidate.searchVerification && <Badge variant="outline">검색 {candidate.searchVerification.grade}</Badge>}</div>
+          <div className="flex flex-wrap gap-1.5"><Badge variant="secondary">{candidate.area?.label}</Badge>{profile && <Badge variant="outline">{profile.label}</Badge>}<TierBadge tier={candidate.production?.tier ?? '검증'} />{feedbackAction === 'positive' && <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">좋음 학습</Badge>}{candidate.searchVerification && <Badge variant="outline">검색 {candidate.searchVerification.grade}</Badge>}</div>
           <div className="grid grid-cols-3 gap-2 text-xs">
             <MetricTile label="커뮤니티 반응" value={reaction} tone="hot" />
             <MetricTile label="언급" value={candidate.mentions} />

@@ -1,10 +1,12 @@
-import { env, getWasBaseUrl } from '#trlab/modules/configs/env';
+import { env } from '#trlab/modules/configs/env';
 import { logger } from '#trlab/libraries/logger/logger';
+import { collectSignalsOnce } from '#trlab/modules/services/signals/signal-collection-runner';
 
 const DEFAULT_INTERVAL = env.COLLECT_EVERY_MINUTES;
 const MIN_INTERVAL = 5;
 const MAX_INTERVAL = 240;
 const MAX_EVENTS = 40;
+const COLLECT_TIMEOUT_MS = 180000;
 
 const state = {
   enabled: false,
@@ -86,30 +88,77 @@ async function runCollection(reason, { force = false } = {}) {
   const runId = `collect-${Date.now()}`;
   const startedAt = new Date().toISOString();
   state.running = true;
-  state.currentRun = { id: runId, reason, startedAt, status: 'running' };
+  state.currentRun = { id: runId, reason, startedAt, status: 'running', phase: 'starting' };
   pushEvent({ type: 'collect-started', status: 'running', reason, startedAt, message: 'collection started' });
   try {
-    const response = await fetch(`${getWasBaseUrl()}/api/signals/collect?reason=${encodeURIComponent(reason)}&exclude=fmkorea`, { cache: 'no-store' });
-    const data = await response.json();
+    const data = await withTimeout(collectSignalsOnce({
+      reason,
+      exclude: 'fmkorea',
+      onProgress: updateCollectionProgress
+    }), COLLECT_TIMEOUT_MS, 'collection timed out');
     const finishedAt = new Date().toISOString();
     const ok = data.sources?.filter((source) => source.status === 'ok').length ?? 0;
     const failed = data.sources?.filter((source) => source.status !== 'ok').length ?? 0;
-    state.lastRun = { id: runId, reason, startedAt, finishedAt, status: response.ok ? 'ok' : 'failed', count: data.count ?? 0, ok, failed, sources: data.sources ?? [] };
+    state.lastRun = { id: runId, reason, startedAt, finishedAt, status: failed ? 'partial' : 'ok', count: data.count ?? 0, ok, failed, sources: data.sources ?? [] };
     pushEvent({ type: 'collect-finished', status: state.lastRun.status, reason, startedAt, finishedAt, count: data.count ?? 0, ok, failed, message: `collected ${data.count ?? 0} signals` });
   } catch (error) {
     const finishedAt = new Date().toISOString();
-    state.lastRun = { id: runId, reason, startedAt, finishedAt, status: 'failed', count: 0, ok: 0, failed: 0, error: error.message };
-    pushEvent({ type: 'collect-failed', status: 'failed', reason, startedAt, finishedAt, error: error.message, message: error.message });
+    const message = compactMessage(error?.message ?? error);
+    state.lastRun = { id: runId, reason, startedAt, finishedAt, status: 'failed', count: 0, ok: 0, failed: 0, error: message };
+    pushEvent({ type: 'collect-failed', status: 'failed', reason, startedAt, finishedAt, error: message, message });
   } finally {
     state.running = false;
     state.currentRun = null;
   }
 }
 
+function updateCollectionProgress(event) {
+  if (!state.currentRun) return;
+  if (event.type === 'collecting') {
+    state.currentRun = { ...state.currentRun, phase: 'collecting', totalSources: event.totalSources };
+    pushEvent({ type: 'collect-fetching', status: 'running', totalSources: event.totalSources, message: `collecting ${event.totalSources} sources` });
+    return;
+  }
+  if (event.type === 'saving') {
+    state.currentRun = { ...state.currentRun, phase: 'saving', count: event.count, totalSources: event.totalSources };
+    pushEvent({ type: 'collect-saving', status: 'running', count: event.count, totalSources: event.totalSources, message: `saving ${event.count} signals` });
+    return;
+  }
+  if (event.type === 'saved') {
+    state.currentRun = { ...state.currentRun, phase: 'saved', count: event.count, totalSources: event.totalSources };
+    pushEvent({ type: 'collect-saved', status: 'ok', count: event.count, totalSources: event.totalSources, message: `saved ${event.count} signals` });
+    return;
+  }
+  if (event.type === 'source-finished' || event.type === 'source-failed') {
+    const error = compactMessage(event.error);
+    pushEvent({
+      type: event.type,
+      status: event.status,
+      source: event.source,
+      count: event.count,
+      error,
+      message: event.status === 'ok' ? `${event.source}: ${event.count ?? 0}` : `${event.source}: ${error}`
+    });
+  }
+}
+
+function withTimeout(promise, ms, message) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 function normalizeInterval(value) {
   const interval = Number(value);
   if (!Number.isFinite(interval)) return DEFAULT_INTERVAL;
   return Math.max(MIN_INTERVAL, Math.min(MAX_INTERVAL, Math.round(interval)));
+}
+
+function compactMessage(value) {
+  const message = value ? String(value) : '';
+  return message.length > 700 ? `${message.slice(0, 700)}...` : message;
 }
 
 function pushEvent(event) {

@@ -1,5 +1,6 @@
 import { adultPattern, politicsPattern, spamPattern } from './ranking-config.js';
 import { compareCandidates, limitAreaDominance } from './ranking-business.js';
+import { applyFeedbackBias, getCandidateFeedbackSummary } from './candidate-feedback.js';
 import { evaluateContentPotential, evaluateProductionReadiness, isWeakContentCandidate, scoreCandidate } from './ranking-score.js';
 import { getChannelProfileFit, getRankingProfiles } from './ranking-profile-fit.js';
 import { verifySearch } from '#trlab/modules/services/search/ranking-search';
@@ -9,7 +10,8 @@ import { hash, isStrongFinalCandidate, limitDuplicateTitles, limitRelatedEvidenc
 export async function rankTrendSignals(signals, options = {}) {
   const verifyLimit = Number(options.verifyLimit ?? 0);
   const profiles = await getRankingProfiles();
-  const finalizedCandidates = mergeFinalizedCandidates(buildCandidates(signals).map((candidate) => finalizeCandidate(candidate, profiles)))
+  const feedbackSummary = await getCandidateFeedbackSummary().catch(() => ({ total: 0 }));
+  const finalizedCandidates = mergeFinalizedCandidates(buildCandidates(signals).map((candidate) => applyFeedbackBias(finalizeCandidate(candidate, profiles), feedbackSummary)))
     .filter((candidate) => candidate.scoring.quality >= 10)
     .filter((candidate) => candidate.validation.grade !== 'D' && !isWeakContentCandidate(candidate))
     .filter(isStrongFinalCandidate)
@@ -65,6 +67,8 @@ function isProfileBackedContentCandidate(candidate) {
 
 function isProductionCandidate(candidate) {
   if ((candidate.production?.score ?? 0) < 66 || candidate.production?.tier === '제외 후보') return false;
+  if ((candidate.scoring?.opportunity ?? 0) < 12 && !candidate.channelFit?.bestProfile && (candidate.scoring?.communityReaction ?? 0) < 16) return false;
+  if ((candidate.scoring?.cohesionPenalty ?? 0) >= 24) return false;
   if (!candidate.channelFit?.bestProfile && candidate.area?.id === 'life' && candidate.sources.length === 1 && (candidate.production?.score ?? 0) < 82) return false;
   if (candidate.sources.length === 1 && !['Search SERP', 'Google Trends'].includes(candidate.sources[0]) && (candidate.production?.score ?? 0) < 70) return false;
   return true;

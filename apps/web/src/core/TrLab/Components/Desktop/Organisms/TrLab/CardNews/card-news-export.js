@@ -3,22 +3,111 @@ import { referenceVisualGuide } from './card-news-styles';
 
 export function makePrompt(studio, plan, card, styleName) {
   const guide = referenceVisualGuide(plan.referenceStyle);
+  const visualDirection = safeVisualDirection(card);
   return [
-    '프리미엄 인스타그램 정보형 카드뉴스 4:5 이미지.',
-    `레퍼런스 스타일: ${plan.referenceStyle || 'handdrawn_research'}.`,
-    plan.referencePattern ? `레퍼런스 리듬: ${referencePatternText(plan.referencePattern)}.` : '',
-    `레퍼런스 시각 가이드: ${referenceVisualGuideText(guide)}.`,
-    `카드 역할: ${card.role || 'content'} / 레이아웃: ${card.layout || 'data_chart'}.`,
-    `스타일: ${styleName}. 굵은 한국어 제목, 짧은 본문, 표/그래프/비교/인용 같은 구조화된 카드뉴스.`,
-    `주제: ${studio.label}. 핵심 각도: ${plan.coreAngle}.`,
-    `제목: ${card.title}.`,
-    `본문:\n${formatCardText(card.body)}.`,
-    `강조 라벨: ${card.emphasis}.`,
-    `시각 요소: ${card.visualPrompt}.`,
-    '표지에는 긴 근거를 넣지 말고 큰 후크 문장 위주.',
-    '본문에는 evidence, interpretation, action 같은 기획 라벨을 표시하지 말 것.',
-    '랜덤 텍스트와 워터마크 금지. 상업용 SNS 계정처럼 고급스럽고 저장하고 싶은 디자인.'
+    'Create one premium 4:5 Instagram carousel backplate for Korea. Final export is 1080x1350.',
+    'Backplate only. Generate the background/photo/editorial scene only. TrLab adds every Korean word, badge, table, chart, label, source, and callout later as SVG.',
+    'No visible text or pseudo-data: no readable Korean/English/numerals, logos, UI, captions, signs, document text, product labels, quote/review text, article thumbnails, watermarks, charts, tables, axes, bars, checkmarks, formulas, scorecards, percentages, or filled forms.',
+    `Subject context: ${sceneContextSummary([studio.label, plan.coreAngle, card.visualPrompt].filter(Boolean).join(' '))}.`,
+    `Backplate style: ${safeStyleName(styleName)}. ${backplateGuideText(plan.referenceStyle, guide)}.`,
+    visualDirection ? `Background scene: ${visualDirection}` : '',
+    `Overlay reservation: ${overlayZoneText(card)}.`,
+    visualDataPromptLine(card),
+    'Avoid unrelated stock-photo mood, fake interface screenshots, copied article thumbnails, decorative abstract-only backgrounds, and anything that looks like unverified evidence.'
   ].filter(Boolean).join('\n');
+}
+
+function backplateGuideText(referenceStyle, guide = {}) {
+  const mapped = {
+    handdrawn_research: [
+      'memo-style information card',
+      'blank paper panels',
+      'empty SVG overlay zones',
+      'subtle editorial research mood'
+    ],
+    photo_hook: [
+      'photographic full-bleed template',
+      'topic-specific realistic background',
+      'high-contrast overlay-safe zones only'
+    ],
+    magazine_story: [
+      'editorial illustration template',
+      'topic-specific scene',
+      'clean blank space for text overlay'
+    ],
+    meme_factcheck: [
+      'editorial board mood only',
+      'blank editorial board zones',
+      'no claim or evidence contents'
+    ]
+  }[referenceStyle];
+  if (mapped) return [...mapped, 'no typography or readable marks inside the generated image'].join(' / ');
+  if (/[가-힣]/.test([guide.account, guide.cover, guide.body].filter(Boolean).join(' '))) {
+    return 'premium editorial backplate / blank overlay-safe zones / no typography or readable marks inside the generated image';
+  }
+  return [
+    guide.account,
+    guide.cover,
+    guide.body,
+    'no typography or readable marks inside the generated image'
+  ].filter(Boolean).join(' / ').replace(/claim|evidence|chart|graph|table|label|typography/gi, 'blank overlay-safe area');
+}
+
+function safeVisualDirection(card = {}) {
+  const raw = cleanPromptText(card.visualPrompt, 220)
+    .replace(/성분표|효능\s*비교표|비교표|표|테이블|그래프|막대그래프|차트|수치|숫자|라벨|체크\s*표시|체크|댓글|리뷰\s*인용구|말풍선|스크린샷|UI|가격|제품명/gi, '')
+    .replace(/2x2|3줄|4개|\d+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (raw && !/[가-힣]/.test(raw)) return `${raw}. Use blank overlay-safe panels only; do not draw text or data artifacts.`;
+  if (card.role === 'cover' || card.layout === 'cover_text' || card.layout === 'cover_photo') return 'Strong topic-specific full-bleed subject with a calm lower title-safe area.';
+  if (card.role === 'community_signal' || card.layout === 'quote_card') return 'Topic-specific lifestyle reaction scene with generous negative space; no comment UI, quote cards, or speech bubbles.';
+  if (card.role === 'data_scene' || card.layout === 'data_chart' || card.role === 'comparison' || card.layout === 'comparison_board') return 'Topic-specific research scene with one blank central panel reserved for verified SVG data.';
+  return 'Clean editorial backplate with quiet texture and blank areas for later text overlays.';
+}
+
+function visualDataPromptLine(card = {}) {
+  if (!card.visualData || typeof card.visualData !== 'object') return '';
+  const type = {
+    bar_chart: 'chart',
+    evidence_table: 'table',
+    comparison_table: 'comparison table'
+  }[card.visualData.type] ?? 'data panel';
+  return `Verified SVG overlay reserved: ${type}. Leave a calm blank panel for that SVG. Do not draw data, source names, rows, bars, labels, or values.`;
+}
+
+function overlayZoneText(card = {}) {
+  if (card.role === 'cover' || card.layout === 'cover_text' || card.layout === 'cover_photo') return 'large lower title-safe area and small emphasis zone, calm and low-detail';
+  if (card.role === 'data_scene' || card.layout === 'data_chart') return 'one blank central SVG data panel plus quiet title/body zones';
+  if (card.role === 'comparison' || card.layout === 'comparison_board') return 'blank split SVG comparison panel plus quiet title/body zones';
+  if (card.role === 'checklist' || card.layout === 'checklist') return 'three blank horizontal text rows with no checkmarks or numbers';
+  if (card.role === 'community_signal' || card.layout === 'quote_card') return 'open lifestyle negative space for title/body and a small emphasis overlay zone';
+  return 'quiet title/body/emphasis safe areas';
+}
+
+function cleanPromptText(value, maxLength = 1000) {
+  return `${value ?? ''}`.replace(/\s+/g, ' ').trim().slice(0, maxLength);
+}
+
+function sceneContextSummary(value = '') {
+  const text = `${value ?? ''}`;
+  if (/아기\s*욕조|유해성분|환경호르몬|육아용품/i.test(text)) return 'baby product safety check in a Korean parenting context';
+  if (/오메가\s*3|omega-?3|EPA|DHA|ALA|피쉬\s*오일|fish\s*oil|영양제/i.test(text)) return 'omega-3 supplement and food-based nutrition decision';
+  if (/K뷰티|뷰티|화장품|스킨케어|성분|효능|사용감/i.test(text)) return 'K-beauty skincare ingredient-conscious shopping';
+  if (/어린이집|유치원|등원|육아|부모|아이/i.test(text)) return 'Korean childcare availability and parent schedule friction';
+  if (/부동산|아파트|강남|서울|홍콩|집값|주거/i.test(text)) return 'urban apartment housing and real-estate decision context';
+  if (/코스피|반도체|주식|증시|수급|투자/i.test(text)) return 'Korean stock market and finance research context';
+  if (/[가-힣]/.test(text)) return 'topic-specific Korean editorial context';
+  return cleanPromptText(text, 180) || 'topic-specific Korean editorial context';
+}
+
+function safeStyleName(value = '') {
+  const text = `${value ?? ''}`;
+  if (/실사|photo/i.test(text)) return 'photographic full-bleed backplate';
+  if (/팩트|fact|ranking/i.test(text)) return 'editorial board backplate';
+  if (/일러스트|story|illustration/i.test(text)) return 'editorial illustration backplate';
+  if (/메모|note|리서치|research/i.test(text)) return 'research note backplate';
+  return 'premium editorial backplate';
 }
 
 export function makePostCopy(plan) {

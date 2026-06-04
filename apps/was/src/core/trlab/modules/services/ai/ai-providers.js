@@ -2,11 +2,11 @@ const PROVIDERS = [
   ['openai', 'OPENAI_API_KEY', callOpenAI],
   ['gemini', 'GEMINI_API_KEY', callGemini],
   ['anthropic', 'ANTHROPIC_API_KEY', callAnthropic],
-  ['xai', 'XAI_API_KEY', (prompt, key) => callCompat(prompt, key, 'https://api.x.ai/v1/chat/completions', process.env.XAI_MODEL ?? 'grok-3-mini')],
-  ['groq', 'GROQ_API_KEY', (prompt, key) => callCompat(prompt, key, 'https://api.groq.com/openai/v1/chat/completions', process.env.GROQ_MODEL ?? 'llama-3.1-8b-instant')],
-  ['deepseek', 'DEEPSEEK_API_KEY', (prompt, key) => callCompat(prompt, key, 'https://api.deepseek.com/chat/completions', process.env.DEEPSEEK_MODEL ?? 'deepseek-chat')],
-  ['mistral', 'MISTRAL_API_KEY', (prompt, key) => callCompat(prompt, key, 'https://api.mistral.ai/v1/chat/completions', process.env.MISTRAL_MODEL ?? 'mistral-small-latest')],
-  ['deepinfra', 'DEEPINFRA_API_KEY', (prompt, key) => callCompat(prompt, key, 'https://api.deepinfra.com/v1/openai/chat/completions', process.env.DEEPINFRA_MODEL ?? 'meta-llama/Meta-Llama-3.1-8B-Instruct')]
+  ['xai', 'XAI_API_KEY', (prompt, key, options) => callCompat(prompt, key, 'https://api.x.ai/v1/chat/completions', process.env.XAI_MODEL ?? 'grok-3-mini', options)],
+  ['groq', 'GROQ_API_KEY', (prompt, key, options) => callCompat(prompt, key, 'https://api.groq.com/openai/v1/chat/completions', process.env.GROQ_MODEL ?? 'llama-3.1-8b-instant', options)],
+  ['deepseek', 'DEEPSEEK_API_KEY', (prompt, key, options) => callCompat(prompt, key, 'https://api.deepseek.com/chat/completions', process.env.DEEPSEEK_MODEL ?? 'deepseek-chat', options)],
+  ['mistral', 'MISTRAL_API_KEY', (prompt, key, options) => callCompat(prompt, key, 'https://api.mistral.ai/v1/chat/completions', process.env.MISTRAL_MODEL ?? 'mistral-small-latest', options)],
+  ['deepinfra', 'DEEPINFRA_API_KEY', (prompt, key, options) => callCompat(prompt, key, 'https://api.deepinfra.com/v1/openai/chat/completions', process.env.DEEPINFRA_MODEL ?? 'meta-llama/Meta-Llama-3.1-8B-Instruct', options)]
 ];
 
 export function hasAIProvider() {
@@ -36,9 +36,10 @@ async function callOpenAI(prompt, key, options = {}) {
   const errors = [];
   for (const model of models) {
     try {
+      const system = options.systemPrompt ?? systemPrompt();
       const body = {
         model,
-        messages: [{ role: 'system', content: systemPrompt() }, { role: 'user', content: prompt }],
+        messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }],
         response_format: options.schema ? jsonSchemaFormat(options.schemaName ?? 'trlab_result', options.schema) : { type: 'json_object' }
       };
       if (process.env.OPENAI_TEMPERATURE) body.temperature = Number(process.env.OPENAI_TEMPERATURE);
@@ -52,13 +53,13 @@ async function callOpenAI(prompt, key, options = {}) {
   throw new Error(errors.join(' | '));
 }
 
-async function callGemini(prompt, key) {
+async function callGemini(prompt, key, options = {}) {
   const model = process.env.GEMINI_MODEL ?? 'gemini-1.5-flash';
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ contents: [{ parts: [{ text: `${systemPrompt()}\n\n${prompt}` }] }], generationConfig: { temperature: 0.2, responseMimeType: 'application/json' } }),
+    body: JSON.stringify({ contents: [{ parts: [{ text: `${options.systemPrompt ?? systemPrompt()}\n\n${prompt}` }] }], generationConfig: { temperature: 0.2, responseMimeType: 'application/json' } }),
     signal: AbortSignal.timeout(25000)
   });
   if (!response.ok) throw new Error(`Gemini ${response.status}`);
@@ -66,11 +67,12 @@ async function callGemini(prompt, key) {
   return json.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
 }
 
-async function callAnthropic(prompt, key) {
+async function callAnthropic(prompt, key, options = {}) {
+  const system = options.systemPrompt ?? systemPrompt();
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: process.env.ANTHROPIC_MODEL ?? 'claude-3-5-haiku-latest', max_tokens: 3000, temperature: 0.2, system: systemPrompt(), messages: [{ role: 'user', content: prompt }] }),
+    body: JSON.stringify({ model: process.env.ANTHROPIC_MODEL ?? 'claude-3-5-haiku-latest', max_tokens: 3000, temperature: 0.2, system, messages: [{ role: 'user', content: prompt }] }),
     signal: AbortSignal.timeout(25000)
   });
   if (!response.ok) throw new Error(`Anthropic ${response.status}`);
@@ -78,8 +80,8 @@ async function callAnthropic(prompt, key) {
   return json.content?.map((part) => part.text ?? '').join('\n') ?? '';
 }
 
-async function callCompat(prompt, key, url, model) {
-  const body = { model, messages: [{ role: 'system', content: systemPrompt() }, { role: 'user', content: prompt }], temperature: 0.2, response_format: { type: 'json_object' } };
+async function callCompat(prompt, key, url, model, options = {}) {
+  const body = { model, messages: [{ role: 'system', content: options.systemPrompt ?? systemPrompt() }, { role: 'user', content: prompt }], temperature: 0.2, response_format: { type: 'json_object' } };
   const json = await postJson(url, key, body);
   return { text: json.choices?.[0]?.message?.content ?? '', model: json.model ?? model, usage: json.usage };
 }

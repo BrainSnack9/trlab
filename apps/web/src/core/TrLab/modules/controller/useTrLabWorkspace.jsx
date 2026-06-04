@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { defaultExcludedAreas, defaultSelectedAreas, defaultSelectedProfiles } from '@/core/TrLab/modules/configs/constants';
 import { useTrLabData } from '@/core/TrLab/modules/controller/useTrLabData';
 import { trendToRadarItem } from '@/core/TrLab/modules/helpers/utils';
@@ -21,6 +21,7 @@ function useTrLabWorkspaceImpl() {
   const [selectedChannelProfiles, setSelectedChannelProfiles] = useState(defaultSelectedProfiles);
   const [selectedAreas, setSelectedAreas] = useState(defaultSelectedAreas);
   const [excludedAreas, setExcludedAreas] = useState(defaultExcludedAreas);
+  const loadedAnalysisDateRef = useRef('');
 
   useEffect(() => {
     const persisted = loadWorkspaceState();
@@ -37,18 +38,21 @@ function useTrLabWorkspaceImpl() {
 
   const chooseTrend = useCallback((trend) => {
     if (!trend) return;
-    setSelectedTrend(trend?.label ? trend : trendToRadarItem(trend, (trend?.rank ?? 1) - 1));
+    const nextTrend = trend?.label ? trend : trendToRadarItem(trend, (trend?.rank ?? 1) - 1);
+    setSelectedTrend(nextTrend);
+    data.recordCandidateFeedback?.({ action: 'select', candidate: nextTrend, reason: 'candidate-open' });
     setView('search');
-  }, []);
+  }, [data]);
 
   const addToQueue = useCallback((verification) => {
     setQueue((items) => {
       if (!selectedTrend) return items;
       const nextTrend = verification ? { ...selectedTrend, searchVerification: summarizeSearchVerification(verification) } : selectedTrend;
+      data.recordCandidateFeedback?.({ action: 'queue', candidate: nextTrend, reason: verification ? 'search-verified-queue' : 'manual-queue' });
       return [nextTrend, ...(items || []).filter((item) => item?.id !== selectedTrend?.id)];
     });
     if (selectedTrend) setView('studio');
-  }, [selectedTrend]);
+  }, [data, selectedTrend]);
 
   const clearCollectedTrends = useCallback(async () => {
     await data.clearCollectedTrends();
@@ -59,6 +63,11 @@ function useTrLabWorkspaceImpl() {
     setExcludedAreas(defaultExcludedAreas);
   }, [data]);
 
+  const changeAnalysisDate = useCallback((nextDate) => {
+    if (!isDateText(nextDate)) return;
+    setAnalysisDate(nextDate);
+  }, []);
+
   const studioTrend = useMemo(() => queue?.[0] ?? selectedTrend, [queue, selectedTrend]);
   const isQueued = useMemo(() => queue?.some((item) => item?.id === selectedTrend?.id), [queue, selectedTrend]);
 
@@ -66,6 +75,17 @@ function useTrLabWorkspaceImpl() {
     if (!hydrated) return;
     saveWorkspaceState({ view, queue, contentPlans, selectedTrend, analysisDate, selectedChannelProfiles, selectedAreas, excludedAreas });
   }, [hydrated, view, queue, contentPlans, selectedTrend, analysisDate, selectedChannelProfiles, selectedAreas, excludedAreas]);
+
+  useEffect(() => {
+    if (!hydrated || !isDateText(analysisDate) || loadedAnalysisDateRef.current === analysisDate) return;
+    loadedAnalysisDateRef.current = analysisDate;
+    Promise.all([
+      data.refreshCollection({ force: true, analysisDate }),
+      data.refreshTrendSnapshot({ force: true, analysisDate })
+    ]).catch(() => {
+      loadedAnalysisDateRef.current = '';
+    });
+  }, [hydrated, analysisDate, data.refreshCollection, data.refreshTrendSnapshot]);
 
   return {
     ...data,
@@ -78,7 +98,7 @@ function useTrLabWorkspaceImpl() {
     selectedTrend,
     setSelectedTrend,
     analysisDate,
-    setAnalysisDate,
+    setAnalysisDate: changeAnalysisDate,
     selectedChannelProfiles,
     setSelectedChannelProfiles,
     accountSlots: data.accountSlots,

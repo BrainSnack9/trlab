@@ -4,7 +4,7 @@ import { cardTextLines } from './card-text.js';
 import { tryGenerateRemoteImage } from './image-provider-clients.js';
 
 const outputDir = path.join(process.cwd(), 'public', 'generated', 'cardnews');
-const exactTextWarning = 'Korean copy is rendered by TrLab exact-text SVG, not by an image model, to prevent broken Hangul.';
+const exactTextWarning = 'Backplate only: Korean copy must be added in the TrLab SVG text editor before final export.';
 const FONT_STACK = 'Pretendard, Apple SD Gothic Neo, Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif';
 
 export async function generateCardNewsImage({ studio, plan, card, style, index, editInstruction, previousImagePrompt }) {
@@ -23,64 +23,178 @@ export async function generateCardNewsImage({ studio, plan, card, style, index, 
 export function makeImagePrompt({ studio, plan, card, style, editInstruction, previousImagePrompt }) {
   const styleName = style?.name ?? '정보형 카드뉴스';
   const topic = visualTopic({ studio, plan, card });
-  const items = visualItems(card, [topic, card?.emphasis, card?.sourceLine, card?.dataPoint]);
-  const structure = structureInstruction(card);
-  const guide = referenceVisualGuide(plan?.referenceStyle);
+  const scene = backplateSceneDirection({ card, topic, style });
   const revision = cleanPromptText(editInstruction, 800);
   const previous = cleanPromptText(previousImagePrompt, 900);
   return [
     'Create one premium 4:5 Instagram carousel backplate for Korea. Final export is 1080x1350.',
-    'Backplate only: no text, numbers, logos, captions, UI chrome, labels, watermarks, or random microcopy.',
-    'No readable Korean, English, numerals, signage, document text, UI labels, product labels, or article thumbnails. If a signboard or paper appears, keep it blank or abstract.',
-    'Leave calm blank zones for TrLab to overlay exact Korean SVG text afterward.',
-    `Canvas template: ${styleName}. ${styleTemplateInstruction(style)}`,
-    `Reference style: ${plan?.referenceStyle ?? 'handdrawn_research'}.`,
-    plan?.referencePattern ? `Reference rhythm: ${referencePatternText(plan.referencePattern)}.` : '',
-    `Reference visual guide: ${referenceVisualGuideText(guide)}.`,
-    `Card role/layout: ${card?.role ?? 'content'} / ${card?.layout ?? 'data_chart'}.`,
-    `Topic: ${topic}.`,
-    `Core angle: ${plan?.coreAngle ?? plan?.summary ?? ''}.`,
-    overlayTextContract(card),
-    `Visual idea: ${card?.visualPrompt ?? ''}.`,
-    `Semantic visual concepts for the illustration only, not text labels: ${items.join(' | ')}.`,
-    `Role-specific composition: ${structure}.`,
+    'Backplate only. Generate the background/photo/editorial scene only. TrLab adds every Korean word, badge, table, chart, label, source, and callout later as SVG.',
+    'No visible text or pseudo-data: no readable Korean/English/numerals, logos, UI, captions, signs, document text, product labels, quote/review text, article thumbnails, watermarks, charts, tables, axes, bars, checkmarks, formulas, scorecards, percentages, or filled forms.',
+    `Subject context: ${sceneContextSummary([topic, plan?.coreAngle, plan?.summary, card?.visualPrompt].filter(Boolean).join(' '))}.`,
+    `Backplate style: ${safeStyleName(styleName)}. ${styleTemplateInstruction(style)}`,
+    `Background scene: ${scene}`,
+    `Overlay reservation: ${overlayReservation(card, style)}`,
+    verifiedOverlayDataInstruction(card),
+    `Composition: ${structureInstruction(card)}`,
     coverBackplateInstruction(card, studio, plan),
     dataBackplateInstruction(card, studio, plan),
     revision ? `Revision request: ${revision}. Preserve the card topic, exact Korean overlay text zones, aspect ratio, and style preset unless the request explicitly changes them.` : '',
     revision && previous ? `Previous prompt context to keep continuity: ${previous}.` : '',
-    'Avoid unrelated stock-photo mood, fake interface screenshots, copied article thumbnails, and decorative abstract-only backgrounds.'
+    'Avoid unrelated stock-photo mood, fake interface screenshots, copied article thumbnails, decorative abstract-only backgrounds, and anything that looks like unverified evidence.'
   ].filter(Boolean).join('\n');
+}
+
+function verifiedOverlayDataInstruction(card = {}) {
+  const data = card.visualData;
+  if (!data || typeof data !== 'object') return '';
+  const type = {
+    bar_chart: 'chart',
+    evidence_table: 'table',
+    comparison_table: 'comparison table'
+  }[data.type] ?? 'data panel';
+  return [
+    `Verified SVG overlay reserved: ${type}.`,
+    'Leave a calm blank panel for that SVG. Do not draw data, source names, rows, bars, labels, or values.'
+  ].filter(Boolean).join(' ');
 }
 
 function cleanPromptText(value, maxLength = 1000) {
   return `${value ?? ''}`.replace(/\s+/g, ' ').trim().slice(0, maxLength);
 }
 
+function backplateSceneDirection({ card = {}, topic = '', style = {} } = {}) {
+  const raw = cleanPromptText(card.visualPrompt, 420);
+  const role = card?.role;
+  const layout = card?.layout;
+  const dataLike = role === 'data_scene' || role === 'comparison' || layout === 'data_chart' || layout === 'comparison_board';
+  const reactionLike = role === 'community_signal' || role === 'misconception' || layout === 'quote_card';
+  if (reactionLike) {
+    return `${topicSpecificScene(topic, raw)} Show consumer reaction through real-life context and negative space only, with no social UI, comment bubbles, quote cards, speech bubbles, phone screenshots, or readable snippets.`;
+  }
+  if (dataLike) {
+    return `${topicSpecificScene(topic, raw)} Include a blank calm central panel or empty split areas for later verified SVG data overlays. Do not draw rows with content, ingredient lists, efficacy graphics, chart marks, comparison values, or labels.`;
+  }
+  if (role === 'checklist' || layout === 'checklist') {
+    return `${topicSpecificScene(topic, raw)} Add three broad blank horizontal safe areas for later checklist text, without checkmarks, ticks, numbers, or labels.`;
+  }
+  if (role === 'cover' || layout === 'cover_text' || layout === 'cover_photo') {
+    return `${topicSpecificScene(topic, raw)} Use a strong full-bleed subject and a calm lower safe area for the cover title.`;
+  }
+  return `${topicSpecificScene(topic, raw)} Use a clean research/editorial backplate with blank paper-like areas for later text overlays.`;
+}
+
+function topicSpecificScene(topic = '', raw = '') {
+  const text = `${topic} ${raw}`;
+  if (/아기\s*욕조|유해성분|환경호르몬|육아용품/i.test(text)) {
+    return 'Clean baby product safety-check scene: unlabeled baby bath item, water droplets, soft bathroom shelf, magnifier, neutral safety mood.';
+  }
+  if (/오메가\s*3|omega-?3|EPA|DHA|ALA|피쉬\s*오일|fish\s*oil/i.test(text)) {
+    return 'Realistic nutrition research scene: unlabeled supplement softgels, salmon or blue fish ingredients, walnuts or chia seeds, clean desk, blank note panel, calm health editorial lighting.';
+  }
+  if (/K뷰티|뷰티|화장품|스킨케어|효능|사용감/i.test(text)) {
+    return 'Realistic K-beauty skincare testing scene: unlabeled serum and cream containers, texture swatches, pipette, magnifier, clean desk, soft premium Korean editorial lighting.';
+  }
+  if (/어린이집|유치원|등원|육아|부모|아이/i.test(text)) {
+    return 'Realistic Korean morning childcare scene: child backpack, small shoes, parent work bag, clock, calm home entrance or daycare arrival atmosphere.';
+  }
+  if (/부동산|아파트|강남|서울|홍콩|집값|주거/i.test(text)) {
+    return 'Premium city real-estate scene: dense apartment skyline or residential towers, cinematic light, calm space for overlays.';
+  }
+  if (/코스피|반도체|주식|증시|수급|투자/i.test(text)) {
+    return 'Editorial finance research desk: newspaper-like blank papers, laptop edge with blank screen, pen, subtle market atmosphere without charts or numbers.';
+  }
+  const sanitized = sanitizeSceneText(raw);
+  if (sanitized) return sanitized;
+  return 'Topic-specific realistic editorial scene with one strong subject, quiet background texture, and generous negative space.';
+}
+
+function sceneContextSummary(value = '') {
+  const text = `${value ?? ''}`;
+  if (/아기\s*욕조|유해성분|환경호르몬|육아용품/i.test(text)) return 'baby product safety check in a Korean parenting context';
+  if (/오메가\s*3|omega-?3|EPA|DHA|ALA|피쉬\s*오일|fish\s*oil|영양제/i.test(text)) return 'omega-3 supplement and food-based nutrition decision';
+  if (/K뷰티|뷰티|화장품|스킨케어|성분|효능|사용감/i.test(text)) return 'K-beauty skincare ingredient-conscious shopping';
+  if (/어린이집|유치원|등원|육아|부모|아이/i.test(text)) return 'Korean childcare availability and parent schedule friction';
+  if (/부동산|아파트|강남|서울|홍콩|집값|주거/i.test(text)) return 'urban apartment housing and real-estate decision context';
+  if (/코스피|반도체|주식|증시|수급|투자/i.test(text)) return 'Korean stock market and finance research context';
+  if (/[가-힣]/.test(text)) return 'topic-specific Korean editorial context';
+  return cleanPromptText(text, 180) || 'topic-specific Korean editorial context';
+}
+
+function safeStyleName(value = '') {
+  const text = `${value ?? ''}`;
+  if (/실사|photo/i.test(text)) return 'photographic full-bleed backplate';
+  if (/팩트|fact|ranking/i.test(text)) return 'editorial board backplate';
+  if (/일러스트|story|illustration/i.test(text)) return 'editorial illustration backplate';
+  if (/메모|note|리서치|research/i.test(text)) return 'research note backplate';
+  return 'premium editorial backplate';
+}
+
+function sanitizeSceneText(value) {
+  const text = cleanPromptText(value, 220)
+    .replace(/성분표|효능\s*비교표|비교표|표|테이블|그래프|막대그래프|차트|수치|숫자|라벨|체크\s*표시|체크|댓글|리뷰\s*인용구|말풍선|스크린샷|UI|가격|제품명/gi, '')
+    .replace(/2x2|3줄|4개|\d+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (/[가-힣]/.test(text)) return 'Topic-specific realistic editorial scene with one strong subject, quiet background texture, and generous negative space.';
+  return text;
+}
+
 function styleTemplateInstruction(style = {}) {
-  const slots = Array.isArray(style.slots) ? style.slots.filter(Boolean).slice(0, 4).join(', ') : '';
-  const guide = cleanPromptText(style.imageGuide || style.desc, 280);
   const palette = [style.bg, style.ink, style.accent, style.sub].filter(Boolean).join(' / ');
   return [
-    guide ? `Use this template direction: ${guide}.` : '',
-    slots ? `Respect template slots: ${slots}.` : '',
+    cleanBackplateGuide(style.imageGuide || style.desc),
     palette ? `Use palette cues only for overlay compatibility: ${palette}.` : ''
   ].filter(Boolean).join(' ');
 }
 
-function overlayTextContract(card = {}) {
-  const titleLines = cardTextLines(card?.title, 11, 3).length;
-  const bodyLines = cardTextLines(card?.body, 24, 4).length;
-  return `Overlay contract: TrLab will add exact Korean title (${titleLines || 1} line${titleLines > 1 ? 's' : ''}), body (${bodyLines || 0} line${bodyLines === 1 ? '' : 's'}), and optional emphasis afterward. Do not render the wording inside the image.`;
+function overlayReservation(card = {}, style = {}) {
+  const textSlots = overlaySlotGuide(style);
+  const role = card?.role;
+  const layout = card?.layout;
+  const dataLike = role === 'data_scene' || role === 'comparison' || layout === 'data_chart' || layout === 'comparison_board';
+  if (dataLike) return `one blank central SVG data panel plus quiet title/body zones. ${textSlots}`;
+  if (role === 'cover' || layout === 'cover_text' || layout === 'cover_photo') return `large lower title safe area and small emphasis zone. ${textSlots}`;
+  if (role === 'checklist' || layout === 'checklist') return `three blank horizontal text rows with no checkmarks or numbers. ${textSlots}`;
+  if (role === 'community_signal' || role === 'misconception' || layout === 'quote_card') return `open lifestyle negative space for title/body and a small emphasis overlay zone. ${textSlots}`;
+  return `quiet title/body/emphasis safe areas. ${textSlots}`;
+}
+
+function overlaySlotGuide(style = {}) {
+  const name = `${style.name ?? ''}`;
+  if (/실사|photo/i.test(name)) return 'full-bleed photo subject, large title safe area, body-copy safe area, emphasis badge safe area';
+  if (/팩트|fact/i.test(name)) return 'blank top statement zone, blank middle explanation zone, blank contrast zone, blank emphasis zone';
+  if (/일러스트|story/i.test(name)) return 'illustration scene area, title safe area, body safe area, signature safe area';
+  if (/메모|note|리서치/i.test(name)) return 'hook safe area, blank memo-chip area, blank comparison/data panel, checklist safe area';
+  return 'title safe area, body safe area, emphasis safe area, lower signature safe area';
+}
+
+function cleanBackplateGuide(value) {
+  const cleaned = cleanPromptText(value, 220)
+    .replace(/bold fact-check board/gi, 'bold editorial board mood')
+    .replace(/claim\/check separation/gi, 'separated blank overlay zones')
+    .replace(/strong empty zones for exact text/gi, 'strong empty zones for later SVG overlays')
+    .replace(/comparison\/data blocks/gi, 'blank overlay-safe panels')
+    .replace(/comparison table/gi, 'blank comparison space')
+    .replace(/data chips/gi, 'blank data placeholders')
+    .replace(/claim|evidence|fact-check/gi, 'editorial')
+    .replace(/chart|graph|table|label|typography|text|copy/gi, 'blank overlay-safe area')
+    .replace(/주장|근거|팩트체크|비교표|그래프|차트|표|라벨|글자|문구/g, '빈 오버레이 영역')
+    .replace(/editorial board mood board/gi, 'editorial board mood')
+    .replace(/blank overlay-safe area overlay-safe area/gi, 'blank overlay-safe area')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return cleaned ? `Use only the visual mood of this template: ${cleaned}.` : '';
 }
 
 export function generateLocalCard({ studio, card, style, remoteVisual }, errors) {
-  const s = style ?? { bg: '#f8fafc', ink: '#0f172a', accent: '#dc2626', sub: '#2563eb' };
-  const svg = renderExactTextCard({ studio, card, style: s, remoteVisual, errors });
+  if (!remoteVisual?.buffer) {
+    throw new Error('텍스트 없는 AI 배경 이미지를 만들 수 없습니다. 이미지 provider 결과가 필요합니다.');
+  }
   return {
-    provider: remoteVisual ? `trlab+${remoteVisual.provider}` : 'trlab',
-    model: remoteVisual ? `exact-text-svg+${remoteVisual.model}` : 'exact-text-svg',
-    buffer: Buffer.from(svg),
-    ext: 'svg'
+    provider: remoteVisual.provider,
+    model: remoteVisual.model,
+    buffer: remoteVisual.buffer,
+    ext: remoteVisual.ext ?? 'png'
   };
 }
 
@@ -562,18 +676,18 @@ function structureInstruction(card) {
     return 'full-bleed editorial cover image: one strong topic-matched background photo or generated scene fills the entire 4:5 card; reserve the lower 35% for a dark gradient and exact title overlay. Do not create panels, charts, cards, UI frames, stickers, labels, or text inside the image.';
   }
   if (role === 'comparison' || layout === 'comparison_board') {
-    return 'comparison board: two-by-two empty comparison cells and visual separators; TrLab will overlay all labels afterward.';
+    return 'comparison backplate with calm blank split areas only. No real table, rows, columns, ticks, scores, product names, ingredient names, or values.';
   }
   if (role === 'data_scene' || layout === 'data_chart') {
-    return 'data card: premium editorial data story layout; create a topic-specific photographic background with clear reserved space in the center for a chart panel and clear reserved space near the bottom for a short data story. Do not draw chart bars, axes, numbers, labels, arrows, legends, or text; TrLab will overlay the exact chart and copy afterward.';
+    return 'data backplate with one empty central SVG-safe area and a calm lower copy area. No chart marks, ingredient sheets, product comparison panels, or text.';
   }
   if (role === 'checklist' || layout === 'checklist') {
-    return 'save-worthy closing card: 3 blank checklist rows in the center with clean space for exact text overlay.';
+    return 'save-worthy closing backplate: blank horizontal rows or soft panels only, with clean space for exact text overlay; no checkmarks, numbers, or labels.';
   }
   if (role === 'community_signal' || role === 'misconception' || layout === 'quote_card') {
-    return 'reaction story card: create a topic-specific scene with emotional context and open negative space. Do not create UI cards or white text boxes; TrLab overlays exact title, body, and small sticker points afterward.';
+    return 'reaction backplate: create a topic-specific lifestyle scene with emotional context and generous negative space. Do not create review cards, comment bubbles, UI cards, quote marks, stickers, labels, or white text boxes; TrLab overlays all text and small point marks afterward.';
   }
-  return 'research note card: title at top, 2-3 small chips, short body in a paper-like panel.';
+  return 'research note backplate: blank paper-like panel and soft topic objects only. Do not draw readable notes, labels, tables, charts, or fake document contents.';
 }
 
 function coverBackplateInstruction(card, studio, plan) {
@@ -581,25 +695,22 @@ function coverBackplateInstruction(card, studio, plan) {
   const layout = card?.layout;
   if (role !== 'cover' && layout !== 'cover_text' && layout !== 'cover_photo') return '';
   const topic = [visualTopic({ studio, plan, card }), card?.title, card?.visualPrompt].filter(Boolean).join(' / ');
+  const gangnam = /강남|Gangnam|부동산|아파트|집값|real estate/i.test(topic);
   return [
-    `Cover backplate direction: make a topic-specific full-bleed photographic or high-end 3D editorial background for "${topic}".`,
-    'If the topic is Gangnam real estate, use a dense Seoul/Gangnam apartment skyline at night, warm window lights, premium urban atmosphere, slightly top-down or telephoto composition.',
+    'Cover backplate direction: make a topic-specific full-bleed photographic or high-end 3D editorial background.',
+    gangnam ? 'Use a dense Seoul/Gangnam apartment skyline at night, warm window lights, premium urban atmosphere, slightly top-down or telephoto composition.' : '',
     'Keep the bottom area visually darker and low-detail so TrLab can overlay a large white Korean title there.'
-  ].join(' ');
+  ].filter(Boolean).join(' ');
 }
 
 function dataBackplateInstruction(card, studio, plan) {
   const role = card?.role;
   const layout = card?.layout;
   if (role !== 'data_scene' && layout !== 'data_chart') return '';
-  const topic = cleanTopicParts([visualTopic({ studio, plan, card }), card?.title, card?.visualPrompt]).join(' / ');
+  const topic = cleanTopicParts([visualTopic({ studio, plan, card }), card?.title]).join(' / ');
   const housing = isCityHousingCard(card, studio);
-  return [
-    `Data-card backplate direction: make a topic-specific photographic background for "${topic}", composed for an overlaid central chart and lower story text.`,
-    housing ? 'If Hong Kong is mentioned, use a dense Hong Kong high-rise skyline or Victoria Harbour residential towers at night, cinematic city lights, premium real-estate mood.' : '',
-    'Composition contract: background fills the full 4:5 card; center 45% should be visually calm enough for a glass chart panel; lower 22% should be darker and low-detail for explanatory copy.',
-    'Do not render the actual graph in the image model output: no bars, no axes, no labels, no digits, no Korean, no English, no random microcopy, no logos. TrLab renders the graph, values, and current/latest callout exactly.'
-  ].filter(Boolean).join(' ');
+  if (!housing) return '';
+  return `Location-specific data backplate: for "${topic}", use a dense Hong Kong high-rise skyline or Victoria Harbour residential towers at night, with the central overlay area calm and blank.`;
 }
 
 function referencePatternText(pattern) {
@@ -634,37 +745,37 @@ function referenceVisualGuide(referenceStyle) {
     handdrawn_research: {
       account: 'memo-style information card',
       cover: 'white space with a short topic label and one editor observation line',
-      body: 'hand-drawn research note, data chips, comparison table, small handwritten annotations',
-      typography: 'bold Korean headline plus short memo-like body copy',
-      avoid: 'generic PowerPoint shapes, copied article titles, long paragraphs'
+      body: 'blank paper panels, empty data zones, subtle editorial research mood without readable content',
+      typography: 'no typography inside the generated image; all text is overlaid later',
+      avoid: 'generic PowerPoint shapes, copied article titles, long paragraphs, fake tables, fake charts, fake ingredient sheets'
     },
     photo_hook: {
       account: 'photographic full-bleed template',
       cover: 'topic-specific realistic full-bleed background with a calm safe area for a large title',
-      body: 'realistic photo background, short body copy, high-contrast overlay zones',
-      typography: 'large bold Korean title plus short high-contrast body copy',
-      avoid: 'unrelated stock-photo mood, fake text in the image, copied article titles'
+      body: 'realistic photo background with high-contrast overlay-safe zones only',
+      typography: 'no typography inside the generated image; all text is overlaid later',
+      avoid: 'unrelated stock-photo mood, fake text in the image, copied article titles, fake product labels'
     },
     magazine_story: {
       account: 'illustrated scene template',
       cover: 'topic-specific illustration or editorial scene with clean blank space for text overlay',
       body: 'illustrated background or scene panel, separated title/body areas, soft editorial composition',
-      typography: 'clean bold Korean headline and short body copy over generous whitespace',
-      avoid: 'abstract decoration only, crowded illustration behind text, copied article titles'
+      typography: 'no typography inside the generated image; all text is overlaid later',
+      avoid: 'abstract decoration only, crowded illustration behind text, copied article titles, fake data graphics'
     },
     meme_factcheck: {
-      account: 'fact-check board template',
-      cover: 'short keyword and speech-bubble style question',
-      body: 'claim/check/misconception separated like a fact-check board',
-      typography: 'short bold copy with red/blue contrast',
-      avoid: 'vague opinion, unsourced certainty, long explanation'
+      account: 'fact-check mood backplate',
+      cover: 'blank editorial board background for a short hook overlay',
+      body: 'blank zones separated for later claim/check/misconception SVG text',
+      typography: 'no typography inside the generated image; all text is overlaid later',
+      avoid: 'vague opinion, unsourced certainty, long explanation, fake evidence board contents'
     }
   }[referenceStyle] ?? {
     account: 'reference carousel',
     cover: 'short strong hook cover',
     body: 'one role and one visual idea per card',
-    typography: 'bold title and short body copy',
-    avoid: 'long paragraphs, random decoration, copied source text'
+    typography: 'no typography inside the generated image; all text is overlaid later',
+    avoid: 'long paragraphs, random decoration, copied source text, fake tables or charts'
   };
 }
 

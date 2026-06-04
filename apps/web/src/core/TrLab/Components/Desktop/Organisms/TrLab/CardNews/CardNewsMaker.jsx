@@ -6,7 +6,6 @@ import { formatCardText } from '@/lib/card-text';
 import { autoStyle, cardStyles, styleRecommendation } from './card-news-styles';
 import { downloadCard, makeCarouselScript, makePostCopy } from './card-news-export';
 import { CardImageGenerator } from './CardImageGenerator';
-import { CardNewsPreview } from './CardNewsPreview';
 
 export function CardNewsMaker({ studio, plan }) {
   const draftKey = useMemo(() => makeMakerDraftKey(studio, plan), [studio, plan]);
@@ -14,6 +13,7 @@ export function CardNewsMaker({ studio, plan }) {
   const [styleKey, setStyleKey] = useState(() => autoStyle(studio, plan));
   const [channelName, setChannelName] = useState(() => studio?.channelName || studio?.manualBrief?.channelName || '@trlab.insight');
   const [generatedImages, setGeneratedImages] = useState({});
+  const [loadedDraftKey, setLoadedDraftKey] = useState('');
   const cards = useMemo(() => (plan.cards ?? []).map((card, index) => ({ ...card, page: card.page ?? index + 1 })), [plan]);
   const safeSelected = clampIndex(selected, cards.length);
   const card = cards[safeSelected] ?? cards[0];
@@ -27,6 +27,7 @@ export function CardNewsMaker({ studio, plan }) {
     setStyleKey(cardStyles[draft.styleKey] ? draft.styleKey : autoStyle(studio, plan));
     setChannelName(draft.channelName || studio?.channelName || studio?.manualBrief?.channelName || '@trlab.insight');
     setGeneratedImages(sanitizeGeneratedImages(draft.generatedImages, cards));
+    setLoadedDraftKey(draftKey);
   }, [draftKey]);
 
   useEffect(() => {
@@ -35,13 +36,14 @@ export function CardNewsMaker({ studio, plan }) {
   }, [cards.length]);
 
   useEffect(() => {
+    if (loadedDraftKey !== draftKey) return;
     saveMakerDraft(draftKey, {
       selected: safeSelected,
       styleKey: resolvedStyleKey,
       channelName: normalizeChannelName(channelName),
       generatedImages: sanitizeGeneratedImages(generatedImages, cards)
     });
-  }, [draftKey, safeSelected, resolvedStyleKey, channelName, generatedImages, cards]);
+  }, [draftKey, loadedDraftKey, safeSelected, resolvedStyleKey, channelName, generatedImages, cards]);
 
   if (!card) return null;
   return (
@@ -64,33 +66,42 @@ export function CardNewsMaker({ studio, plan }) {
 
 function CardWorkspace({ cards, selected, setSelected, card, style, studio, plan, generatedImage, setGeneratedImage }) {
   return (
-    <div className="space-y-3">
-      <div className="flex gap-2 overflow-x-auto pb-1">{cards.map((item, index) => <Button key={item.page} size="sm" variant={selected === index ? 'default' : 'outline'} onClick={() => setSelected(index)}>카드 {item.page} · {roleLabel(item.role)}</Button>)}</div>
-      <CarouselStrip cards={cards} selected={selected} setSelected={setSelected} style={style} />
-      <CardNewsPreview card={card} style={style} studio={studio} />
+    <div className="space-y-4">
+      <CarouselStrip cards={cards} selected={selected} setSelected={setSelected} />
       <CardImageGenerator card={card} selected={selected} style={style} studio={studio} plan={plan} generatedImage={generatedImage} onGenerated={setGeneratedImage} />
     </div>
   );
 }
 
-function CarouselStrip({ cards, selected, setSelected, style }) {
+function CarouselStrip({ cards, selected, setSelected }) {
   return (
-    <div className="rounded-lg border bg-white p-3">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <strong className="text-sm">전체 흐름 미리보기</strong>
-        <span className="text-xs font-bold text-muted-foreground">{cards.length}장 캐러셀</span>
+    <div className="rounded-lg border bg-white p-4 shadow-sm">
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <strong className="block text-base font-black">전체 흐름 미리보기</strong>
+          <span className="mt-1 block text-xs font-bold text-muted-foreground">카드를 눌러 아래 제작 영역에서 바로 편집합니다.</span>
+        </div>
+        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-black text-slate-600">{selected + 1}/{cards.length} 선택</span>
       </div>
-      <div className="grid gap-2 sm:grid-cols-4 xl:grid-cols-7">
+      <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(190px,1fr))]">
         {cards.map((card, index) => (
-          <button key={card.page} type="button" onClick={() => setSelected(index)} className={`min-w-0 rounded-md border p-1 text-left transition ${selected === index ? 'border-indigo-400 bg-indigo-50 shadow-sm' : 'bg-slate-50 hover:border-indigo-200'}`}>
-            <div className="aspect-[4/5] overflow-hidden rounded border bg-white p-2" style={{ color: style.ink }}>
-              <div className="mb-2 flex items-center justify-between gap-1 text-[9px] font-black" style={{ color: style.sub }}>
+          <button
+            key={card.page}
+            type="button"
+            onClick={() => setSelected(index)}
+            className={`group min-w-0 rounded-lg border p-2 text-left transition ${selected === index ? 'border-indigo-500 bg-indigo-50 shadow-md ring-2 ring-indigo-100' : 'border-slate-200 bg-slate-50 hover:border-indigo-200 hover:bg-white'}`}
+          >
+            <div className="flex min-h-[260px] flex-col rounded-md border bg-white p-3 text-slate-950 shadow-sm">
+              <div className="mb-3 flex items-center justify-between gap-2 text-[10px] font-black text-slate-600">
                 <span>{String(card.page).padStart(2, '0')}</span>
-                <span>{roleLabel(card.role)}</span>
+                <span className="min-w-0 truncate">{roleLabel(card.role)}</span>
               </div>
-              <strong className="line-clamp-3 block text-[13px] font-black leading-tight">{card.title}</strong>
-              {card.emphasis ? <span className="mt-2 inline-block max-w-full truncate rounded-full px-2 py-0.5 text-[9px] font-black text-white" style={{ background: style.accent }}>{card.emphasis}</span> : null}
-              <p className="mt-2 line-clamp-4 whitespace-pre-line text-[9px] font-bold leading-3 text-slate-500">{formatCardText(card.body)}</p>
+              <strong className={`${flowTitleClass(card.title)} block whitespace-normal break-keep font-black leading-tight [overflow-wrap:anywhere]`}>{card.title}</strong>
+              {card.emphasis ? <span className="mt-3 inline-block max-w-full truncate rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-[11px] font-black text-slate-950">{card.emphasis}</span> : null}
+              <p className="mt-3 line-clamp-5 whitespace-pre-line text-[12px] font-bold leading-5 text-slate-600">{formatCardText(card.body)}</p>
+              <div className={`mt-auto pt-3 text-[11px] font-black text-indigo-600 transition ${selected === index ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                {selected === index ? '편집 중' : '선택해서 편집'}
+              </div>
             </div>
           </button>
         ))}
@@ -174,6 +185,13 @@ function roleLabel(value) {
     checklist: '체크',
     closing: '마무리'
   }[value] ?? '카드';
+}
+
+function flowTitleClass(value) {
+  const length = `${value ?? ''}`.replace(/\s/g, '').length;
+  if (length > 34) return 'text-[14px]';
+  if (length > 24) return 'text-[15px]';
+  return 'text-[17px]';
 }
 
 const MAKER_DRAFT_PREFIX = 'trlab.cardnews.maker.v1';

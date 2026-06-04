@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createContentPlan, normalizeContentPlanForTest } from './content-planner.js';
+import { __contentPlannerTestUtils, createContentPlan, normalizeContentPlanForTest } from './content-planner.js';
 
 const candidate = {
   id: 'candidate-fmkorea-kospi-chip',
@@ -320,8 +320,8 @@ describe('createContentPlan fallback carousel', () => {
     expect(plan.hookTitles).toContain('감기 걸리면 어린이집 보내면 안 될까');
     expect(plan.cards[0].title).toBe('감기 걸리면 어린이집 보내면 안 될까');
     expect(plan.cards[0].visualPrompt).toContain('체온계');
-    expect(plan.cards.find((card) => card.role === 'comparison')?.visualPrompt).toContain('2x2 비교표');
-    expect(plan.cards.at(-1).visualPrompt).toContain('체크리스트');
+    expect(plan.cards.find((card) => card.role === 'comparison')?.visualPrompt).toContain('빈 분할 패널');
+    expect(plan.cards.at(-1).visualPrompt).toContain('빈 줄 영역');
     expect(plan.cards.at(-1).title).toBe('등원 전 체크 3개');
     expect(plan.cards.at(-1).emphasis).toBe('등원 판단 기준');
     const dataCard = plan.cards.find((card) => card.role === 'data_scene');
@@ -394,7 +394,7 @@ describe('createContentPlan fallback carousel', () => {
 
     expect(plan.cards[0].title).toBe('아기 욕조 유해성분 괜찮을까');
     expect(plan.cards[0].visualPrompt).toContain('아기 욕조');
-    expect(plan.cards.at(-1).visualPrompt).toContain('체크리스트');
+    expect(plan.cards.at(-1).visualPrompt).toContain('빈 줄 영역');
     expect(plan.cards.at(-1).body).toContain('성분 기준이 확인됐나');
     expect(visible).toMatch(/아기 욕조|성분|대체 기준|사용 연령/);
     expect(visible).not.toMatch(/어린이집|유치원|등원|돌봄|감기|아이 컨디션|제도 기준/);
@@ -424,10 +424,88 @@ describe('createContentPlan fallback carousel', () => {
     expect(plan.hookTitles).toContain('미국 아이 장난감 왜 팔릴까');
     expect(plan.cards[0].visualPrompt).toContain('쇼핑 매거진형');
     expect(plan.cards[0].visualPrompt).not.toContain('팔릴까을');
-    expect(plan.cards[3].visualPrompt).toContain('그래프 대신 반복 언급 신호');
+    expect(plan.cards[3].visualPrompt).toContain('빈 중앙 패널');
     expect(plan.cards.at(-1).title).toBe('사기 전 체크 3개');
     expect(visible).toMatch(/살 이유|구매|장바구니|왜 이걸 사갈까/);
     expect(visible).not.toMatch(/어린이집|유치원|등원|감기|성분 기준|사용 연령|대체품/);
+  });
+
+  it('rewrites weak K-beauty source copy into useful card-news body copy', () => {
+    const badAiPlan = {
+      cards: [
+        {
+          role: 'cover',
+          title: 'K뷰티 성분 중심 소비',
+          body: '[기자의 눈] LA 한복판에서 실감한 K뷰티 현주소\n미주중앙일보라는 원문 맥락에 사람들의 반응이 붙었어요.',
+          dataPoint: '[기자의 눈] LA 한복판에서 실감한 K뷰티 현주소'
+        },
+        {
+          role: 'why_now',
+          title: '왜 성분부터 볼까',
+          body: "올리브영, 美 본토 상륙…K뷰티 '수출'서 '유통 주도권' 경쟁으로\nv. daum.\nnet라는 원문 맥락에 사람들의 반응이 붙었어요.",
+          dataPoint: "올리브영, 美 본토 상륙…K뷰티 '수출'서 '유통 주도권' 경쟁으로"
+        },
+        {
+          role: 'community_signal',
+          title: '후기가 움직인 이유',
+          body: '"K뷰티 제품은 믿을 수 있는 성분으로 최고예요!" 같은 다양한 소비자 후기가 보여요.'
+        },
+        { role: 'comparison', title: '브랜드보다 기준', body: '출처명과 수집 채널을 보고 비교해야 합니다.' },
+        { role: 'data_scene', title: '반응 지표', body: '카드뉴스 문구를 작성해야 합니다.' },
+        { role: 'misconception', title: '오해 포인트', body: 'K뷰티의 미래를 알아보겠습니다.' },
+        { role: 'content_angle', title: '콘텐츠 포인트', body: '다양한 소비자 후기 중심으로 설명해야 합니다.' },
+        { role: 'checklist', title: '구매 전 체크', body: '확인할 지표를 넣어주세요.' }
+      ]
+    };
+
+    const plan = normalizeContentPlanForTest(badAiPlan, {
+      id: 'k-beauty-ingredient-consumption',
+      label: 'K뷰티 성분 중심 소비',
+      keyword: 'K뷰티 아마존 미국 소비 성분 효능 리뷰',
+      category: '뷰티 트렌드',
+      selectedHookTitle: 'K뷰티, 왜 성분부터 볼까',
+      sampleTitles: [
+        "올리브영, 美 본토 상륙…K뷰티 '수출'서 '유통 주도권' 경쟁으로",
+        '[기자의 눈] LA 한복판에서 실감한 K뷰티 현주소'
+      ]
+    });
+
+    const bodyCopy = plan.cards.map((card) => card.body).join('\n');
+
+    expect(bodyCopy).toMatch(/성분|효능|리뷰|가격|구매 기준|사용감/);
+    expect(bodyCopy).toMatch(/패키지보다 성분|브랜드명만 보면 이유가 흐려져요|선택 기준이 보여요/);
+    expect(bodyCopy).not.toMatch(/저장 목록에 올라왔어요|원문 맥락|v\.\s*daum|믿을 수 있는 성분으로 최고|다양한 소비자 후기|카드뉴스 문구|알아보겠습니다/);
+  });
+
+  it('does not repeat the same strengthened body across K-beauty cards', () => {
+    const plan = normalizeContentPlanForTest({
+      cards: [
+        { role: 'cover', title: '미국 아마존에서 K뷰티 제품이 강세!', body: 'K뷰티가 인기입니다.' },
+        { role: 'why_now', title: '왜 이렇게 인기 있나', body: 'K뷰티가 인기입니다.' },
+        { role: 'content_angle', title: '사용 장면', body: 'K뷰티가 인기입니다.' },
+        { role: 'comparison', title: '타 브랜드 비교', body: 'K뷰티가 인기입니다.' },
+        { role: 'checklist', title: '구매 체크리스트', body: 'K뷰티가 인기입니다.' }
+      ]
+    }, {
+      id: 'k-beauty-repeated-weak-bodies',
+      label: 'K뷰티 성분 중심 소비',
+      keyword: 'K뷰티 아마존 미국 소비 성분 효능 리뷰',
+      category: '뷰티 트렌드',
+      selectedHookTitle: '미국 아마존에서 K뷰티 제품이 강세!',
+      sampleTitles: [
+        '“성분은 기본, 효능은 필수”… 더 까다로워진 美 뷰티 시장',
+        'K뷰티 소비의 중심 이동',
+        "K뷰티 '잔치'된 美 아마존 블프…1등부터 휩쓸었다"
+      ]
+    });
+
+    const bodies = plan.cards.map((card) => card.body);
+    const uniqueBodies = new Set(bodies.map((body) => body.replace(/\s+/g, ' ').trim()));
+
+    expect(uniqueBodies.size).toBeGreaterThanOrEqual(4);
+    expect(bodies.join('\n')).toMatch(/성분|효능|리뷰|가격|구매 기준|장바구니/);
+    expect(bodies.join('\n')).not.toMatch(/저장 목록에 올라왔어요|단순 화제보다 반응의 방향/);
+    expect(plan.cards[0].body).toMatch(/아쉬워요|마음이 움직였는지/);
   });
 
   it('writes parent reaction cards as concrete blocked moments instead of generic empathy copy', async () => {
@@ -516,5 +594,282 @@ describe('createContentPlan fallback carousel', () => {
     expect(plan.captionBody).toContain('거리, 운영 시간, 실제 등하원 동선');
     expect(plan.hashtags).toEqual(expect.arrayContaining(['#어린이집입소', '#입소대기', '#육아현실']));
     expect(plan.cards.map((card) => `${card.title}\n${card.body}\n${card.visualPrompt}`).join('\n')).not.toMatch(/시작하기|실천할 때|Search SERP|네이트판/);
+  });
+
+  it('adds verified omega-3 chart and table data to manual supplement carousels', async () => {
+    const providerKeys = ['OPENAI_API_KEY', 'GEMINI_API_KEY', 'ANTHROPIC_API_KEY', 'XAI_API_KEY', 'GROQ_API_KEY', 'DEEPSEEK_API_KEY', 'MISTRAL_API_KEY', 'DEEPINFRA_API_KEY'];
+    const original = Object.fromEntries(providerKeys.map((key) => [key, process.env[key]]));
+    const originalProvider = process.env.AI_PROVIDER;
+    for (const key of providerKeys) delete process.env[key];
+    delete process.env.AI_PROVIDER;
+
+    let plan;
+    try {
+      plan = await createContentPlan({
+        id: 'manual-omega3-supplement',
+        label: '오메가3 영양제는 꼭 먹어야할까?',
+        keyword: '오메가3 EPA DHA ALA 영양제 권장 섭취량',
+        category: '건강 정보',
+        sourceMode: 'manual',
+        cardCount: 5,
+        selectedHookTitle: '오메가3 영양제는 꼭 먹어야할까?',
+        summary: '오메가3 영양제가 꼭 필요한지 식단과 권장 섭취량 기준으로 설명',
+        manualBrief: {
+          topic: '오메가3 영양제는 꼭 먹어야할까?',
+          prompt: '식단 비교 그래프, 오메가3 권장 섭취량, 영양제 효능 정보를 검증 데이터로 보여줘.',
+          cardCount: 5
+        }
+      });
+    } finally {
+      for (const [key, value] of Object.entries(original)) {
+        if (value) process.env[key] = value;
+      }
+      if (originalProvider) process.env.AI_PROVIDER = originalProvider;
+    }
+
+    expect(plan.provider).toBe('fallback');
+    expect(plan.generation.visualDataEnrichment).toMatchObject({
+      mode: 'curated_verified_profile',
+      profiles: ['omega3_official_sources'],
+      cardCount: 2
+    });
+    expect(plan.generation.visualDataEnrichment.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({ page: 3, type: 'bar_chart', title: '식단으로 채우는 오메가3' }),
+      expect.objectContaining({ page: 4, type: 'evidence_table', title: '보충제별 효능 근거' })
+    ]));
+    expect(plan.cards[2].role).toBe('data_scene');
+    expect(plan.cards[2].visualData?.type).toBe('bar_chart');
+    expect(plan.cards[2].visualData?.title).toBe('식단으로 채우는 오메가3');
+    expect(plan.cards[2].visualData?.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: '아마씨유 1T', value: 7.26, display: 'ALA 7.26g' }),
+      expect.objectContaining({ label: '연어 3oz', value: 1.83, display: 'DHA 1.24+EPA 0.59g' }),
+      expect.objectContaining({ label: '피쉬오일', value: 0.3, display: 'EPA 0.18+DHA 0.12g' })
+    ]));
+    expect(plan.cards[2].visualData?.items.find((item) => item.label === '연어 3oz')?.segments).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: 'DHA', value: 1.24 }),
+      expect.objectContaining({ label: 'EPA', value: 0.59 })
+    ]));
+    expect(plan.cards[2].visualData?.referenceLines).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: '성인 남성 ALA AI', value: 1.6 }),
+      expect.objectContaining({ label: '성인 여성 ALA AI', value: 1.1 })
+    ]));
+    expect(plan.cards[2].visualData?.callouts.join('\n')).toContain('EPA·DHA는 공식 권장량');
+    expect(plan.cards[3].role).toBe('comparison');
+    expect(plan.cards[3].visualData?.type).toBe('evidence_table');
+    expect(plan.cards[3].visualData?.title).toBe('보충제별 효능 근거');
+    expect(plan.cards[3].visualData?.rows.flat().join('\n')).toMatch(/알갈오일|피쉬오일|처방 오메가3|고중성지방|의료진/);
+    expect(plan.cards[3].visualData?.sources.map((source) => source.label)).toEqual(expect.arrayContaining(['NIH ODS Omega-3 Health Professional Fact Sheet']));
+  });
+
+  it('preserves structured AI visualData for verified charts', () => {
+    const plan = normalizeContentPlanForTest({
+      cards: [
+        {
+          role: 'data_scene',
+          layout: 'data_chart',
+          title: '섭취 기준 비교',
+          body: '기준이 있는 값만 따로 봐야 해요.',
+          visualData: {
+            type: 'bar_chart',
+            title: '검증된 기준값',
+            subtitle: '공식 기준',
+            unit: 'g/day',
+            items: [
+              { label: 'A', value: 1.2, display: '1.2g', note: '공식' },
+              { label: 'B', value: 0.8, display: '0.8g', note: '공식' }
+            ],
+            sources: [{ label: 'Official Source', url: 'https://example.com' }]
+          }
+        }
+      ]
+    }, {
+      label: '영양 기준 테스트',
+      keyword: '검증 데이터'
+    });
+
+    expect(plan.cards[0].visualData?.type).toBe('bar_chart');
+    expect(plan.cards[0].visualData?.items).toHaveLength(2);
+    expect(plan.cards[0].visualData?.sources[0]).toEqual({ label: 'Official Source', url: 'https://example.com' });
+  });
+
+  it('targets only data-like cards without existing visualData for AI enrichment', () => {
+    const plan = normalizeContentPlanForTest({
+      cards: [
+        { role: 'cover', layout: 'cover_text', title: '표지는 제외', body: '본문' },
+        { role: 'data_scene', layout: 'data_chart', title: '검색량 비교', body: '수치 비교가 필요해요.', visualPrompt: '검색량 그래프' },
+        {
+          role: 'comparison',
+          layout: 'comparison_board',
+          title: '이미 검증된 표',
+          body: '이미 데이터가 있어요.',
+          visualData: {
+            type: 'evidence_table',
+            title: '검증 표',
+            columns: ['기준', '값'],
+            rows: [['A', 'B']],
+            sources: [{ label: '공식 출처', url: 'https://example.com' }]
+          }
+        }
+      ]
+    }, {
+      label: '검색량 비교 테스트',
+      keyword: '검색량 비교',
+      cardCount: 3
+    });
+
+    const targets = __contentPlannerTestUtils.visualDataResearchTargets(plan, { label: '검색량 비교 테스트' });
+    expect(targets).toHaveLength(1);
+    expect(targets[0]).toMatchObject({ page: 2, role: 'data_scene', layout: 'data_chart' });
+  });
+
+  it('builds compact external-search queries for visualData research targets', () => {
+    const targets = [
+      {
+        page: 3,
+        role: 'data_scene',
+        layout: 'data_chart',
+        title: '식단별 함량 비교',
+        body: '식품별 수치가 필요해요.',
+        visualPrompt: '함량 그래프',
+        visualItems: ['연어', '정어리']
+      },
+      {
+        page: 4,
+        role: 'comparison',
+        layout: 'comparison_board',
+        title: '영양제 형태 비교',
+        body: '표로 비교해요.',
+        visualPrompt: '비교표'
+      }
+    ];
+    const queries = __contentPlannerTestUtils.visualDataSearchQueries({
+      label: '오메가3 영양제는 꼭 먹어야할까?'
+    }, {}, targets);
+
+    expect(queries).toHaveLength(2);
+    expect(queries[0]).toContain('식단별 함량 비교');
+    expect(queries[0]).toContain('공식 통계 수치 그래프 데이터 출처');
+    expect(queries[1]).toContain('공식 통계 기준 비교표 데이터 출처');
+    expect(queries.every((query) => query.length <= 180)).toBe(true);
+  });
+
+  it('normalizes and dedupes external search results for AI source material', () => {
+    const items = __contentPlannerTestUtils.flattenExternalSearchResults([
+      {
+        source: 'Tavily',
+        results: [
+          { title: '공식 데이터 표', snippet: '검증된 수치 설명', url: 'https://example.com/data?utm=1' },
+          { title: '다른 데이터', snippet: '비교 기준', url: 'https://example.com/other' }
+        ]
+      },
+      {
+        source: 'Brave Search',
+        results: [
+          { title: '공식 데이터 표 중복', snippet: '중복 URL', url: 'https://example.com/data?ref=2' }
+        ]
+      }
+    ], '공식 데이터');
+    const deduped = __contentPlannerTestUtils.dedupeVisualDataSources(items);
+
+    expect(items[0]).toMatchObject({ source: 'Tavily', title: '공식 데이터 표', text: '검증된 수치 설명', query: '공식 데이터' });
+    expect(deduped).toHaveLength(2);
+    expect(deduped.map((item) => item.url)).toEqual(['https://example.com/data?utm=1', 'https://example.com/other']);
+  });
+
+  it('collects existing evidence and injected external search results into one visualData source pack', async () => {
+    const targets = [{
+      page: 2,
+      role: 'data_scene',
+      layout: 'data_chart',
+      title: '검색량 비교',
+      body: '수치 비교가 필요해요.',
+      visualPrompt: '검색량 그래프'
+    }];
+    const sourcePack = await __contentPlannerTestUtils.collectVisualDataSourcePack({
+      label: '검색량 비교 테스트',
+      evidence: [{ source: '내부 근거', title: '커뮤니티 언급량', metric: '댓글 86개' }]
+    }, { sourceNotes: ['공식 통계 우선'] }, targets, async (query) => [{
+      source: 'Mock Search',
+      results: [
+        { title: '공식 검색량 데이터', snippet: 'A 10건, B 20건', url: 'https://example.com/search-volume' }
+      ]
+    }]);
+
+    expect(sourcePack.searchStatus).toBe('searched');
+    expect(sourcePack.searchQueries).toHaveLength(1);
+    expect(sourcePack.searchResultCount).toBe(1);
+    expect(sourcePack.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ source: '내부 근거', title: '커뮤니티 언급량', text: '댓글 86개' }),
+      expect.objectContaining({ source: 'Mock Search', title: '공식 검색량 데이터', text: 'A 10건, B 20건', url: 'https://example.com/search-volume' })
+    ]));
+  });
+
+  it('applies AI researched visualData only when sources are present', () => {
+    const cards = [
+      { page: 2, role: 'data_scene', layout: 'data_chart', title: '검색량 비교', body: '수치 비교가 필요해요.' },
+      { page: 3, role: 'data_scene', layout: 'data_chart', title: '출처 없는 비교', body: '이 값은 쓰면 안 돼요.' }
+    ];
+    const { cards: nextCards, applied } = __contentPlannerTestUtils.applyAIVisualData(cards, {
+      cards: [
+        {
+          page: 2,
+          visualData: {
+            type: 'bar_chart',
+            title: '공식 검색량 비교',
+            subtitle: '공식 자료 기준',
+            items: [{ label: 'A', value: 10, display: '10건' }],
+            sources: [{ label: 'Official Data', url: 'https://example.com/data' }]
+          }
+        },
+        {
+          page: 3,
+          visualData: {
+            type: 'bar_chart',
+            title: '출처 없는 비교',
+            items: [{ label: 'B', value: 20, display: '20건' }]
+          }
+        }
+      ]
+    });
+
+    expect(applied).toEqual([expect.objectContaining({ page: 2, type: 'bar_chart', title: '공식 검색량 비교' })]);
+    expect(nextCards[0].visualData?.title).toBe('공식 검색량 비교');
+    expect(nextCards[1].visualData).toBeUndefined();
+  });
+
+  it('enforces omega-3 chart on card 3 and evidence table on card 4 even when AI roles are loose', () => {
+    const plan = normalizeContentPlanForTest({
+      cards: [
+        { role: 'cover', layout: 'cover_text', title: '오메가3 영양제는 꼭 먹어야 할까?', body: '궁금증을 풀어봐요.' },
+        { role: 'content_angle', layout: 'handwritten_research', title: '효과와 필요성', body: '종류를 먼저 나눠봐요.' },
+        {
+          role: 'why_now',
+          layout: 'quote_card',
+          title: '식단에서의 오메가3 섭취 비교',
+          body: '식단으로 섭취하는 방법과 영양제를 비교해보세요.',
+          visualPrompt: '오메가3가 많이 포함된 음식들의 일러스트',
+          visualItems: ['타이밍', '반응 증가']
+        },
+        {
+          role: 'content_angle',
+          layout: 'quote_card',
+          title: '내 얘기로 바뀌는 순간',
+          body: '식습관, 섭취 형태, 가격대를 체크해야 해요.',
+          visualPrompt: '체크리스트 형식으로 아이콘 정리'
+        },
+        { role: 'checklist', layout: 'checklist', title: '마무리 및 체크리스트', body: '위험 요소는 없는지\n개인 필요에 맞는지' }
+      ]
+    }, {
+      label: '오메가3 영양제는 꼭 먹어야할까?',
+      keyword: '오메가3 EPA DHA ALA 권장 섭취량'
+    });
+
+    expect(plan.cards[2].role).toBe('data_scene');
+    expect(plan.cards[2].visualData?.type).toBe('bar_chart');
+    expect(plan.cards[2].visualData?.title).toBe('식단으로 채우는 오메가3');
+    expect(plan.cards[2].visualData?.items.map((item) => item.label)).toEqual(expect.arrayContaining(['아마씨유 1T', '연어 3oz', '피쉬오일']));
+    expect(plan.cards[3].role).toBe('comparison');
+    expect(plan.cards[3].visualData?.type).toBe('evidence_table');
+    expect(plan.cards[3].visualData?.rows.flat().join('\n')).toContain('알갈오일');
   });
 });

@@ -13,5 +13,5 @@ export async function GET(request) {
     return badRequest(error);
   }
   const scheduledOnly = params.scheduled ? params.scheduled !== '0' : false;
-  return Response.json({ snapshot: await getLatestTrendSnapshot({ scheduledOnly }) });
+  return Response.json({ snapshot: await getLatestTrendSnapshot({ scheduledOnly, analysisDate: params.analysisDate }) });
 }

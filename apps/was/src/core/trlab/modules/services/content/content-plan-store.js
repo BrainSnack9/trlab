@@ -5,7 +5,7 @@ import { contentPlansTable, ensurePostgresSchema } from '#trlab/libraries/storag
 import { shouldUseSupabaseDatabase } from '#trlab/modules/configs/env';
 import { repairDeep } from '#trlab/modules/helpers/text-repair';
 
-export const PLAN_VERSION = 'v6';
+export const PLAN_VERSION = 'v8';
 
 export function planIdFor(candidate) {
   const key = candidate?.id || candidate?.keyword || candidate?.label || 'content';

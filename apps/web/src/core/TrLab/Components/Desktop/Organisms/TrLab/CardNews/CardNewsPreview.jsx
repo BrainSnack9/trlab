@@ -16,8 +16,8 @@ export function CardNewsPreview({ card, style, studio }) {
   return <RankingPreview card={card} style={style} studio={studio} />;
 }
 
-function Shell({ style, children }) {
-  return <div className="grid place-items-center rounded-lg border bg-slate-100 p-4"><div className="aspect-[4/5] w-full max-w-[560px] overflow-hidden rounded-md border-4 border-black shadow-2xl [word-break:break-word]" style={{ background: style.bg, color: style.ink }}>{children}</div></div>;
+function Shell({ children }) {
+  return <div className="grid place-items-center rounded-lg border bg-slate-100 p-4"><div className="aspect-[4/5] w-full max-w-[560px] overflow-hidden rounded-md border-4 border-black bg-white text-slate-950 shadow-2xl [word-break:break-word]">{children}</div></div>;
 }
 
 function CoverPreview({ card, style, studio }) {
@@ -25,15 +25,15 @@ function CoverPreview({ card, style, studio }) {
   const labels = visualItems(card, [card.emphasis, studio?.label]).slice(0, 3);
   return (
     <Shell style={style}>
-      <div className={`flex h-full flex-col p-8 ${photo ? 'justify-end bg-gradient-to-b from-slate-300 via-slate-200 to-black text-white' : 'justify-between'}`}>
+      <div className={`flex h-full flex-col p-8 ${photo ? 'justify-end bg-gradient-to-b from-slate-100 via-white to-slate-200 text-slate-950' : 'justify-between'}`}>
         <div className="flex items-center justify-between gap-3 text-sm font-black opacity-80">
           <span>{channelName(studio)}</span>
           <span className="rounded-full border px-3 py-1">{String(card.page ?? 1).padStart(2, '0')}</span>
         </div>
         <div className="my-auto">
-          <span className="inline-block rounded-full px-4 py-2 text-sm font-black text-white" style={{ background: style.accent }}>{card.emphasis || '지금 봐야 할 신호'}</span>
+          <span className="inline-block rounded-full border border-slate-200 bg-slate-100 px-4 py-2 text-sm font-black text-slate-950">{card.emphasis || '지금 봐야 할 신호'}</span>
           <h2 className="mt-7 max-w-full break-words text-6xl font-black leading-none tracking-normal">{card.title}</h2>
-          <div className="mt-6 h-3 w-36 rounded-full" style={{ background: photo ? '#fff' : style.accent }} />
+          <div className="mt-6 h-3 w-36 rounded-full" style={{ background: style.accent }} />
           <FormattedBody className="mt-7 text-2xl font-black leading-snug" text={card.body} />
         </div>
         <div>
@@ -96,7 +96,7 @@ function DataChartPreview({ card, style, studio }) {
         <div className="mt-8 flex h-64 items-end gap-4 border-b-4 border-l-4 border-black px-5">
           {metrics.map((metric, index) => (
             <div key={`${metric.label}-${labels[index]}`} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-2" style={{ height: `${metric.height}%` }}>
-              <span className="max-w-full break-words text-center text-sm font-black" style={{ color: index === 0 ? style.accent : style.sub }}>{metric.label}</span>
+              <span className="max-w-full break-words text-center text-sm font-black text-slate-950">{metric.label}</span>
               <div className="w-full min-w-0 flex-1" style={{ background: index === 0 ? style.accent : style.sub }} />
             </div>
           ))}
@@ -117,7 +117,7 @@ function QuotePreview({ card, style, studio }) {
   return (
     <Shell style={style}>
       <div className="flex h-full flex-col p-8">
-        <p className="text-sm font-black" style={{ color: style.sub }}>{eyebrow}</p>
+        <p className="text-sm font-black text-slate-600">{eyebrow}</p>
         <div className="my-auto border-l-8 bg-white p-7 shadow-lg" style={{ borderColor: style.accent, borderRadius: 28 }}>
           <h2 className="break-words text-4xl font-black leading-tight">{card.title}</h2>
           <FormattedBody className="mt-6 text-xl font-semibold leading-snug text-slate-700" text={card.body} />
@@ -158,9 +158,9 @@ function ChecklistPreview({ card, style, studio }) {
   return (
     <Shell style={style}>
       <div className="flex h-full flex-col p-8">
-        <p className="text-sm font-black" style={{ color: style.sub }}>{guide.eyebrow}</p>
+        <p className="text-sm font-black text-slate-600">{guide.eyebrow}</p>
         <h2 className="mt-3 break-words text-5xl font-black leading-tight">{card.title}</h2>
-        <p className="mt-4 break-words text-lg font-black" style={{ color: style.accent }}>{card.emphasis || guide.emphasis}</p>
+        <p className="mt-4 break-words text-lg font-black text-slate-950">{card.emphasis || guide.emphasis}</p>
         <div className="mt-10 grid gap-4">
           {(lines.length ? lines : ['반응이 있었나', '비교가 가능한가', '숫자로 설명되나']).map((line) => (
             <div key={line} className="flex items-start gap-3 rounded-xl border-2 border-black bg-white p-4 text-lg font-black">
@@ -198,7 +198,7 @@ function TreeNode({ text, main }) {
 }
 
 function NotePreview({ card, style }) {
-  return <Shell style={style}><div className="p-10"><p className="text-sm font-bold" style={{ color: style.sub }}>Episode {String(card.page).padStart(2, '0')}</p><h2 className="mt-8 break-words text-center text-4xl font-black leading-tight">{card.title}</h2><div className="mx-auto mt-6 h-2 w-36 rounded-full" style={{ background: style.accent }} /><FormattedBody className="mt-10 text-center text-lg font-bold leading-relaxed" text={card.body} /><div className="mt-10 break-words rounded-lg border-2 border-dashed p-4 text-center font-black">{card.emphasis}</div></div></Shell>;
+  return <Shell style={style}><div className="p-10"><p className="text-sm font-bold text-slate-600">Episode {String(card.page).padStart(2, '0')}</p><h2 className="mt-8 break-words text-center text-4xl font-black leading-tight">{card.title}</h2><div className="mx-auto mt-6 h-2 w-36 rounded-full" style={{ background: style.accent }} /><FormattedBody className="mt-10 text-center text-lg font-bold leading-relaxed" text={card.body} /><div className="mt-10 break-words rounded-lg border-2 border-dashed p-4 text-center font-black">{card.emphasis}</div></div></Shell>;
 }
 
 function StoryPreview({ card, style, studio }) {
@@ -209,21 +209,21 @@ function PowerPhotoPreview({ card, style, studio }) {
   const labels = visualItems(card, [card.emphasis, studio?.label, card.dataPoint]).slice(0, 3);
   return (
     <Shell style={style}>
-      <div className="flex h-full flex-col bg-gradient-to-b from-zinc-700 via-zinc-900 to-black p-8 text-white">
-        <div className="flex items-center justify-between text-sm font-black text-white/80">
+      <div className="flex h-full flex-col bg-gradient-to-b from-slate-100 via-white to-slate-200 p-8 text-slate-950">
+        <div className="flex items-center justify-between text-sm font-black text-slate-600">
           <span>{channelName(studio)}</span>
           <span>{String(card.page ?? 1).padStart(2, '0')}</span>
         </div>
         <div className="my-auto">
           <span className="inline-block rounded-full px-4 py-2 text-sm font-black text-black" style={{ background: style.accent }}>{card.emphasis || '믿기 어려운 신호'}</span>
           <h2 className="mt-7 break-words text-6xl font-black leading-none">{card.title}</h2>
-          <FormattedBody className="mt-7 text-2xl font-black leading-snug text-white/90" text={card.body} />
+          <FormattedBody className="mt-7 text-2xl font-black leading-snug text-slate-800" text={card.body} />
         </div>
         <div className="grid gap-2">
           <div className="flex flex-wrap gap-2">
-            {labels.map((label) => <span key={label} className="rounded-full bg-white/15 px-3 py-1 text-xs font-black text-white">{label}</span>)}
+            {labels.map((label) => <span key={label} className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-xs font-black text-slate-700">{label}</span>)}
           </div>
-          <p className="break-words text-sm font-black text-white/70">{card.emphasis || '다음 카드에서 기준 확인'}</p>
+          <p className="break-words text-sm font-black text-slate-600">{card.emphasis || '다음 카드에서 기준 확인'}</p>
         </div>
       </div>
     </Shell>
@@ -234,16 +234,16 @@ function FormattedBody({ text, className }) {
   return <p className={`${className} min-w-0 break-words`}>{formatCardText(text).split('\n').map((line) => <span key={line} className="block min-w-0 break-words">{line}</span>)}</p>;
 }
 
-function Headline({ card, style, studio }) {
-  return <><p className="text-sm font-black" style={{ color: style.sub }}>{channelName(studio)} · {String(card.page).padStart(2, '0')}</p><h2 className="mt-2 break-words text-4xl font-black leading-tight">{card.title}</h2><Badge className="mt-3 max-w-full break-words" style={{ background: style.accent }}>{card.emphasis}</Badge></>;
+function Headline({ card, studio }) {
+  return <><p className="text-sm font-black text-slate-600">{channelName(studio)} · {String(card.page).padStart(2, '0')}</p><h2 className="mt-2 break-words text-4xl font-black leading-tight">{card.title}</h2><Badge className="mt-3 max-w-full break-words border border-slate-200 bg-slate-100 text-slate-950">{card.emphasis}</Badge></>;
 }
 
 function Rings({ color, left, top }) {
   return <div className="absolute h-80 w-80 rounded-full border-4 border-dashed opacity-70" style={{ borderColor: color, left, top, transform: 'translate(-50%,-50%)' }} />;
 }
 
-function Brand({ style, studio }) {
-  return <div className="absolute bottom-8 right-8 max-w-[70%] break-words text-right text-5xl font-black" style={{ color: style.sub }}>{studio.label?.split(' ')[0] ?? 'TrLab'}</div>;
+function Brand({ studio }) {
+  return <div className="absolute bottom-8 right-8 max-w-[70%] break-words text-right text-5xl font-black text-slate-600">{studio.label?.split(' ')[0] ?? 'TrLab'}</div>;
 }
 
 function Foot({ card }) {

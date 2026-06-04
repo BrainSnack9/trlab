@@ -4,14 +4,14 @@ export const cardStyles = {
     desc: '흰 여백, 짧은 메모, 자료 칩을 손으로 정리한 듯 보여주는 유형',
     bg: '#fffdf7', ink: '#201817', accent: '#ef6f8f', sub: '#7c5b4a',
     slots: ['짧은 후크', '메모 칩', '비교/자료 영역', '체크 기준'],
-    imageGuide: 'clean white editorial note board, small paper chips, comparison/data blocks, subtle hand-organized research mood'
+    imageGuide: 'clean white editorial note backplate, blank paper panels, subtle hand-organized research mood'
   },
   ranking: {
     name: '팩트체크 보드',
     desc: '짧은 주장, 근거, 오해/반박을 강하게 구분해서 보여주는 유형',
     bg: '#ffffff', ink: '#080808', accent: '#e11d48', sub: '#2563eb',
     slots: ['짧은 주장', '근거 보드', '오해/반박', '체크 라벨'],
-    imageGuide: 'bold fact-check board, claim/check separation, red-blue contrast, strong empty zones for exact text'
+    imageGuide: 'bold editorial board mood, red-blue contrast, blank overlay-safe zones only'
   },
   photo: {
     name: '실사 이미지 배경',
@@ -76,7 +76,7 @@ export function referenceVisualGuide(referenceStyle) {
     handdrawn_research: {
       account: '메모형 정보 카드',
       cover: '흰 여백 위 짧은 주제명과 편집자 관찰 한 줄',
-      body: '손으로 정리한 듯한 자료 칩, 비교표, 메모 주석',
+      body: '손으로 정리한 듯한 빈 자료 패널과 메모 여백',
       proof: '근거는 내부 판단에만 사용하고 카드에는 노출하지 않음',
       typography: '굵은 제목 + 메모체 느낌의 짧은 본문',
       avoid: 'PPT식 도형 과다, 원문 제목 복붙, 긴 문단'
@@ -99,8 +99,8 @@ export function referenceVisualGuide(referenceStyle) {
     },
     meme_factcheck: {
       account: '팩트체크 보드',
-      cover: '짧은 키워드와 말풍선식 문제 제기',
-      body: '주장/확인/오해를 보드처럼 강하게 구분',
+      cover: '짧은 키워드가 얹힐 빈 보드형 배경',
+      body: '주장/확인/오해 텍스트가 들어갈 빈 영역을 강하게 구분',
       proof: '검증 정보는 내부 판단에만 사용',
       typography: '짧고 굵은 문장, 빨강/파랑 대비',
       avoid: '애매한 감상평, 근거 없는 단정, 긴 설명문'

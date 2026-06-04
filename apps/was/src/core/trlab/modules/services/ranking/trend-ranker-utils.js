@@ -1,7 +1,7 @@
 import { broadKeywordPattern, incidentPattern, weakBareKeywordPattern } from './ranking-config.js';
 import { cleanKeyword } from './ranking-text.js';
 
-const weakStandaloneKeywordPattern = /^(사람입니다|풀었다는|따르면|밝혔다|했다는|한다는|썼던|했던|있는지|없나요|되나요)$/;
+const weakStandaloneKeywordPattern = /^(사람입니다|풀었다는|따르면|밝혔다|했다는|한다는|썼던|했던|있는지|없나요|되나요|.+(?:봅니다|봅시다|해봅니다|해봅시다|봤습니다))$/;
 
 export function mergeRelatedCandidates(candidates) {
   const merged = [];
@@ -38,10 +38,14 @@ export function limitRelatedEvidence(candidate, index, candidates) {
 export function isStrongFinalCandidate(candidate) {
   const text = `${candidate.keyword} ${candidate.sampleTitles.join(' ')}`;
   if (broadKeywordPattern.test(candidate.keyword)) return false;
+  if (/^(재팬코리아데일리|연합뉴스|조선일보|중앙일보|동아일보|매일경제|한경매거진)$/i.test(candidate.keyword)) return false;
+  if (/(선관위|교육감|대통령|정당|투표|개표|국회|부정선거)/i.test(text)) return false;
   if (isEnglishSentenceCandidate(candidate)) return false;
   if (weakStandaloneKeywordPattern.test(candidate.keyword)) return false;
   if (isVagueModifierCandidate(candidate)) return false;
   if (isThinSearchSeedCandidate(candidate)) return false;
+  if (isNoisyCommunityOnlyCandidate(candidate)) return false;
+  if (isLowValueEntertainmentCandidate(candidate)) return false;
   if (/(네이버페이|캐시워크|포인트|적립|랜덤|눌러|라이브보고|\d+원)/i.test(text) && !/(가격|인상|인하|소비|구매|브랜드|시장)/i.test(text)) return false;
   if (incidentPattern.test(text) && !/(전략|시장|비교|가격|소비|브랜드|AI|반도체|전기차)/i.test(text)) return false;
   if (candidate.sources.length === 1 && incidentPattern.test(text)) return false;
@@ -90,7 +94,7 @@ export function refineKeyword(candidate) {
   if (/현대차|기아|전기차 전략|차량 구독|모빌리티|구독 서비스/.test(text)) return '현대차·기아 전기차·구독 전략';
   if (/네이버.*소버린 AI|소버린 AI|AI 인프라.*재평가/.test(text)) return '네이버 소버린 AI 인프라';
   if (/K-?뷰티|올리브영|화장품.*성분|성분.*소비/.test(text)) return 'K뷰티 성분 중심 소비';
-  if (/호반그룹.*AI|생성형 AI.*업무|AI 실무 활용/.test(text)) return '기업 생성형 AI 업무 활용';
+  if (/호반그룹.*AI|코스콤.*AI|생성형 AI.*업무|AI 실무 (활용|적용)|업무 혁신.*AI|AI.*업무 혁신/.test(text)) return '기업 생성형 AI 업무 활용';
   if (/삼성SDS|LG CNS|AX 시장|기업 AI/.test(text)) return '기업 AX 시장 경쟁';
   if (!weakBareKeywordPattern.test(keyword)) return keyword;
   if (/삼성전자|하이닉스|반도체/i.test(text)) return '삼성전자·하이닉스 AI 반도체';
@@ -113,6 +117,7 @@ export function hash(value) {
 function isRelated(item, candidate, key) {
   const itemKey = item.keyword.toLowerCase();
   const sameTitle = candidate.sampleTitles.some((title) => item.sampleTitles.includes(title));
+  if (sameTitle && (isWeakMergeAnchor(item.keyword) || isWeakMergeAnchor(candidate.keyword))) return itemKey === key;
   return itemKey === key || (sameTitle && itemKey.length >= 3 && key.length >= 3 && (itemKey.includes(key) || key.includes(itemKey)));
 }
 
@@ -189,6 +194,29 @@ function isThinSearchSeedCandidate(candidate) {
   return exactMetricMatches >= Math.max(2, Math.ceil(evidence.length * 0.6))
     && allTitlesOnlyEchoSeed
     && !/(AI|K-?뷰티|반도체|지원금|품절|대란템|콜드컵|올리브영|올영|전기차|금리|환율|부동산|자동급식기|스킨케어|다이퍼|기저귀)/i.test(`${keyword} ${titles.join(' ')}`);
+}
+
+function isNoisyCommunityOnlyCandidate(candidate) {
+  const sources = candidate.sources ?? [];
+  if (sources.length !== 1 || ['Search SERP', 'Google Trends'].includes(sources[0])) return false;
+  const text = `${candidate.keyword ?? ''} ${candidate.sampleTitles?.join(' ') ?? ''}`;
+  if (candidate.channelFit?.bestProfile && /(반려|펫|육아|출산|아마존|틱톡|K-?뷰티|구매|비교|지원금|보험|건강|수면|영양제)/i.test(text)) return false;
+  return /(ㅋㅋ|ㄷㄷ|짤|근황|명언|뻘글|탈주|vs|보조디렉터|조롱|그 손가락|빤스런|실시간)/i.test(text)
+    || `${candidate.keyword ?? ''}`.length <= 5;
+}
+
+function isLowValueEntertainmentCandidate(candidate) {
+  if (candidate.area?.id !== 'entertainment') return false;
+  const text = `${candidate.keyword ?? ''} ${candidate.sampleTitles?.join(' ') ?? ''}`;
+  if (/(OTT|넷플릭스|극장|개봉|관객|흥행|티켓|굿즈|브랜드|광고|가격|요금|전략|시장|순위|박스오피스|콘텐츠\s*전략)/i.test(text)) return false;
+  const searchOnly = (candidate.sources ?? []).every((source) => ['Search SERP', 'Google Trends'].includes(source));
+  return searchOnly || `${candidate.keyword ?? ''}`.trim().length <= 4;
+}
+
+function isWeakMergeAnchor(keyword) {
+  return weakBareKeywordPattern.test(keyword)
+    || broadKeywordPattern.test(keyword)
+    || /^(AI|LG전자|삼성전자|네이버|기업|브랜드|시장|제품|서비스|기술|건강|소비|가격|전략)$/i.test(`${keyword ?? ''}`.trim());
 }
 
 function escapeRegex(value) {

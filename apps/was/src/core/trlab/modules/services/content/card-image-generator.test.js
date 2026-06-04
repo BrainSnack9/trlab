@@ -63,32 +63,96 @@ describe('card image generator prompts and local fallback', () => {
     expect(prompt).toContain('premium 4:5');
     expect(prompt).toContain('Final export is 1080x1350');
     expect(prompt).toContain('1080x1350');
-    expect(prompt).toContain('Canvas template: 리서치 노트');
-    expect(prompt).toContain('Use this template direction');
-    expect(prompt).toContain('Respect template slots');
-    expect(prompt).toContain('메모 칩');
-    expect(prompt).toContain('Overlay contract');
-    expect(prompt).toContain('Reference rhythm');
-    expect(prompt).toContain('9~11장 권장');
-    expect(prompt).toContain('Reference visual guide');
-    expect(prompt).toContain('memo-style information card');
-    expect(prompt).toContain('hand-drawn research note');
-    expect(prompt).toContain('코스피 전체');
-    expect(prompt).toContain('반도체 제외');
-    expect(prompt).toContain('외국인 수급');
-    expect(prompt).toContain('data card');
-    expect(prompt).toContain('premium editorial data story layout');
-    expect(prompt).toContain('clear reserved space in the center');
-    expect(prompt).toContain('Do not render the actual graph');
-    expect(prompt).toContain('no text, numbers, logos');
-    expect(prompt).toContain('signboard');
-    expect(prompt).toContain('keep it blank or abstract');
-    expect(prompt).toContain('exact Korean SVG text afterward');
+    expect(prompt).toContain('Backplate style: research note backplate');
+    expect(prompt).toContain('Use only the visual mood of this template');
+    expect(prompt).toContain('Overlay reservation');
+    expect(prompt).toContain('blank memo-chip area');
+    expect(prompt).toContain('Background scene');
+    expect(prompt).toContain('data backplate');
+    expect(prompt).toContain('one empty central SVG-safe area');
+    expect(prompt).toContain('No visible text or pseudo-data');
+    expect(prompt).toContain('TrLab adds every Korean word');
     expect(prompt).not.toContain('Keep Korean typography crisp');
     expect(prompt).not.toContain('Title: 숫자가 갈린다');
     expect(prompt).not.toContain('Body: 코스피 전체');
     expect(prompt).not.toContain('Emphasis: 포함 vs 제외');
+    expect(prompt).not.toContain('막대그래프와 비교표를 결합한 카드", composed');
+    expect(prompt).not.toContain('Reference rhythm');
+    expect(prompt).not.toContain('9~11장 권장');
+    expect(prompt).not.toContain('Respect template slots');
     expect(prompt).not.toMatch(/근거:|해석:|실행:/);
+  });
+
+  it('sanitizes reaction-card prompts so review/comment concepts do not become UI or text', () => {
+    const prompt = makeImagePrompt({
+      studio: { label: 'K뷰티 성분 중심 소비', keyword: 'K뷰티 성분 효능' },
+      plan: {
+        ...plan,
+        referenceStyle: 'photo_hook',
+        referencePattern: {
+          deckLength: '8~12장 권장',
+          coverRhythm: '@power_biolife처럼 사진 위에 믿기 어려운 반전 한 문장',
+          bodyRhythm: '한 장에 사실 하나씩 공개',
+          endingRhythm: '저장 기준 3개로 종료'
+        },
+        coreAngle: '제품 구매에 있어 성분에 기반한 정보 제공'
+      },
+      style: {
+        name: '실사 이미지 배경',
+        desc: '카드 전체에 실제 사진 같은 배경을 깔고 제목을 얹는 방식',
+        bg: '#09090b',
+        ink: '#ffffff',
+        accent: '#facc15',
+        sub: '#e5e7eb',
+        slots: ['풀블리드 실사 배경', '큰 제목', '짧은 본문', '강조 라벨'],
+        imageGuide: 'topic-specific realistic full-bleed photo background, dark calm lower safe area, strong visual subject'
+      },
+      card: {
+        page: 3,
+        role: 'community_signal',
+        layout: 'quote_card',
+        title: '소비자들의 리뷰가 말하고 있어요',
+        body: '후기는 칭찬보다 필터에 가까워요.',
+        visualPrompt: '소비자 리뷰 인용구',
+        visualItems: ['커뮤니티 반응', '댓글 반응', '반복 언급']
+      }
+    });
+
+    expect(prompt).toContain('Show consumer reaction through real-life context');
+    expect(prompt).toContain('no social UI');
+    expect(prompt).toContain('reaction backplate');
+    expect(prompt).toContain('small emphasis overlay zone');
+    expect(prompt).not.toContain('Reference rhythm');
+    expect(prompt).not.toContain('@power_biolife');
+    expect(prompt).not.toContain('소비자 리뷰 인용구');
+    expect(prompt).not.toContain('댓글 반응');
+    expect(prompt).not.toContain('short body copy');
+    expect(prompt).not.toContain('small sticker points');
+    expect(prompt).not.toContain('Respect template slots: 풀블리드 실사 배경, 큰 제목, 짧은 본문, 강조 라벨');
+  });
+
+  it('does not ask the image model to draw fake cosmetic ingredient or efficacy tables', () => {
+    const prompt = makeImagePrompt({
+      studio: { label: 'K뷰티 성분 중심 소비', keyword: 'K뷰티 성분 효능' },
+      plan: { ...plan, primaryTopic: 'K뷰티 성분 중심 소비' },
+      style,
+      card: {
+        page: 4,
+        role: 'comparison',
+        layout: 'comparison_board',
+        title: '성분과 효능을 나눠봐요',
+        body: '성분, 효능, 가격, 리뷰를 나눠봐야 선택 기준이 보여요.',
+        emphasis: '비교 기준',
+        visualPrompt: '성분표와 효능 비교표를 중앙에 크게 보여주는 카드',
+        visualItems: ['성분', '효능', '가격', '리뷰']
+      }
+    });
+
+    expect(prompt).toContain('blank calm central panel');
+    expect(prompt).toContain('Do not draw rows with content');
+    expect(prompt).toContain('ingredient lists');
+    expect(prompt).toContain('efficacy graphics');
+    expect(prompt).not.toContain('성분표와 효능 비교표를 중앙에 크게 보여주는 카드');
   });
 
   it('keeps image prompts compact while preserving the canvas template direction', () => {
@@ -115,11 +179,12 @@ describe('card image generator prompts and local fallback', () => {
       }
     });
 
-    expect(prompt.length).toBeLessThan(2600);
-    expect(prompt).toContain('Canvas template: 실사 이미지 배경');
+    expect(prompt.length).toBeLessThan(3300);
+    expect(prompt).toContain('Backplate style: photographic full-bleed backplate');
     expect(prompt).toContain('full-bleed photo background');
-    expect(prompt).toContain('풀블리드 실사 배경');
+    expect(prompt).toContain('full-bleed photo subject');
     expect(prompt).toContain('Backplate only');
+    expect(prompt).not.toContain('일본 생활용품 매대');
   });
 
   it('uses plan primary topic over stale studio label in final image prompts', () => {
@@ -142,15 +207,49 @@ describe('card image generator prompts and local fallback', () => {
       }
     });
 
-    expect(prompt).toContain('Topic: 아기 욕조 유해성분 괜찮을까.');
-    expect(prompt).toContain('욕실 선반 위 아기 욕조');
-    expect(prompt).not.toMatch(/Topic: 어린이집|등원 이슈|감기 워킹맘/);
+    expect(prompt).toContain('Subject context: baby product safety check in a Korean parenting context.');
+    expect(prompt).toContain('Clean baby product safety-check scene');
+    expect(prompt).not.toMatch(/Subject context: 어린이집|등원 이슈|감기 워킹맘|아기 욕조/);
   });
 
-  it('renders checklist body lines over short visual labels for daycare shortage cards', () => {
+  it('passes verified visual data as overlay context without asking the image model to draw it', () => {
+    const prompt = makeImagePrompt({
+      studio: { label: '오메가3 영양제는 꼭 먹어야할까?' },
+      plan: { ...plan, primaryTopic: '오메가3 영양제는 꼭 먹어야할까?', coreAngle: '식단과 권장 섭취량 기준으로 판단' },
+      style,
+      card: {
+        page: 3,
+        role: 'data_scene',
+        layout: 'data_chart',
+        title: '권장량은 여기서 갈려요',
+        body: '성인 기준으로 확정된 건 ALA 충분섭취량이에요.',
+        visualPrompt: '오메가3 권장 섭취량 차트가 들어갈 빈 중앙 패널',
+        visualData: {
+          type: 'bar_chart',
+          title: '오메가3 기준 섭취량',
+          subtitle: 'ALA 충분섭취량',
+          items: [
+            { label: '성인 남성', value: 1.6, display: 'ALA 1.6g/일' },
+            { label: '성인 여성', value: 1.1, display: 'ALA 1.1g/일' }
+          ],
+          sources: [{ label: 'NIH ODS Omega-3 Fact Sheet', url: 'https://ods.od.nih.gov/factsheets/Omega3FattyAcids-Consumer/' }]
+        }
+      }
+    });
+
+    expect(prompt).toContain('Realistic nutrition research scene');
+    expect(prompt).toContain('Verified SVG overlay reserved: chart');
+    expect(prompt).toContain('Do not draw data, source names, rows, bars, labels, or values');
+    expect(prompt).toContain('Leave a calm blank panel for that SVG');
+    expect(prompt).not.toContain('성인 남성: ALA 1.6g/일');
+    expect(prompt).not.toContain('NIH ODS Omega-3 Fact Sheet');
+  });
+
+  it('returns the AI backplate without baking Korean text into a local SVG', () => {
     const result = generateLocalCard({
       studio: { label: '왜 어린이집은 늘 부족할까?', channelName: '@trlab.insight' },
       style,
+      remoteVisual: { provider: 'mock-image', model: 'mock-backplate', ext: 'png', buffer: Buffer.from('sample-image') },
       card: {
         page: 5,
         role: 'checklist',
@@ -161,78 +260,27 @@ describe('card image generator prompts and local fallback', () => {
         visualItems: ['거리', '시간', '대기 순번']
       }
     }, []);
-    const svg = result.buffer.toString('utf8');
 
-    expect(svg).toContain('집과 얼마나 가까운가');
-    expect(svg).toContain('출근 시간과 맞는가');
-    expect(svg).toContain('대기 순번만 보고 있진 않은가');
-    expect(svg).toContain('대기 순번보다 거리, 시간, 실제 등하원 동선을');
-    expect(svg).toContain('보세요.');
-    expect(svg).not.toContain('저장할 때는 내 상황, 비교 기준');
+    expect(result.provider).toBe('mock-image');
+    expect(result.model).toBe('mock-backplate');
+    expect(result.ext).toBe('png');
+    expect(result.buffer.toString('utf8')).toBe('sample-image');
+    expect(result.buffer.toString('utf8')).not.toContain('입소 전 볼 기준 3개');
+    expect(result.buffer.toString('utf8')).not.toContain('집과 얼마나 가까운가');
   });
 
-  it('does not duplicate checklist body lines in AI-backed body cards', () => {
-    const result = generateLocalCard({
-      studio: { label: '왜 어린이집은 늘 부족할까?', channelName: '@trlab.insight' },
-      style,
-      remoteVisual: { ext: 'png', buffer: Buffer.from('sample') },
-      card: {
-        page: 5,
-        role: 'checklist',
-        layout: 'checklist',
-        title: '입소 전 볼 기준 3개',
-        body: '집과 얼마나 가까운가\n출근 시간과 맞는가\n대기 순번만 보고 있진 않은가',
-        emphasis: '입소 판단 기준'
-      }
-    }, []);
-    const svg = result.buffer.toString('utf8');
-
-    expect((svg.match(/집과 얼마나 가까운가/g) ?? []).length).toBe(1);
-    expect((svg.match(/출근 시간과 맞는가/g) ?? []).length).toBe(1);
-    expect(svg).toContain('대기 순번보다 거리, 시간, 실제 등하원 동선을');
-    expect(svg).toContain('같이 보세요.');
-    expect(svg).toContain('font-weight="600"');
-  });
-
-  it('uses wider text lines for AI-backed body cards instead of early character-count breaks', () => {
-    const result = generateLocalCard({
-      studio: { label: '왜 어린이집은 늘 부족할까?', channelName: '@trlab.insight' },
-      style,
-      remoteVisual: { ext: 'png', buffer: Buffer.from('sample') },
-      card: {
-        page: 2,
-        role: 'community_signal',
-        layout: 'quote_card',
-        title: '문제는 숫자보다 위치',
-        body: '어린이집이 있어도 집과 멀면 선택지가 아니에요.\n부모가 원하는 자리는 생활권 안에 있어야 해요.',
-        emphasis: '생활권 기준'
-      }
-    }, []);
-    const svg = result.buffer.toString('utf8');
-
-    expect(svg).toContain('어린이집이 있어도 집과 멀면 선택지가 아니에요.');
-    expect(svg).not.toContain('어린이집이 있어도 집과 멀면 선택지가</text>');
-  });
-
-  it('keeps long visible card text instead of truncating by line count or ellipsis', () => {
-    const result = generateLocalCard({
+  it('requires a remote visual before producing a backplate result', () => {
+    expect(() => generateLocalCard({
       studio: { label: '긴 글 테스트', channelName: '@trlab.insight' },
       style,
-      remoteVisual: { ext: 'png', buffer: Buffer.from('sample') },
       card: {
         page: 3,
         role: 'community_signal',
         layout: 'quote_card',
         title: '긴 문장도 잘리지 않아야 해요',
-        body: '첫 번째 문장입니다.\n두 번째 문장입니다.\n세 번째 문장입니다.\n네 번째 문장입니다.\n다섯 번째 문장도 반드시 보여야 합니다.',
-        emphasis: '긴 글 유지'
+        body: '첫 번째 문장입니다.'
       }
-    }, []);
-    const svg = result.buffer.toString('utf8');
-
-    expect(svg).toContain('첫 번째 문장입니다.');
-    expect(svg).toContain('다섯 번째 문장도 반드시 보여야 합니다.');
-    expect(svg).not.toContain('…');
+    }, [])).toThrow(/이미지 provider 결과/);
   });
 
   it('filters internal source labels out of image prompts', () => {
@@ -253,8 +301,10 @@ describe('card image generator prompts and local fallback', () => {
       }
     });
 
-    expect(prompt).toContain('댓글 반응');
-    expect(prompt).toContain('반복 언급');
+    expect(prompt).toContain('No visible text or pseudo-data');
+    expect(prompt).toContain('Overlay reservation');
+    expect(prompt).not.toContain('댓글 반응');
+    expect(prompt).not.toContain('반복 언급');
     expect(prompt).not.toMatch(/Search SERP|twig24|요즘 임출육|감기 걸린 아이/);
   });
 
@@ -291,177 +341,16 @@ describe('card image generator prompts and local fallback', () => {
 
     expect(coverPrompt).toContain('full-bleed editorial cover image');
     expect(coverPrompt).toContain('topic-specific full-bleed');
-    expect(coverPrompt).toContain('Gangnam real estate');
-    expect(checklistPrompt).toContain('save-worthy closing card');
-    expect(checklistPrompt).toContain('blank checklist rows');
+    expect(coverPrompt).not.toContain('Gangnam real estate');
+    expect(checklistPrompt).toContain('save-worthy closing backplate');
+    expect(checklistPrompt).toContain('blank horizontal rows');
   });
 
-  it('renders a 4:5 local svg with visual labels instead of internal layout names', () => {
-    const image = generateLocalCard({ studio, card, style }, ['remote failed']);
-    const svg = image.buffer.toString('utf8');
-
-    expect(image.ext).toBe('svg');
-    expect(svg).toContain('width="1080" height="1350"');
-    expect(svg).toContain('코스피 전체');
-    expect(svg).toContain('반도체 제외');
-    expect(svg).toContain('외국인 수급');
-    expect(svg).toContain('댓글 반응');
-    expect(svg).not.toContain('Remote image unavailable');
-    expect(svg).not.toContain('Exact-text render');
-    expect(svg).not.toContain('참고/확인');
-    expect(svg).not.toMatch(/data_chart|근거:|해석:|실행:/);
-  });
-
-  it('keeps local cover fallback aligned with the preview cover', () => {
-    const image = generateLocalCard({
-      studio,
-      style,
-      card: {
-        ...card,
-        role: 'cover',
-        layout: 'cover_text',
-        page: 1,
-        title: '코스피 착시',
-        body: '지수만 보면 놓쳐요.',
-        sourceLine: 'FMKorea 포텐 최신순 검증 결과'
-      }
-    }, []);
-    const svg = image.buffer.toString('utf8');
-
-    expect(svg).toContain('@trlab.insight');
-    expect(svg).toContain('coverShade');
-    expect(svg).toContain('fallbackSky');
-    expect(svg).toContain('코스피 착시');
-    expect(svg).toContain('지수만 보면 놓쳐요.');
-    expect(svg).not.toContain('저장 포인트');
-    expect(svg).not.toContain('FMKorea 포텐 최신순');
-    expect(svg).not.toContain('참고/확인');
-    expect(svg).not.toContain('Exact-text render');
-  });
-
-  it('adds more breathing room between multi-line cover title and body', () => {
-    const image = generateLocalCard({
-      studio,
-      style,
-      card: {
-        ...card,
-        role: 'cover',
-        layout: 'cover_photo',
-        page: 1,
-        title: '감기 걸리면 어린이집 보내면 안 될까',
-        body: '부모에게 바로 닿는 문제예요.\n기준을 먼저 확인해요.'
-      }
-    }, []);
-    const svg = image.buffer.toString('utf8');
-
-    expect(svg).toContain('y="1108"');
-    expect(svg).toContain('y="1200"');
-    expect(svg).toContain('y="1300"');
-  });
-
-  it('renders community signal cards as creative scene overlays instead of rigid text boxes', () => {
-    const image = generateLocalCard({
-      studio: { label: '감기 걸리면 어린이집 보내면 안 될까' },
-      style,
-      card: {
-        page: 2,
-        role: 'community_signal',
-        layout: 'quote_card',
-        title: '부모들이 막힌 순간',
-        body: '아이는 콧물이 나고, 출근 시간은 다가와요.\n기관 기준과 회사 눈치 사이에서 부모가 먼저 멈춰요.',
-        emphasis: '현실 압박'
-      }
-    }, []);
-    const svg = image.buffer.toString('utf8');
-
-    expect(svg).toContain('현실 압박');
-    expect(svg).toContain('부모들이 막힌 순간');
-    expect(svg).toContain('아이는 콧물이 나고');
-    expect(svg).toContain('font-weight="600" fill="#334155"');
-    expect(svg).toContain('quoteShade');
-    expect(svg).toContain('quoteTitleVeil');
-    expect(svg).toContain('textLift');
-    expect(svg).not.toContain('x="80" y="178" width="920" height="910"');
-    expect(svg).not.toContain('x="78" y="226" width="760" height="292"');
-    expect(svg).not.toContain('x="160" y="594" width="860" height="268"');
-    expect(svg).not.toContain('현실에서 막히는 순간');
-    expect(svg).not.toContain('아이 컨디션');
-    expect(svg).not.toContain('사람들이 반응한 지점');
-    expect(svg).not.toContain('정보보다 공감');
-    expect(svg).not.toContain('font-weight="900" fill="#111827"');
-  });
-
-  it('renders comparison cards with a generated-only split board', () => {
-    const image = generateLocalCard({
-      studio: { label: '감기 걸리면 어린이집 보내면 안 될까' },
-      style,
-      card: {
-        page: 3,
-        role: 'comparison',
-        layout: 'comparison_board',
-        title: '상황마다 답이 달라요',
-        body: '맞벌이, 전업, 아이 컨디션, 기관 기준을 나눠봐야 해요.',
-        emphasis: '같은 등원 문제도 집마다 기준이 달라져요.',
-        visualItems: ['아이 컨디션', '출근 시간', '기관 기준', '가정 상황']
-      }
-    }, []);
-    const svg = image.buffer.toString('utf8');
-
-    expect(svg).toContain('comparisonShade');
-    expect(svg).toContain('comparisonPanel');
-    expect(svg).toContain('아이 컨디션');
-    expect(svg).not.toContain('x="80" y="350" width="430" height="170"');
-    expect(svg).not.toContain('비교 기준으로 나눠보기');
-  });
-
-  it('renders checklist cards as a save-oriented timeline instead of the preview rows', () => {
-    const image = generateLocalCard({
-      studio: { label: '감기 걸리면 어린이집 보내면 안 될까' },
-      style,
-      card: {
-        page: 5,
-        role: 'checklist',
-        layout: 'checklist',
-        title: '보내기 전 기준 3개',
-        body: '우리 집 상황과 맞나\n기관 기준이 있나\n아이 컨디션을 봤나',
-        emphasis: '등원 판단 기준'
-      }
-    }, []);
-    const svg = image.buffer.toString('utf8');
-
-    expect(svg).toContain('checklistShade');
-    expect(svg).toContain('checklistPanel');
-    expect(svg).toContain('보내기 전 확인할 것');
-    expect(svg).not.toContain('x="80" y="1135" width="920" height="96"');
-    expect(svg).not.toContain('저장할 때는 비교 기준과 숫자');
-  });
-
-  it('renders research cards as editorial memo pages instead of dashed preview cards', () => {
-    const image = generateLocalCard({
-      studio: { label: '감기 걸리면 어린이집 보내면 안 될까' },
-      style,
-      card: {
-        page: 4,
-        role: 'research_note',
-        layout: 'research_note',
-        title: '숫자보다 먼저 볼 것',
-        body: '확인된 수치가 없다면 사례를 숫자처럼 쓰면 안 돼요.\n반복된 등원 고민은 대표 신호로만 봐야 해요.',
-        emphasis: '확인한 근거만 다음 카드로 넘겨요.'
-      }
-    }, []);
-    const svg = image.buffer.toString('utf8');
-
-    expect(svg).toContain('researchShade');
-    expect(svg).toContain('researchPaper');
-    expect(svg).toContain('확인 메모');
-    expect(svg).not.toContain('stroke-dasharray="14 12"');
-    expect(svg).not.toContain('x="80" y="360" width="920" height="520"');
-  });
-
-  it('uses a custom channel name in generated cards', () => {
+  it('keeps generated image output as a clean backplate for the SVG text editor', () => {
     const image = generateLocalCard({
       studio: { ...studio, channelName: '@gangnam.life' },
       style,
+      remoteVisual: { provider: 'mock-provider', model: 'mock-model', ext: 'webp', buffer: Buffer.from('clean-backplate') },
       card: {
         ...card,
         role: 'cover',
@@ -471,10 +360,12 @@ describe('card image generator prompts and local fallback', () => {
         body: '밤의 아파트 불빛으로 봅니다.'
       }
     }, []);
-    const svg = image.buffer.toString('utf8');
 
-    expect(svg).toContain('@gangnam.life');
-    expect(svg).not.toContain('@trlab.insight');
-    expect(svg).not.toContain('Exact-text render');
+    expect(image.ext).toBe('webp');
+    expect(image.provider).toBe('mock-provider');
+    expect(image.model).toBe('mock-model');
+    expect(image.buffer.toString('utf8')).toBe('clean-backplate');
+    expect(image.buffer.toString('utf8')).not.toContain('@gangnam.life');
+    expect(image.buffer.toString('utf8')).not.toContain('강남 집값');
   });
 });

@@ -8,7 +8,10 @@ export function classifyText(value) {
 
 export function isAdultText(value) {
   const text = `${value ?? ''}`;
-  return /(^|\s|\[|\(|#)(ㅇㅎ|19금|19세|19禁|성인|후방|후방주의|야짤|야동|노출|선정|음란)(\s|\]|\)|$|[.,!?])/i.test(text);
+  const adultPattern = /(^|\s|\[|\(|#)(ㅇㅎ|19금|19세|19禁|성인|후방|후방주의|야짤|야동|선정|음란)(\s|\]|\)|$|[.,!?])/i;
+  if (adultPattern.test(text)) return true;
+  if (!/(^|\s|\[|\(|#)노출(\s|\]|\)|$|[.,!?])/i.test(text)) return false;
+  return !/(검색\s*노출|노출\s*전략|브랜드\s*노출|광고\s*노출|콘텐츠\s*노출|상위\s*노출|노출수|노출량)/i.test(text);
 }
 
 export function isSignalVisible(signal, selectedSet, excludedSet) {
@@ -28,6 +31,7 @@ export function isTrendVisible(trend, selectedSet, excludedSet) {
 }
 
 export function matchesArea(value, area) {
+  if (area.id === 'adult') return isAdultText(value);
   const text = `${value ?? ''}`.toLowerCase();
   return area.keywords.some((keyword) => text.includes(keyword.toLowerCase()));
 }

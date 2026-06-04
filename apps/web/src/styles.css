@@ -39,3 +39,33 @@
     background: rgba(99, 102, 241, 0.18);
   }
 }
+
+@layer utilities {
+  .trlab-dark-scrollbar {
+    scrollbar-color: #334155 #020617;
+    scrollbar-width: thin;
+  }
+
+  .trlab-dark-scrollbar::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .trlab-dark-scrollbar::-webkit-scrollbar-track {
+    background: #020617;
+  }
+
+  .trlab-dark-scrollbar::-webkit-scrollbar-thumb {
+    background: #334155;
+    border: 2px solid #020617;
+    border-radius: 999px;
+  }
+
+  .trlab-dark-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+  }
+
+  .trlab-dark-scrollbar::-webkit-scrollbar-corner {
+    background: #020617;
+  }
+}

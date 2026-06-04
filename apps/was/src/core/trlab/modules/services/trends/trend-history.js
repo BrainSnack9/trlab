@@ -1,8 +1,9 @@
 import { all, get } from '#trlab/libraries/storage/index';
-import { desc, eq, like, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, like, lt, or, sql } from 'drizzle-orm';
 import { getPostgresClient } from '#trlab/libraries/storage/postgres';
 import { ensurePostgresSchema, keywordSnapshotsTable } from '#trlab/libraries/storage/postgres-schema';
 import { shouldUseSupabaseDatabase } from '#trlab/modules/configs/env';
+import { getBusinessDateAnalysisWindow } from '#trlab/modules/services/ranking/analysis-window';
 import { repairText, repairTextList } from '#trlab/modules/helpers/text-repair';
 
 export async function getTrendHistory(limit = 18) {
@@ -17,9 +18,15 @@ export async function getTrendHistory(limit = 18) {
   return Promise.all(groups.map(async (group) => ({ ...group, items: await getSnapshotItems(group.createdAt) })));
 }
 
-export async function getLatestTrendSnapshot({ scheduledOnly = true } = {}) {
-  if (shouldUseSupabaseDatabase()) return getPostgresLatestTrendSnapshot({ scheduledOnly });
-  const where = scheduledOnly ? "WHERE reason LIKE 'scheduled-%'" : '';
+export async function getLatestTrendSnapshot({ scheduledOnly = true, analysisDate } = {}) {
+  if (shouldUseSupabaseDatabase()) return getPostgresLatestTrendSnapshot({ scheduledOnly, analysisDate });
+  const window = analysisDate ? getBusinessDateAnalysisWindow(analysisDate) : null;
+  const filters = [
+    scheduledOnly ? "reason LIKE 'scheduled-%'" : '',
+    window ? '(reason LIKE ? OR (created_at >= ? AND created_at < ?))' : ''
+  ].filter(Boolean);
+  const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+  const values = window ? [`%-${analysisDate}`, window.from, window.to] : [];
   const group = await get(`
     SELECT created_at AS createdAt, reason, COUNT(*) AS count, ROUND(AVG(score)) AS avgScore
     FROM keyword_snapshots
@@ -27,8 +34,9 @@ export async function getLatestTrendSnapshot({ scheduledOnly = true } = {}) {
     GROUP BY created_at
     ORDER BY created_at DESC
     LIMIT 1
-  `);
+  `, values);
 
+  if (!group && analysisDate) return null;
   if (!group && scheduledOnly) return getLatestTrendSnapshot({ scheduledOnly: false });
   if (!group) return null;
   return { ...group, items: await getSnapshotItems(group.createdAt) };
@@ -78,9 +86,17 @@ async function getPostgresTrendHistory(limit = 18) {
   })));
 }
 
-async function getPostgresLatestTrendSnapshot({ scheduledOnly = true } = {}) {
+async function getPostgresLatestTrendSnapshot({ scheduledOnly = true, analysisDate } = {}) {
   await ensurePostgresSchema();
   const db = getPostgresClient();
+  const window = analysisDate ? getBusinessDateAnalysisWindow(analysisDate) : null;
+  const clauses = [
+    scheduledOnly ? like(keywordSnapshotsTable.reason, 'scheduled-%') : null,
+    window ? or(
+      like(keywordSnapshotsTable.reason, `%-${analysisDate}`),
+      and(gte(keywordSnapshotsTable.createdAt, window.from), lt(keywordSnapshotsTable.createdAt, window.to))
+    ) : null
+  ].filter(Boolean);
   const base = db
     .select({
       createdAt: keywordSnapshotsTable.createdAt,
@@ -89,10 +105,10 @@ async function getPostgresLatestTrendSnapshot({ scheduledOnly = true } = {}) {
       avgScore: sql`round(avg(${keywordSnapshotsTable.score}))`
     })
     .from(keywordSnapshotsTable);
-  const rows = scheduledOnly
-    ? await base.where(like(keywordSnapshotsTable.reason, 'scheduled-%')).groupBy(keywordSnapshotsTable.createdAt, keywordSnapshotsTable.reason).orderBy(desc(keywordSnapshotsTable.createdAt)).limit(1)
-    : await base.groupBy(keywordSnapshotsTable.createdAt, keywordSnapshotsTable.reason).orderBy(desc(keywordSnapshotsTable.createdAt)).limit(1);
+  const query = clauses.length ? base.where(clauses.length > 1 ? and(...clauses) : clauses[0]) : base;
+  const rows = await query.groupBy(keywordSnapshotsTable.createdAt, keywordSnapshotsTable.reason).orderBy(desc(keywordSnapshotsTable.createdAt)).limit(1);
   const group = rows[0];
+  if (!group && analysisDate) return null;
   if (!group && scheduledOnly) return getPostgresLatestTrendSnapshot({ scheduledOnly: false });
   if (!group) return null;
   return {

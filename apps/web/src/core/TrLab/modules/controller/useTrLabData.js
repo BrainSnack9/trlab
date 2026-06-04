@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { clearCollectedTrends as clearCollectedTrendsApi, collectSignals as collectSignalsApi, deleteChannelProfile as deleteChannelProfileApi, getAccountSlots, getChannelProfiles, getLatestSignals, getLatestTrendSnapshot, rankTrends, saveAccountSlots as saveAccountSlotsApi, saveChannelProfile as saveChannelProfileApi } from '@/core/TrLab/modules/clients/api';
+import { clearCollectedTrends as clearCollectedTrendsApi, collectSignals as collectSignalsApi, deleteChannelProfile as deleteChannelProfileApi, getAccountSlots, getChannelProfiles, getLatestSignals, getLatestTrendSnapshot, rankTrends, recordCandidateFeedback as recordCandidateFeedbackApi, saveAccountSlots as saveAccountSlotsApi, saveChannelProfile as saveChannelProfileApi } from '@/core/TrLab/modules/clients/api';
 import { collectableSourceIds, initialSources, interestAreas, sourceNameById } from '@/core/TrLab/modules/configs/constants';
 import { classifyText } from '@/core/TrLab/modules/helpers/utils';
 
@@ -15,37 +15,43 @@ export function useTrLabData() {
   const [signalStats, setSignalStats] = useState({ total: 0 });
   const [collectionRuns, setCollectionRuns] = useState([]);
   const [collectingSignals, setCollectingSignals] = useState(false);
-  const [rankingLoading, setRankingLoading] = useState(true);
+  const [rankingLoading, setRankingLoading] = useState(false);
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
   const [collectError, setCollectError] = useState('');
   const [clearingCollection, setClearingCollection] = useState(false);
   const [sourceRunStates, setSourceRunStates] = useState({});
   const [timerEvents, setTimerEvents] = useState([]);
+  const [collectionRevision, setCollectionRevision] = useState(0);
   const collectionClearedRef = useRef(false);
   const sourceRunStatesRef = useRef({});
 
-  const loadLatestCollection = useCallback(async ({ force = false } = {}) => {
+  const loadLatestCollection = useCallback(async ({ force = false, analysisDate } = {}) => {
     if (collectionClearedRef.current && !force) return { signals: [], stats: { total: 0 }, sources: [], runs: [] };
-    const data = await getLatestSignals();
+    const data = await getLatestSignals({ analysisDate });
     setSignals(data.signals ?? []);
     setSignalStats(data.stats ?? { total: data.signals?.length ?? 0 });
     setSignalSources(data.sources ?? []);
     setCollectionRuns(data.runs ?? []);
+    setCollectionRevision((revision) => revision + 1);
     return data;
   }, []);
 
-  const loadLatestTrendSnapshot = useCallback(async ({ force = false } = {}) => {
+  const loadLatestTrendSnapshot = useCallback(async ({ force = false, analysisDate } = {}) => {
     if (collectionClearedRef.current && !force) return { snapshot: null };
-    setRankingLoading(true);
+    setSnapshotLoading(true);
     try {
-      const data = await getLatestTrendSnapshot();
+      const data = await getLatestTrendSnapshot({ analysisDate });
       const snapshot = data.snapshot;
       if (snapshot) {
         setRankedTrends((snapshot.items ?? []).map(snapshotToTrend));
         setProcessingMeta({ processedAt: snapshot.createdAt, inputCount: snapshot.count, candidateCount: snapshot.count, verifiedCount: 0, reason: snapshot.reason, mode: 'snapshot', ai: { enabled: false, provider: '저장 스냅샷', analyzed: snapshot.count } });
+      } else {
+        setRankedTrends([]);
+        setProcessingMeta(analysisDate ? { processedAt: null, inputCount: 0, candidateCount: 0, verifiedCount: 0, reason: `snapshot-${analysisDate}`, mode: 'snapshot', ai: { enabled: false, provider: '저장 스냅샷 없음', analyzed: 0 } } : null);
       }
       return data;
     } finally {
-      setRankingLoading(false);
+      setSnapshotLoading(false);
     }
   }, []);
 
@@ -79,14 +85,14 @@ export function useTrLabData() {
     }
   }, []);
 
-  const collectSource = useCallback(async (sourceId, reason = 'manual', areas = [], profiles = []) => {
+  const collectSource = useCallback(async (sourceId, reason = 'manual', areas = [], profiles = [], analysisDate) => {
     const sourceName = sourceNameById[sourceId];
     if (!sourceName || sourceRunStatesRef.current[sourceId]) return;
     setSourceRunning(sourceRunStatesRef, setSourceRunStates, sourceId, true);
     try {
       collectionClearedRef.current = false;
       const data = await collectSignalsApi({ source: sourceId, reason, areas, profiles });
-      await loadLatestCollection({ force: true });
+      await loadLatestCollection({ force: true, analysisDate });
       pushTimerEvent(setTimerEvents, { source: sourceName, count: data.sources?.[0]?.count ?? 0, reason });
     } catch (error) {
       pushTimerEvent(setTimerEvents, { source: sourceName, count: 0, reason: 'failed', error: error.message });
@@ -95,13 +101,13 @@ export function useTrLabData() {
     }
   }, [loadLatestCollection]);
 
-  const collectSignals = useCallback(async ({ areas = [], profiles = [] } = {}) => {
+  const collectSignals = useCallback(async ({ areas = [], profiles = [], analysisDate } = {}) => {
     collectionClearedRef.current = false;
     setCollectingSignals(true);
     setCollectError('');
     try {
       await collectSignalsApi({ areas, profiles });
-      await loadLatestCollection({ force: true });
+      await loadLatestCollection({ force: true, analysisDate });
     } catch (error) {
       setCollectError(error.message ?? '수집 중 오류가 발생했습니다.');
     } finally {
@@ -130,6 +136,15 @@ export function useTrLabData() {
     return data.slots;
   }, []);
 
+  const recordCandidateFeedback = useCallback(async (payload) => {
+    if (!payload?.candidate && !payload?.keyword) return null;
+    try {
+      return await recordCandidateFeedbackApi(payload);
+    } catch (error) {
+      return { ok: false, error: error.message ?? '피드백 저장에 실패했습니다.' };
+    }
+  }, []);
+
   const clearCollectedTrends = useCallback(async () => {
     setClearingCollection(true);
     collectionClearedRef.current = true;
@@ -151,8 +166,8 @@ export function useTrLabData() {
     }
   }, []);
 
-  useEffect(() => { Promise.all([loadLatestCollection(), loadLatestTrendSnapshot(), loadChannelProfiles(), loadAccountSlots()]).catch(() => {}); }, [loadLatestCollection, loadLatestTrendSnapshot, loadChannelProfiles, loadAccountSlots]);
-  return { sources, setSources, signals, signalStats, rankedTrends, processingMeta, channelProfiles, accountSlots, setAccountSlots: saveAccountSlots, signalSources, collectionRuns, collectingSignals, clearingCollection, rankingLoading, collectError, sourceRunStates, timerEvents, refreshCollection: loadLatestCollection, collectSource, collectSignals, clearCollectedTrends, refreshTrendRanking, saveChannelProfile, deleteChannelProfile, collectableSourceIds };
+  useEffect(() => { Promise.all([loadChannelProfiles(), loadAccountSlots()]).catch(() => {}); }, [loadChannelProfiles, loadAccountSlots]);
+  return { sources, setSources, signals, signalStats, rankedTrends, processingMeta, channelProfiles, accountSlots, setAccountSlots: saveAccountSlots, signalSources, collectionRuns, collectionRevision, collectingSignals, clearingCollection, rankingLoading, snapshotLoading, collectError, sourceRunStates, timerEvents, refreshCollection: loadLatestCollection, refreshTrendSnapshot: loadLatestTrendSnapshot, collectSource, collectSignals, clearCollectedTrends, refreshTrendRanking, saveChannelProfile, deleteChannelProfile, recordCandidateFeedback, collectableSourceIds };
 }
 
 function snapshotToTrend(item) {

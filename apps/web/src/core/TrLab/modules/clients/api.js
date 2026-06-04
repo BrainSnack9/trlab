@@ -21,8 +21,11 @@ const api = ky.create({
   }
 });
 
-export function getLatestSignals() {
-  return api.get(apiPath('/api/signals/latest'), { cache: 'no-store' }).json();
+export function getLatestSignals({ analysisDate } = {}) {
+  return api.get(apiPath('/api/signals/latest'), {
+    cache: 'no-store',
+    searchParams: analysisDate ? { analysisDate } : undefined
+  }).json();
 }
 
 export function getSignalDateSummary(dates = []) {
@@ -32,8 +35,11 @@ export function getSignalDateSummary(dates = []) {
   }).json();
 }
 
-export function getLatestTrendSnapshot() {
-  return api.get(apiPath('/api/trends/latest'), { cache: 'no-store' }).json();
+export function getLatestTrendSnapshot({ analysisDate } = {}) {
+  return api.get(apiPath('/api/trends/latest'), {
+    cache: 'no-store',
+    searchParams: analysisDate ? { analysisDate } : undefined
+  }).json();
 }
 
 export function rankTrends({ analysisDate } = {}) {
@@ -50,6 +56,12 @@ export function rankTrends({ analysisDate } = {}) {
       save: '1',
       reason: 'manual-rank'
     }
+  }).json();
+}
+
+export function recordCandidateFeedback(payload) {
+  return api.post(apiPath('/api/trends/feedback'), {
+    json: sanitizeCandidateFeedback(payload)
   }).json();
 }
 
@@ -207,6 +219,33 @@ function sanitizeContentPlanPayload(payload = {}) {
         publishedAt: result.publishedAt
       }))
     } : undefined
+  };
+}
+
+function sanitizeCandidateFeedback(payload = {}) {
+  const candidate = payload.candidate ?? {};
+  return {
+    action: payload.action,
+    keyword: cleanText(payload.keyword ?? candidate.keyword ?? candidate.label),
+    candidateId: cleanText(payload.candidateId ?? candidate.id),
+    profileId: cleanText(payload.profileId ?? candidate.channelFit?.bestProfile?.id),
+    areaId: cleanText(payload.areaId ?? candidate.area?.id),
+    reason: cleanText(payload.reason),
+    source: cleanText(payload.source ?? 'web'),
+    candidate: sanitizeFeedbackCandidate(candidate)
+  };
+}
+
+function sanitizeFeedbackCandidate(candidate = {}) {
+  return {
+    id: candidate.id,
+    keyword: cleanText(candidate.keyword ?? candidate.label),
+    label: cleanText(candidate.label ?? candidate.keyword),
+    area: candidate.area,
+    production: candidate.production,
+    channelFit: candidate.channelFit,
+    sources: candidate.sources ?? [],
+    sampleTitles: (candidate.sampleTitles ?? []).slice(0, 5).map(cleanText)
   };
 }
 

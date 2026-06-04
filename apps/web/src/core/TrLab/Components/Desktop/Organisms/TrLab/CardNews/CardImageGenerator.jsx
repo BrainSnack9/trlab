@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Copy, Download, ImagePlus, Loader2, Sparkles } from 'lucide-react';
+import { Copy, ImagePlus, Loader2, Sparkles } from 'lucide-react';
 import { Button } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Button/Button';
 import { generateContentImage, previewContentImagePrompt } from '@/core/TrLab/modules/clients/api';
+import { CardTextOverlayEditor } from './CardTextOverlayEditor';
 
 export function CardImageGenerator({ card, selected, style, studio, plan, generatedImage, onGenerated }) {
   const [loading, setLoading] = useState(false);
@@ -55,7 +56,7 @@ export function CardImageGenerator({ card, selected, style, studio, plan, genera
             선택 카드 AI 이미지
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            이미지 모델이 만든 배경 위에 한글 문구를 TrLab이 정확히 오버레이합니다. AI 이미지가 실패하면 생성되지 않습니다.
+            이미지 모델은 글자 없는 배경만 만들고, 한글 문구는 아래 SVG 편집기에서 따로 얹습니다.
           </p>
         </div>
       </div>
@@ -96,94 +97,35 @@ export function CardImageGenerator({ card, selected, style, studio, plan, genera
               수정 반영 생성
             </Button>
           </div>
-          <GeneratedImage image={generatedImage} />
+          <GeneratedImage
+            image={generatedImage}
+            card={card}
+            style={style}
+            studio={studio}
+            backgroundActions={{
+              loading,
+              promptLoading,
+              editInstruction,
+              setEditInstruction,
+              generateFresh: () => generate('fresh'),
+              generateRevision: () => generate('revision')
+            }}
+          />
         </>
       )}
     </div>
   );
 }
 
-function GeneratedImage({ image }) {
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState('');
-  const saveAsPng = async () => {
-    setSaving(true);
-    setSaveError('');
-    try {
-      await downloadImageAsPng(image.url);
-    } catch (error) {
-      setSaveError(error instanceof Error ? error.message : 'PNG 저장 실패');
-    } finally {
-      setSaving(false);
-    }
-  };
-
+function GeneratedImage({ image, card, style, studio, backgroundActions }) {
   return (
-    <div className="mt-3 space-y-2">
-      <img src={image.url} alt="Korean exact text card draft" className="aspect-[4/5] w-full rounded-md border bg-white object-cover" />
+    <div>
+      <CardTextOverlayEditor image={image} card={card} style={style} studio={studio} backgroundActions={backgroundActions} />
       <div className="flex gap-2">
-        <Button size="sm" className="flex-1" onClick={saveAsPng} disabled={saving}>
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-          PNG 저장
-        </Button>
         <Button size="sm" variant="outline" className="flex-1" onClick={() => navigator.clipboard?.writeText(image.prompt)}>
           프롬프트 복사
         </Button>
       </div>
-      {saveError ? <p className="rounded-md bg-red-50 p-2 text-xs font-semibold text-red-600">{saveError}</p> : null}
-      <p className="text-[11px] text-muted-foreground">{image.model} · 생성 결과는 카드별로 유지됩니다.</p>
     </div>
   );
-}
-
-async function downloadImageAsPng(url) {
-  if (!url) throw new Error('저장할 이미지가 없습니다.');
-  const response = await fetch(url);
-  if (!response.ok) throw new Error('이미지를 불러오지 못했습니다.');
-  const blob = await response.blob();
-  const isSvg = blob.type.includes('svg') || url.toLowerCase().split('?')[0].endsWith('.svg');
-  if (!isSvg) return downloadBlob(blob, filenameFromUrl(url, 'png'));
-
-  const svg = await blob.text();
-  const svgUrl = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
-  try {
-    const image = await loadImage(svgUrl);
-    const canvas = Object.assign(document.createElement('canvas'), { width: 1080, height: 1350 });
-    const context = canvas.getContext('2d');
-    context.fillStyle = '#ffffff';
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    const pngBlob = await new Promise((resolve, reject) => {
-      canvas.toBlob((result) => result ? resolve(result) : reject(new Error('PNG 변환에 실패했습니다.')), 'image/png');
-    });
-    downloadBlob(pngBlob, filenameFromUrl(url, 'png'));
-  } finally {
-    URL.revokeObjectURL(svgUrl);
-  }
-}
-
-function loadImage(src) {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('이미지 렌더링에 실패했습니다.'));
-    image.src = src;
-  });
-}
-
-function filenameFromUrl(url, ext) {
-  const raw = `${url}`.split('/').pop()?.split('?')[0] || 'cardnews';
-  const name = raw.replace(/\.[a-z0-9]+$/i, '') || 'cardnews';
-  return `${name}.${ext}`;
-}
-
-function downloadBlob(blob, filename) {
-  const objectUrl = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = objectUrl;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(objectUrl);
 }

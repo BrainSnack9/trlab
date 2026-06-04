@@ -222,8 +222,8 @@ export async function getRecentRuns(limit = 30) {
 async function savePostgresCollectionResult({ payloads, startedAt, finishedAt, reason = 'manual' }) {
   await ensurePostgresSchema();
   const db = getPostgresClient();
-  for (const payload of payloads) {
-    await db.insert(collectionRunsTable).values({
+  if (payloads.length) {
+    await db.insert(collectionRunsTable).values(payloads.map((payload) => ({
       source: payload.source,
       status: payload.status,
       itemCount: payload.items?.length ?? 0,
@@ -231,45 +231,69 @@ async function savePostgresCollectionResult({ payloads, startedAt, finishedAt, r
       reason,
       startedAt,
       finishedAt
-    });
-    const signals = (payload.items ?? []).map(repairSignal).filter((signal) => evaluateSignalQuality(signal).storable);
-    for (const signal of signals) {
-      const quality = evaluateSignalQuality(signal);
-      const collectedAt = signal.collectedAt ?? finishedAt;
-      await db.insert(signalsTable)
-        .values({
-          id: signal.id,
-          source: signal.source,
-          title: signal.title,
-          url: signal.url,
-          metric: signal.metric ?? '',
-          summary: signal.summary ?? '',
-          type: signal.type ?? '',
-          firstSeenAt: collectedAt,
-          lastSeenAt: collectedAt,
-          collectedAt,
-          seenCount: 1,
-          qualityScore: quality.score,
-          qualityLabel: quality.label,
-          qualityReasons: quality.reasons
-        })
-        .onConflictDoUpdate({
-          target: [signalsTable.source, signalsTable.url],
-          set: {
-            title: signal.title,
-            metric: signal.metric ?? '',
-            summary: signal.summary ?? '',
-            type: signal.type ?? '',
-            qualityScore: quality.score,
-            qualityLabel: quality.label,
-            qualityReasons: quality.reasons,
-            lastSeenAt: collectedAt,
-            collectedAt,
-            seenCount: sql`${signalsTable.seenCount} + 1`
-          }
-        });
-    }
+    })));
   }
+  const rows = uniqueSignalRows(payloads.flatMap((payload) => (payload.items ?? [])
+    .map(repairSignal)
+    .map((signal) => toPostgresSignalRow(signal, finishedAt))
+    .filter(Boolean)));
+  for (const chunk of chunks(rows, 100)) {
+    await db.insert(signalsTable)
+      .values(chunk)
+      .onConflictDoUpdate({
+        target: [signalsTable.source, signalsTable.url],
+        set: {
+          title: sql`excluded.title`,
+          metric: sql`excluded.metric`,
+          summary: sql`excluded.summary`,
+          type: sql`excluded.type`,
+          qualityScore: sql`excluded.quality_score`,
+          qualityLabel: sql`excluded.quality_label`,
+          qualityReasons: sql`excluded.quality_reasons_json`,
+          lastSeenAt: sql`excluded.collected_at`,
+          collectedAt: sql`excluded.collected_at`,
+          seenCount: sql`${signalsTable.seenCount} + 1`
+        }
+      });
+  }
+}
+
+function toPostgresSignalRow(signal, finishedAt) {
+  const quality = evaluateSignalQuality(signal);
+  if (!quality.storable) return null;
+  const collectedAt = signal.collectedAt ?? finishedAt;
+  return {
+    id: signal.id,
+    source: signal.source,
+    title: signal.title,
+    url: signal.url,
+    metric: signal.metric ?? '',
+    summary: signal.summary ?? '',
+    type: signal.type ?? '',
+    firstSeenAt: collectedAt,
+    lastSeenAt: collectedAt,
+    collectedAt,
+    seenCount: 1,
+    qualityScore: quality.score,
+    qualityLabel: quality.label,
+    qualityReasons: quality.reasons
+  };
+}
+
+function uniqueSignalRows(rows) {
+  const map = new Map();
+  rows.forEach((row) => {
+    const key = `${row.source}|${row.url}`;
+    if (!row.source || !row.url || map.has(key)) return;
+    map.set(key, row);
+  });
+  return [...map.values()];
+}
+
+function chunks(items, size) {
+  const result = [];
+  for (let index = 0; index < items.length; index += size) result.push(items.slice(index, index + size));
+  return result;
 }
 
 async function getPostgresLatestSignals(limit = 500) {

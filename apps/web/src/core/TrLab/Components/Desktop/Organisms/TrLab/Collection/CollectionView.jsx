@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Activity, Clock3, Database, Eraser, PauseCircle, PlayCircle, RefreshCw, Rss, ServerCog } from 'lucide-react';
 import { Button } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Button/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Card';
@@ -9,7 +9,9 @@ import { getCollectorRuntimeStatus, runCollectorRuntimeAction } from '@/core/TrL
 import { formatTime } from '@/core/TrLab/modules/helpers/utils';
 
 export function CollectionView(props) {
-  const collector = useCollectorRuntime();
+  const collector = useCollectorRuntime({
+    onCollectionFinished: () => props.refreshCollection?.({ force: true, analysisDate: props.analysisDate })
+  });
 
   return (
     <div className="space-y-5">
@@ -18,7 +20,7 @@ export function CollectionView(props) {
       </section>
 
       <section className="space-y-4">
-        <AutomationPanel collector={collector} refreshCollection={props.refreshCollection} />
+        <AutomationPanel collector={collector} refreshCollection={props.refreshCollection} analysisDate={props.analysisDate} />
         <StoragePanel
           signals={props.signals}
           collectionRuns={props.collectionRuns}
@@ -34,7 +36,7 @@ export function CollectionView(props) {
   );
 }
 
-function AutomationPanel({ collector, refreshCollection }) {
+function AutomationPanel({ collector, refreshCollection, analysisDate }) {
   const status = collector.status;
   const [intervalDraft, setIntervalDraft] = useState(status?.intervalMinutes ?? 30);
   const loading = collector.loading || status?.running;
@@ -57,7 +59,7 @@ function AutomationPanel({ collector, refreshCollection }) {
 
   const refreshStatus = async () => {
     await collector.refresh();
-    await refreshCollection?.({ force: true });
+    await refreshCollection?.({ force: true, analysisDate });
   };
 
   return (
@@ -158,28 +160,41 @@ function StoragePanel({ signals, collectionRuns, collectorEvents, clearCollected
   );
 }
 
-function useCollectorRuntime() {
+function useCollectorRuntime({ onCollectionFinished } = {}) {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const runningRef = useRef(false);
+  const finishedRef = useRef(onCollectionFinished);
 
-  const refresh = async () => {
+  useEffect(() => {
+    finishedRef.current = onCollectionFinished;
+  }, [onCollectionFinished]);
+
+  const applyStatus = useCallback(async (data) => {
+    const wasRunning = runningRef.current;
+    runningRef.current = Boolean(data?.running);
+    setStatus(data);
+    if (wasRunning && !data?.running) await finishedRef.current?.(data);
+  }, []);
+
+  const refresh = useCallback(async () => {
     try {
       const data = await getCollectorRuntimeStatus();
-      setStatus(data);
+      await applyStatus(data);
       setError('');
       return data;
     } catch (err) {
       setError(err.message);
       return null;
     }
-  };
+  }, [applyStatus]);
 
   useEffect(() => {
     let alive = true;
     getCollectorRuntimeStatus()
       .then((data) => {
-        if (alive) setStatus(data);
+        if (alive) applyStatus(data);
       })
       .catch((err) => {
         if (alive) setError(err.message);
@@ -187,13 +202,31 @@ function useCollectorRuntime() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [applyStatus]);
+
+  useEffect(() => {
+    if (!status?.running) return undefined;
+    let alive = true;
+    const interval = window.setInterval(() => {
+      getCollectorRuntimeStatus()
+        .then((data) => {
+          if (alive) applyStatus(data);
+        })
+        .catch((err) => {
+          if (alive) setError(err.message);
+        });
+    }, 1000);
+    return () => {
+      alive = false;
+      window.clearInterval(interval);
+    };
+  }, [applyStatus, status?.running]);
 
   const action = async (payload) => {
     setLoading(true);
     try {
       const data = await runCollectorRuntimeAction(payload);
-      setStatus(data);
+      await applyStatus(data);
       setError('');
       return data;
     } catch (err) {
@@ -312,6 +345,9 @@ function eventLabel(event) {
     'scheduler-stopped': '자동 수집 꺼짐',
     'scheduler-configured': '수집 주기 변경',
     'collect-started': '수집 시작',
+    'collect-fetching': '신호 수집 중',
+    'collect-saving': '저장 중',
+    'collect-saved': '저장 완료',
     'collect-finished': '수집 완료',
     'collect-persisted': '저장된 수집 완료',
     'collect-failed': '수집 실패',

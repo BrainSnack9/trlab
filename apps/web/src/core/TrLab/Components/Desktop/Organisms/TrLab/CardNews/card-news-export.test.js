@@ -80,17 +80,20 @@ describe('card-news export', () => {
     expect(svg).toContain('@trlab.insight');
   });
 
-  it('copies a prompt that preserves reference style and forbids planning labels', () => {
+  it('copies a backplate-only prompt without asking the image model to render copy or fake data', () => {
     const prompt = makePrompt(studio, plan, { ...baseCard, layout: 'data_chart' }, style.name);
 
     expect(prompt).toContain('4:5');
-    expect(prompt).toContain('handdrawn_research');
-    expect(prompt).toContain('레퍼런스 리듬');
-    expect(prompt).toContain('9~11장 권장');
-    expect(prompt).toContain('레퍼런스 시각 가이드');
-    expect(prompt).toContain('메모형 정보 카드');
-    expect(prompt).toContain('자료 칩');
-    expect(prompt).toContain('본문에는 evidence, interpretation, action 같은 기획 라벨을 표시하지 말 것.');
+    expect(prompt).toContain('Backplate only');
+    expect(prompt).toContain('No visible text or pseudo-data');
+    expect(prompt).toContain('memo-style information card');
+    expect(prompt).toContain('Overlay reservation');
+    expect(prompt).toContain('TrLab adds every Korean word');
+    expect(prompt).not.toContain('레퍼런스 리듬');
+    expect(prompt).not.toContain('제목: 코스피 착시');
+    expect(prompt).not.toContain('본문:');
+    expect(prompt).not.toContain('강조 라벨: 비교 프레임');
+    expect(prompt).not.toContain('반도체 포함/제외 비교 그래프');
     expect(prompt).not.toMatch(/근거:|해석:|실행:/);
   });
 

@@ -68,6 +68,21 @@ export const keywordSnapshotsTable = pgTable('keyword_snapshots', {
   createdAt: text('created_at').notNull()
 });
 
+export const candidateFeedbackTable = pgTable('candidate_feedback', {
+  id: serial('id').primaryKey(),
+  candidateId: text('candidate_id').notNull().default(''),
+  keyword: text('keyword').notNull(),
+  keywordKey: text('keyword_key').notNull(),
+  action: text('action').notNull(),
+  weight: integer('weight').notNull().default(0),
+  profileId: text('profile_id').notNull().default(''),
+  areaId: text('area_id').notNull().default(''),
+  reason: text('reason').notNull().default(''),
+  source: text('source').notNull().default(''),
+  candidate: jsonb('candidate_json').notNull().default({}),
+  createdAt: text('created_at').notNull()
+});
+
 export const contentPlansTable = pgTable('content_plans', {
   id: text('id').primaryKey(),
   candidateId: text('candidate_id').notNull().default(''),
@@ -189,6 +204,26 @@ async function createPostgresSchema() {
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS idx_keyword_snapshots_created
       ON keyword_snapshots(created_at DESC)
+  `);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS candidate_feedback (
+      id SERIAL PRIMARY KEY,
+      candidate_id TEXT NOT NULL DEFAULT '',
+      keyword TEXT NOT NULL,
+      keyword_key TEXT NOT NULL,
+      action TEXT NOT NULL,
+      weight INTEGER NOT NULL DEFAULT 0,
+      profile_id TEXT NOT NULL DEFAULT '',
+      area_id TEXT NOT NULL DEFAULT '',
+      reason TEXT NOT NULL DEFAULT '',
+      source TEXT NOT NULL DEFAULT '',
+      candidate_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TEXT NOT NULL
+    )
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_candidate_feedback_keyword
+      ON candidate_feedback(keyword_key, created_at DESC)
   `);
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS content_plans (

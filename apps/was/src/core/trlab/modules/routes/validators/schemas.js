@@ -40,7 +40,13 @@ export const searchVerifyQuerySchema = z.object({
 });
 
 export const latestTrendQuerySchema = z.object({
-  scheduled: z.string().optional()
+  scheduled: z.string().optional(),
+  analysisDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+});
+
+export const latestSignalsQuerySchema = z.object({
+  analysisDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  limit: positiveIntParam(500, 2000)
 });
 
 export const signalSummaryQuerySchema = z.object({
@@ -56,10 +62,21 @@ export const trendRankQuerySchema = z.object({
   verify: booleanFlagSchema,
   verifyLimit: positiveIntParam(5, 8),
   ai: booleanFlagSchema,
-  aiLimit: positiveIntParam(8, 10),
+  aiLimit: positiveIntParam(12, 16),
   signalLimit: positiveIntParam(500, 2000),
   window: z.enum(['business-day', '24h', 'all', 'latest']).default('business-day'),
   analysisDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   reason: z.string().default('manual-rank'),
   save: z.string().optional()
+});
+
+export const candidateFeedbackBodySchema = z.object({
+  action: z.enum(['view', 'select', 'queue', 'positive', 'plan', 'reject', 'hide']).default('view'),
+  keyword: z.string().optional(),
+  candidateId: z.string().optional(),
+  profileId: z.string().optional(),
+  areaId: z.string().optional(),
+  reason: z.string().optional(),
+  source: z.string().optional(),
+  candidate: z.record(z.string(), z.unknown()).optional()
 });

@@ -6,9 +6,9 @@ import {
 export function classifyTitle(value) {
   const text = `${value ?? ''}`.toLowerCase();
   for (const [keyword, areaId] of areaOverrideMap.entries()) {
-    if (text.includes(keyword.toLowerCase())) return interestAreas.find((area) => area.id === areaId);
+    if (includesSearchTerm(text, keyword)) return interestAreas.find((area) => area.id === areaId);
   }
-  return interestAreas.find((area) => area.keywords.some((keyword) => text.includes(keyword.toLowerCase())))
+  return interestAreas.find((area) => area.keywords.some((keyword) => includesSearchTerm(text, keyword)))
     ?? interestAreas.find((area) => area.id === 'life');
 }
 
@@ -37,6 +37,17 @@ export function extractContentTopicPhrases(signal) {
   if (/출산|임신|부모급여|육아\s*지원|어린이집|신생아|아기/i.test(text) && /혜택|지원|급여|보조금|세금/i.test(text)) add('출산 육아 지원 혜택');
   if (/어린이집|유치원|키즈|아기/i.test(text) && /엄마|부모|수영복|등원/i.test(text)) add('어린이집 등원 이슈');
   if (/강아지|고양이|반려|펫|pet|dog|cat/i.test(text) && /간식|장난감|용품|자동|보험|병원|costco|amazon/i.test(text)) add('반려동물 인기 용품');
+  if (/강아지|고양이|반려|펫|pet|dog|cat/i.test(text) && /진료비|병원비|표준수가|수가제|동물병원|보험/i.test(text)) add('반려동물 진료비 표준수가제');
+  if (/AI|인공지능/i.test(text) && /장난감|인형|toy|펫|pet|반려/i.test(text)) add(/펫|pet|반려/i.test(text) ? 'AI 펫가젯' : 'AI 장난감');
+  if (/AI|인공지능|GEO|AEO|SEO|answer\s*engine/i.test(text) && /검색|노출|GEO|AEO|SEO|answer\s*engine/i.test(text)) add('AI 검색 노출 전략');
+  if (/생성형\s*AI|AI/i.test(text) && /업무|실무|자동화|기업|AX|도입|활용 사례/i.test(text)) add('기업 생성형 AI 업무 활용');
+  if (/GLP-?1|위고비|마운자로|비만치료제|유지어터/i.test(text) && /식품|시장|유지|다이어트|비만|체중/i.test(text)) add('GLP-1 이후 유지어터 시장');
+  if (/건강기능식품|건기식|식품첨가물|면역력|표방 식품|과다 섭취/i.test(text) && /주의|광고|효과|비교|선택|흉내/i.test(text)) add('건강기능식품 광고 주의');
+  if (/수면|멜라토닌|마그네슘/i.test(text) && /영양제|성분|효과|비교|선택|먹지 말아야/i.test(text)) add('수면 영양제 성분 비교');
+  if (/소비자물가|물가\s*품목|물가지표|밀키트|클라우드|1인\s*가구|점심값/i.test(text) && /변화|바뀜|반영|시대|품목/i.test(text)) add('소비자물가 품목 변화');
+  if (/단백질/i.test(text) && /일상|건강|시장|근육|운동|식품/i.test(text)) add('일상 건강 단백질 시장');
+  if (/일본|여행/i.test(text) && /Z세대|짧고\s*자주|혜택|카드|특화|국내\s*일본풍/i.test(text)) add('일본 여행 소비 변화');
+  if (/전기차|EV/i.test(text) && /배터리|가격|반토막|구독|전동화|캐즘|전망/i.test(text)) add('전기차 가격·구독 전략');
   if (/아마존|amazon/i.test(text) && /상품|제품|구매|finds|급상승|품절|대란/i.test(text)) add('미국 아마존 인기 상품');
   if (/틱톡|tiktok/i.test(text) && /광고|입소문|구매|브랜드|made me buy/i.test(text)) add('틱톡발 구매 트렌드');
   if (/일본|칼디|편의점/i.test(text) && /추천템|쇼핑|품절|신상|필수템/i.test(text)) add('일본 생활 쇼핑 추천템');
@@ -89,6 +100,7 @@ export function isUsefulCandidate(value) {
   if (stopWords.has(lower) || noiseKeywords.has(lower) || genericKeywords.has(lower)) return false;
   if (/^\d+$/.test(keyword) || /^\d+[\p{L}]+$/u.test(keyword)) return false;
   if (/^\d{1,2}[-./]\d{1,2}$/.test(keyword)) return false;
+  if (/\d+위/.test(keyword)) return false;
   if (/ㅋ{2,}|ㅎ{2,}|ㅠ{2,}/.test(keyword)) return false;
   if (/^[A-Z]{3,}$/.test(keyword) && !allowedShortKeywords.has(lower)) return false;
   if (/^[a-z]{3,}$/i.test(keyword) && !allowedEnglishKeywords.has(lower) && !allowedShortKeywords.has(lower)) return false;
@@ -115,11 +127,11 @@ function isUsefulSinglePart(value) {
   const lower = value.toLowerCase();
   if (!value || stopWords.has(lower) || noiseKeywords.has(lower) || genericKeywords.has(lower)) return false;
   if (/^\d+$/.test(value) || isWeakPhraseToken(value)) return false;
-  return !/(에|와|과|에서|에게|으로|로서|처럼|인데|면서|던데|입니다|했다|했던|썼던|된다는|했다는|한다는|풀었다는|된다|하다|세요|있음|하고|가지고|키운다|높인다|낮춘다|늘린다|줄인다|개|시장|전망)$/.test(value);
+  return !/(에|와|과|에서|에게|으로|로서|처럼|인데|면서|던데|입니다|했습니다|합니다|봅니다|봅시다|해봅니다|해봅시다|봤습니다|됩니다|되나요|됐나요|인가요|네요|군요|했다|했던|썼던|된다는|했다는|한다는|풀었다는|된다|하다|세요|있음|하고|가지고|키운다|높인다|낮춘다|늘린다|줄인다|개|시장|전망)$/.test(value);
 }
 
 export function isWeakPhraseToken(value) {
-  return /(가|이|을|를|로|으로|에서|에게|부터|까지|하고|된다|하다|하는|하고|면서|던데|입니다|했다|했던|썼던|풀었다는|개|시장|전망)$/.test(value);
+  return /(가|이|을|를|로|으로|에서|에게|부터|까지|하고|된다|하다|하는|하고|면서|던데|입니다|했습니다|합니다|봅니다|봅시다|해봅니다|해봅시다|봤습니다|됩니다|되나요|됐나요|인가요|네요|군요|했다|했던|썼던|풀었다는|개|시장|전망)$/.test(value);
 }
 
 export function decodeEntities(value) {
@@ -138,4 +150,17 @@ export function stripTags(value) {
 
 export function cleanText(value) {
   return decodeEntities(value).replace(/\s+/g, ' ').trim();
+}
+
+function includesSearchTerm(text, keyword) {
+  const term = `${keyword ?? ''}`.toLowerCase();
+  if (!term) return false;
+  if (/^[a-z0-9+#.-]{1,3}$/i.test(term)) {
+    return new RegExp(`(^|[^a-z0-9])${escapeRegex(term)}([^a-z0-9]|$)`, 'i').test(text);
+  }
+  return text.includes(term);
+}
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
