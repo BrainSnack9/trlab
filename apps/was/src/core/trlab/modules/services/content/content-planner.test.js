@@ -768,6 +768,97 @@ describe('createContentPlan fallback carousel', () => {
     expect(plan.cards.map((card) => `${card.title}\n${card.body}\n${card.visualPrompt}`).join('\n')).not.toMatch(/시작하기|실천할 때|Search SERP|네이트판/);
   });
 
+  it('locks manual design cards to the planning story flow', () => {
+    const storyFlow = [
+      '오늘은 어떤 운동을 해볼까? / 오늘의 운동 루틴은 상체 운동!',
+      '상체 운동 루틴 소개: 벤치프레스, 랫풀다운, 시티드 로우, 숄더프레스, 덤벨 컬, 트라이셉스 푸시다운.',
+      '첫 번째 운동: 벤치프레스 / 가슴 근육을 기르는 기본 운동 / 팔을 뻗고 가슴까지 내리기.',
+      '두 번째 운동: 랫풀다운 / 등을 넓게 만드는 운동 / 바를 자신의 가슴쪽으로 당기기.',
+      '세 번째 운동: 시티드 로우 / 중심 근육 강화 운동 / 줄을 자신 쪽으로 당기기.',
+      '네 번째 운동: 숄더프레스 / 어깨 근육 발달 운동 / 덤벨을 머리 위로 밀어 올리기.',
+      '다섯 번째 운동: 덤벨 컬 / 이두근 강화 운동 / 덤벨을 어깨쪽으로 올리기.',
+      '여섯 번째 운동: 트라이셉스 푸시다운 / 삼두근 강화 운동 / 로프를 아래로 당기기.',
+      '운동 완료 후: 오늘도 상체 운동 완료! 꾸준히 하면 분명 달라질 거야!',
+      '다음에는 하체 운동도 함께 해보자!'
+    ].join('\n');
+
+    const plan = normalizeContentPlanForTest({
+      cards: [
+        { role: 'cover', title: '운동 싫어하는 주인공', body: '오늘도 운동하기 싫은 표정으로 시작해요.' },
+        { role: 'content_angle', title: '운동을 시작하는 모습', body: '주인공이 결심하는 장면을 보여줘요.' },
+        { role: 'checklist', title: '마무리', body: '저장하세요.' }
+      ]
+    }, {
+      sourceMode: 'manual',
+      label: '집에서 하는 운동루틴',
+      cardCount: 10,
+      manualBrief: {
+        topic: '집에서 하는 운동루틴',
+        contentDirection: '상체 운동을 어떻게 하는지 운동 자세와 횟수 중심으로 보여준다.',
+        cardCount: 10
+      },
+      planningDraft: {
+        format: 'instatoon',
+        cardCount: 10,
+        storyFlow
+      }
+    });
+
+    expect(plan.cards).toHaveLength(10);
+    expect(plan.cards.map((card) => card.title)).toEqual([
+      '오늘은 어떤 운동을 해볼까?',
+      '상체 운동 루틴 소개',
+      '첫 번째 운동',
+      '두 번째 운동',
+      '세 번째 운동',
+      '네 번째 운동',
+      '다섯 번째 운동',
+      '여섯 번째 운동',
+      '운동 완료 후',
+      '다음에는 하체 운동도 함께 해보자!'
+    ]);
+    expect(plan.cards[2].body).toContain('벤치프레스');
+    expect(plan.cards[3].body).toContain('랫풀다운');
+    expect(plan.cards[7].body).toContain('트라이셉스 푸시다운');
+    expect(plan.carouselBlueprint).toHaveLength(10);
+    expect(plan.cards.map((card) => `${card.title}\n${card.body}`).join('\n')).not.toMatch(/운동 싫어하는 주인공|운동을 시작하는 모습/);
+  });
+
+  it('uses planning story flow count over stale 6-card template counts', () => {
+    const storyFlow = [
+      '1컷: 표지',
+      '2컷: 벤치프레스',
+      '3컷: 랫풀다운',
+      '4컷: 시티드 로우',
+      '5컷: 숄더프레스',
+      '6컷: 덤벨 컬',
+      '7컷: 트라이셉스 푸시다운',
+      '8컷: 세트와 휴식',
+      '9컷: 완료 장면',
+      '10컷: 다음 루틴 예고'
+    ].join('\n');
+
+    const plan = normalizeContentPlanForTest({}, {
+      sourceMode: 'manual',
+      label: '집에서 하는 운동루틴',
+      cardCount: 6,
+      manualBrief: {
+        topic: '집에서 하는 운동루틴',
+        contentDirection: '상체 운동 루틴을 10컷으로 설명한다.',
+        cardCount: 6
+      },
+      planningDraft: {
+        cardCount: 6,
+        storyFlow
+      }
+    });
+
+    expect(plan.cards).toHaveLength(10);
+    expect(plan.generation.requestedCardCount).toBe(10);
+    expect(plan.carouselBlueprint).toHaveLength(10);
+    expect(plan.cards[9].title).toBe('10컷');
+  });
+
   it('adds verified omega-3 chart and table data to manual supplement carousels', async () => {
     const providerKeys = ['OPENAI_API_KEY', 'GEMINI_API_KEY', 'ANTHROPIC_API_KEY', 'XAI_API_KEY', 'GROQ_API_KEY', 'DEEPSEEK_API_KEY', 'MISTRAL_API_KEY', 'DEEPINFRA_API_KEY'];
     const original = Object.fromEntries(providerKeys.map((key) => [key, process.env[key]]));

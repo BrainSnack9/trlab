@@ -83,6 +83,30 @@ describe('card image generator prompts and local fallback', () => {
     expect(prompt).not.toMatch(/근거:|해석:|실행:/);
   });
 
+  it('uses a specific card visual prompt before domain-specific scene guesses', () => {
+    const prompt = makeImagePrompt({
+      studio: {
+        label: '어린이집 대신 상체 루틴',
+        keyword: '상체 운동 루틴',
+        planningDraft: { storyFlow: '첫 번째 운동: 벤치프레스 / 가슴 근육을 기르는 기본 운동' }
+      },
+      plan,
+      style,
+      card: {
+        page: 3,
+        role: 'content_angle',
+        layout: 'toon_panel',
+        title: '첫 번째 운동',
+        body: '벤치프레스는 가슴까지 내렸다가 밀어 올려요.',
+        visualPrompt: '벤치프레스 자세를 하는 캐릭터, 팔을 뻗고 가슴까지 내리는 동작이 명확히 보이는 인스타툰 컷'
+      }
+    });
+
+    expect(prompt).toContain('Use the user-provided card scene direction as the source of truth');
+    expect(prompt).toContain('벤치프레스 자세');
+    expect(prompt).not.toContain('Korean morning childcare scene');
+  });
+
   it('uses the manually edited image prompt before generated planner details', () => {
     const prompt = makeImagePrompt({
       studio,

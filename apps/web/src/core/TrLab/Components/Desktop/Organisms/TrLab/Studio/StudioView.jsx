@@ -120,8 +120,9 @@ export function StudioView({ studio, setView, setQueue }) {
   );
 }
 
-export function PlanView({ queue, studio, setView, setQueue, contentPlans, setContentPlans }) {
+export function PlanView({ queue, studio, setView, setQueue, contentPlans, setContentPlans, updateCurrentWork }) {
   const titleCandidates = useMemo(() => makeTitleCandidates(studio), [studio]);
+  const contentBrief = studio?.contentBrief ?? studio?.contentSetup?.contentBrief ?? null;
   const plan = studio?.id ? contentPlans[studio.id] : null;
   const {
     setup,
@@ -137,6 +138,7 @@ export function PlanView({ queue, studio, setView, setQueue, contentPlans, setCo
     setQueue,
     setView,
     setContentPlans,
+    updateCurrentWork,
     defaultCardCount: DEFAULT_CARD_COUNT
   });
   const updateCurrentPlan = useCallback((updater) => {
@@ -163,28 +165,24 @@ export function PlanView({ queue, studio, setView, setQueue, contentPlans, setCo
     <div className="space-y-5">
       <GenerationOverlay
         open={loading}
-        title="추천 결과를 다시 만들고 있어요"
-        description="선택 가능한 제목과 카드 흐름을 새로 구성합니다."
+        title="기획 내용을 카드에 배치하고 있어요"
+        description="확정된 컷 흐름을 유지한 채 제목, 본문, 시각 지시 영역에 나눠 담습니다."
       />
       <NoticeToast
-        title="AI 추천 생성 실패"
+        title="기획 배치 실패"
         message={error}
         onClose={dismissGenerationError}
       />
       <WorkflowHeader
         eyebrow="설계"
-        title="카드 초안"
-        description="제목 후보와 컷별 흐름을 확인합니다."
+        title="콘텐츠 설계"
+        description="기획에서 확정한 컷 수와 템플릿은 유지하고, 표지 제목과 카드별 구성을 확정합니다."
       >
         <Button variant="outline" onClick={() => setView('planning')}><ArrowLeft className="h-4 w-4" />기획 수정</Button>
-        <Button variant="outline" onClick={createTrendPlan} disabled={loading}>
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          다시 추천
-        </Button>
       </WorkflowHeader>
       {loading && <LoadingBox />}
       {error && <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
-      {!plan && !loading ? <PlanSetupPanel studio={studio} setup={setup} setSetup={setSetup} titleCandidates={titleCandidates} loading={loading} hasPlan={false} onGenerate={createTrendPlan} /> : null}
+      {!plan && !loading ? <PlanSetupPanel studio={studio} contentBrief={contentBrief} setup={setup} setSetup={setSetup} titleCandidates={titleCandidates} loading={loading} onGenerate={createTrendPlan} /> : null}
       {plan ? <PlanRecommendationReview plan={plan} studio={studio} cached={cached} updatePlan={updateCurrentPlan} onConfirm={() => setView('cardnews')} /> : null}
     </div>
   );
@@ -249,7 +247,7 @@ function PlanRecommendationReview({ plan, studio, cached, updatePlan, onConfirm 
           <CardContent className="space-y-4">
             {plan.generation?.source === 'fallback' ? (
               <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold leading-6 text-red-700">
-                {plan.generation.message || 'AI 생성에 실패해 임시 기획안이 표시 중입니다. 다시 추천을 눌러 주세요.'}
+                {plan.generation.message || '기획 배치에 실패해 임시 배치안이 표시 중입니다.'}
               </div>
             ) : null}
             {plan.summary ? <p className="text-sm font-semibold leading-6 text-slate-600">{plan.summary}</p> : null}
@@ -264,11 +262,22 @@ function PlanRecommendationReview({ plan, studio, cached, updatePlan, onConfirm 
 
       {titleChosen ? <TemplatePlanSummary plan={plan} /> : null}
 
-      {plan.hookTitles?.length ? (
+      {(plan.hookTitles?.length || cards.length) ? (
         <Card>
-          <CardHeader><CardTitle>1. 제목 선택</CardTitle></CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-3">
-            {plan.hookTitles.slice(0, 6).map((title, index) => (
+          <CardHeader><CardTitle>1. 표지 제목 확정</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <label className="grid gap-1.5">
+              <span className="text-xs font-semibold text-slate-500">표지 제목 직접 입력</span>
+              <input
+                className="h-11 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:border-slate-400"
+                value={coverTitle}
+                onChange={(event) => applyTitle(event.target.value)}
+                placeholder="첫 카드에 들어갈 제목을 입력하세요"
+              />
+            </label>
+            {plan.hookTitles?.length ? (
+              <div className="grid gap-3 md:grid-cols-3">
+              {plan.hookTitles.slice(0, 6).map((title, index) => (
               <button
                 key={`${index}-${title}`}
                 type="button"
@@ -281,14 +290,16 @@ function PlanRecommendationReview({ plan, studio, cached, updatePlan, onConfirm 
                 <Badge variant={index === 0 ? 'default' : 'outline'}>{titleTypeLabel(index)}</Badge>
                 <strong className="mt-3 block break-keep text-base font-semibold leading-snug text-slate-950 [overflow-wrap:anywhere]">{title}</strong>
               </button>
-            ))}
+              ))}
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       ) : null}
 
       {titleChosen && scenarioOptions.length ? (
         <Card>
-          <CardHeader><CardTitle>2. 시나리오 추천/수정</CardTitle></CardHeader>
+          <CardHeader><CardTitle>2. 카드 배치 확인/수정</CardTitle></CardHeader>
           <CardContent className="grid gap-3 lg:grid-cols-2">
             {scenarioOptions.map((option) => (
               <button
@@ -320,7 +331,7 @@ function PlanRecommendationReview({ plan, studio, cached, updatePlan, onConfirm 
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <div className="text-xs font-semibold text-slate-500">선택한 시나리오 직접 수정</div>
-                  <p className="mt-1 text-xs font-semibold text-slate-400">카드 흐름 문장을 일부 바꾼 뒤 최종 생성하세요.</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-400">기획 흐름을 카드별 문장으로 다듬은 뒤 배치를 확정하세요.</p>
                 </div>
                 <Badge variant="secondary">{scenarioDraft.length}단계</Badge>
               </div>
@@ -343,7 +354,7 @@ function PlanRecommendationReview({ plan, studio, cached, updatePlan, onConfirm 
 
       {scenarioFinalized ? (
         <Card>
-          <CardHeader><CardTitle>3. 최종 생성 결과</CardTitle></CardHeader>
+          <CardHeader><CardTitle>3. 카드 배치 결과</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
               <div className="mb-2 text-xs font-semibold text-slate-600">확정된 시나리오</div>
@@ -375,14 +386,14 @@ function PlanRecommendationReview({ plan, studio, cached, updatePlan, onConfirm 
       <div className="sticky bottom-4 z-10 rounded-lg border bg-white/95 p-4 shadow-lg backdrop-blur">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <strong className="text-sm font-semibold text-slate-950">{scenarioFinalized ? '최종 결과를 확정할까요?' : titleChosen ? '시나리오를 최종 생성할까요?' : '먼저 제목을 선택해 주세요.'}</strong>
-            <p className="mt-1 text-xs font-semibold text-slate-500">{scenarioFinalized ? '다음 단계에서 레퍼런스, 캐릭터, 배경 에셋을 만듭니다.' : '제목을 선택한 뒤 시나리오를 고치고 최종 생성하세요.'}</p>
+            <strong className="text-sm font-semibold text-slate-950">{scenarioFinalized ? '이 배치로 제작 단계로 갈까요?' : titleChosen ? '카드 배치를 확정할까요?' : '먼저 제목을 선택해 주세요.'}</strong>
+            <p className="mt-1 text-xs font-semibold text-slate-500">{scenarioFinalized ? '다음 단계에서 레퍼런스, 캐릭터, 배경 에셋을 만듭니다.' : '기획 흐름을 확인한 뒤 카드 배치를 확정하세요.'}</p>
           </div>
           {scenarioFinalized ? (
             <Button onClick={onConfirm}><Image className="h-4 w-4" />이 결과로 제작 단계 이동</Button>
           ) : (
             <Button onClick={finalizeScenario} disabled={!titleChosen || !scenarioDraft.some((item) => item.trim())}>
-              <Send className="h-4 w-4" />최종 생성
+              <Send className="h-4 w-4" />배치 확정
             </Button>
           )}
         </div>
@@ -533,9 +544,9 @@ function WorkflowHeader({ eyebrow, title, description, children }) {
 
 function WorkflowSteps({ current }) {
   const steps = [
-    { id: 'title', label: '제목 선택' },
-    { id: 'plan', label: '구성 생성' },
-    { id: 'make', label: '이미지 편집' }
+    { id: 'title', label: '제목 확정' },
+    { id: 'plan', label: '10컷 설계' },
+    { id: 'make', label: '제작 이동' }
   ];
   const currentIndex = Math.max(0, steps.findIndex((step) => step.id === current));
   return (
@@ -689,20 +700,31 @@ function scoreTitle(title, studio = {}) {
   return `${format} · 저장/공유 예상 ${score}점 · 계정 톤에 맞게 다음 단계에서 카드 구조만 생성`;
 }
 
-function PlanSetupPanel({ studio, setup, setSetup, titleCandidates, loading, hasPlan, onGenerate }) {
+function PlanSetupPanel({ studio, contentBrief, setup, setSetup, titleCandidates, loading, onGenerate }) {
   const selectedTitle = setup.title || titleCandidates[0] || studio.label;
+  const generation = contentBrief?.generation ?? {};
+  const template = contentBrief?.template ?? {};
+  const planning = contentBrief?.planning ?? {};
   const update = (patch) => setSetup((current) => ({ ...current, ...patch }));
   return (
-    <Card className={hasPlan ? 'border-slate-200 bg-white' : 'border-slate-200 bg-slate-50/40'}>
-      <CardHeader><CardTitle>기획 요청</CardTitle></CardHeader>
+    <Card className="border-slate-200 bg-slate-50/40">
+      <CardHeader><CardTitle>기획 배치 전 확인</CardTitle></CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-3 md:grid-cols-[140px_minmax(0,1fr)]">
+        <div className="grid gap-2 md:grid-cols-4">
+          <InfoLine label="주제" value={generation.topic || studio.label} />
+          <InfoLine label="형식" value={contentBrief?.format?.label || planning.formatLabel || planning.format} />
+          <InfoLine label="컷 수" value={`${generation.cardCount || setup.cardCount || 0}컷`} />
+          <InfoLine label="템플릿" value={template.label || studio.contentSetup?.templateLabel} />
+        </div>
+        {generation.contentDirection ? (
+          <div className="rounded-lg border border-slate-200 bg-white p-3">
+            <div className="text-xs font-semibold text-slate-400">전개 요청</div>
+            <p className="mt-1 line-clamp-3 text-sm font-semibold leading-6 text-slate-700">{generation.contentDirection}</p>
+          </div>
+        ) : null}
+        <div className="grid gap-3">
           <label className="grid gap-1.5">
-            <span className="text-xs font-semibold text-slate-500">컷 수</span>
-            <input id="plan-setup-card-count" name="planSetupCardCount" className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-slate-400" type="number" min="3" max="12" value={setup.cardCount} onChange={(event) => update({ cardCount: event.target.value })} />
-          </label>
-          <label className="grid gap-1.5">
-            <span className="text-xs font-semibold text-slate-500">표지 제목</span>
+            <span className="text-xs font-semibold text-slate-500">표지 제목 직접 입력</span>
             <input id="plan-setup-title" name="planSetupTitle" className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-slate-400" value={selectedTitle} onChange={(event) => update({ title: event.target.value })} placeholder="표지 제목을 입력하세요" />
           </label>
         </div>
@@ -717,10 +739,10 @@ function PlanSetupPanel({ studio, setup, setSetup, titleCandidates, loading, has
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs font-semibold leading-5 text-muted-foreground">표지 제목과 컷 수를 기준으로 카드 문구와 제작 연출을 함께 작성합니다.</p>
+          <p className="text-xs font-semibold leading-5 text-muted-foreground">컷 수와 흐름은 기획에서 정한 값을 유지합니다. 여기서는 표지 제목을 확정하고 기획 내용을 카드 요소에 배치합니다.</p>
           <Button onClick={onGenerate} disabled={loading}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            {hasPlan ? '이 설정으로 다시 작성' : '기획안 작성'}
+            {`${generation.cardCount || setup.cardCount || ''}컷 기획 배치`}
           </Button>
         </div>
       </CardContent>

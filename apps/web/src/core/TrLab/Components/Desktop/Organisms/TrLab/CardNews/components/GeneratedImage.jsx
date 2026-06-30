@@ -1,7 +1,7 @@
 import { Button } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Button/Button';
 import { CardTextOverlayEditor } from '../editor/CardTextOverlayEditor';
 
-export function GeneratedImage({ image, card, selected, cards, onSelectCard, style, studio, backgroundActions, copyImagePrompt }) {
+export function GeneratedImage({ image, card, selected, cards, onSelectCard, style, studio, backgroundActions, copyImagePrompt, assetLibrary }) {
   return (
     <div>
       <CardTextOverlayEditor
@@ -10,6 +10,7 @@ export function GeneratedImage({ image, card, selected, cards, onSelectCard, sty
         style={style}
         studio={studio}
         backgroundActions={backgroundActions}
+        assetLibrary={assetLibrary}
         startOpen
         draftScopeKey={`card:${card?.page ?? selected + 1}`}
         cardNavigation={{ cards, selected, onSelectCard }}

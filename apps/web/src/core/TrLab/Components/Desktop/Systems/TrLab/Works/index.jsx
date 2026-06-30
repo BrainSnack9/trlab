@@ -7,8 +7,8 @@ import useWorkDialogs from '@/core/TrLab/modules/controller/useWorkDialogs';
 
 const progressSteps = [
   ['metadata', '정보'],
-  ['templates', '템플릿'],
   ['planning', '기획'],
+  ['templates', '템플릿'],
   ['plan', '설계'],
   ['cardnews', '제작']
 ];
@@ -71,6 +71,7 @@ function WorkCard({ work, active, onOpen, onRename, onExport, onDuplicate, onDel
   const completed = progressSteps.filter(([stage]) => isStepDone(work, stage)).length;
   const nextStep = progressSteps.find(([stage]) => !isStepDone(work, stage))?.[1] ?? '완료';
   const progress = Math.round((completed / progressSteps.length) * 100);
+  const draftCount = workDraftCount(work);
 
   return (
     <article className={workCardClass(active)}>
@@ -91,6 +92,7 @@ function WorkCard({ work, active, onOpen, onRename, onExport, onDuplicate, onDel
         <button type="button" className="min-w-0 flex-1 text-left outline-none" onClick={onOpen}>
           <h2 className="truncate text-sm font-semibold leading-5 text-slate-950">{work.title}</h2>
           <p className="mt-1 truncate text-[11px] font-medium text-slate-500">{new Date(work.updatedAt).toLocaleDateString('ko-KR')}</p>
+          {draftCount ? <p className="mt-1 text-[11px] font-semibold text-indigo-600">기획 초안 {draftCount}개</p> : null}
         </button>
         <div className="flex shrink-0 items-center gap-1">
           <IconButton label="수정" onClick={onRename}>
@@ -146,10 +148,14 @@ function IconButton({ label, tone = 'default', onClick, children }) {
 function isStepDone(work, stage) {
   if (stage === 'metadata') return hasMetadata(work);
   if (stage === 'templates') return Boolean(work?.equippedItems?.template);
-  if (stage === 'planning') return Boolean(work?.equippedItems?.planning || work?.planningDraft);
+  if (stage === 'planning') return Boolean(work?.equippedItems?.planning || work?.planningDraft || workDraftCount(work));
   if (stage === 'plan') return Boolean(work?.contentPlan);
   if (stage === 'cardnews') return Boolean(work?.output?.cardnews);
   return false;
+}
+
+function workDraftCount(work) {
+  return Array.isArray(work?.drafts?.planning) ? work.drafts.planning.length : 0;
 }
 
 function hasMetadata(work) {

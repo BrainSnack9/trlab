@@ -16,7 +16,11 @@ export async function POST(request) {
   const result = await recommendTemplates({
     topic,
     audience: payload?.audience,
-    goal: payload?.goal
+    goal: payload?.goal,
+    contentDirection: payload?.contentDirection,
+    metadata: payload?.metadata,
+    contentBrief: payload?.contentBrief,
+    planningDraft: payload?.planningDraft
   });
   return Response.json(result);
 }

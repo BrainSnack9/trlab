@@ -3,10 +3,10 @@
 import { Home, Layers3 } from 'lucide-react';
 import { Badge } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Badge/Badge';
 import { Button } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Button/Button';
-import { steps, utilitySteps, workListStep } from '@/core/TrLab/modules/configs/constants';
+import { steps, utilitySteps, workAssetStep, workListStep } from '@/core/TrLab/modules/configs/constants';
 import useTrLabWorkspace from '@/core/TrLab/modules/controller/useTrLabWorkspace';
 
-const workScopedViews = new Set(['overview', 'metadata', 'templates', 'planning', 'plan', 'cardnews']);
+const workScopedViews = new Set(['overview', 'metadata', 'templates', 'planning', 'assets', 'plan', 'cardnews']);
 
 export default function HeaderNavigator() {
   const { view, setView, queue, currentWork } = useTrLabWorkspace();
@@ -22,6 +22,7 @@ export default function HeaderNavigator() {
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         <NavGroup label="작업물">
           <NavButton item={workListStep} active={view === workListStep[0]} onClick={() => setView(workListStep[0])} />
+          <NavButton item={workAssetStep} active={view === workAssetStep[0]} onClick={() => setView(workAssetStep[0])} />
         </NavGroup>
 
         <NavGroup label="단계">

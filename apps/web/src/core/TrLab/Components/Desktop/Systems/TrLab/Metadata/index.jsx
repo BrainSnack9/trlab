@@ -99,7 +99,7 @@ export default function Metadata() {
   };
 
   const completeMetadata = () => {
-    setView('overview');
+    setView('planning');
   };
 
   const updateField = (key) => (event) => {
@@ -110,6 +110,13 @@ export default function Metadata() {
         ...(work.metadata ?? {}),
         [key]: value
       }
+    }));
+  };
+  const updateTitle = (event) => {
+    const title = event.target.value;
+    updateCurrentWork((work) => ({
+      ...work,
+      title
     }));
   };
   const updateSingle = (key, value) => {
@@ -148,6 +155,9 @@ export default function Metadata() {
 
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <div className="grid gap-4">
+          <Field label="주제">
+            <input id="work-title" name="workTitle" className={inputClass} value={currentWork.title ?? ''} onChange={updateTitle} placeholder="예: 집에서 하는 홈트레이닝 상체 루틴" />
+          </Field>
           <Field label="목적">
             <input id="work-goal" name="workGoal" className={inputClass} value={metadata.goal ?? ''} onChange={updateField('goal')} placeholder="예: 저장하고 공유할 만한 절약 루틴 콘텐츠 만들기" />
           </Field>

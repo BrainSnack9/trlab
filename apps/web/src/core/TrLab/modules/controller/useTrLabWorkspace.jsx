@@ -9,8 +9,8 @@ import { trendToRadarItem } from '@/core/TrLab/modules/helpers/utils';
 const TrLabWorkspaceContext = createContext(null);
 const WORKSPACE_STORAGE_KEY = 'trlab.workspace.v1';
 const WORKSPACE_STATE_VERSION = 5;
-const PERSISTABLE_VIEWS = new Set(['overview', 'metadata', 'templates', 'works', 'planning', 'profiles', 'collection', 'settings', 'studio', 'plan', 'cardnews']);
-const WORK_DETAIL_STAGES = new Set(['overview', 'metadata', 'templates', 'planning', 'studio', 'plan', 'cardnews']);
+const PERSISTABLE_VIEWS = new Set(['overview', 'metadata', 'templates', 'assets', 'works', 'planning', 'profiles', 'collection', 'settings', 'studio', 'plan', 'cardnews']);
+const WORK_DETAIL_STAGES = new Set(['overview', 'metadata', 'templates', 'assets', 'planning', 'studio', 'plan', 'cardnews']);
 const DEFAULT_SAVED_TEMPLATES = [{
   id: 'saved-home-training-routine',
   label: '홈트레이닝 운동 구성 가이드',
@@ -63,6 +63,7 @@ function useTrLabWorkspaceImpl() {
   const [contentPlans, setContentPlans] = useState({});
   const [planningDrafts, setPlanningDrafts] = useState([]);
   const [savedTemplates, setSavedTemplates] = useState(DEFAULT_SAVED_TEMPLATES);
+  const [assetLibrary, setAssetLibrary] = useState({ characters: [] });
   const [equippedItems, setEquippedItems] = useState({});
   const [selectedTrend, setSelectedTrend] = useState(null);
   const [analysisDate, setAnalysisDate] = useState(todayKstDate());
@@ -70,6 +71,7 @@ function useTrLabWorkspaceImpl() {
   const [selectedAreas, setSelectedAreas] = useState(defaultSelectedAreas);
   const [excludedAreas, setExcludedAreas] = useState(defaultExcludedAreas);
   const loadedAnalysisDateRef = useRef('');
+  const migratedAssetLibraryRef = useRef(false);
 
   useEffect(() => {
     const persisted = loadWorkspaceState();
@@ -78,6 +80,7 @@ function useTrLabWorkspaceImpl() {
     if (persisted.contentPlans) setContentPlans(persisted.contentPlans);
     if (persisted.planningDrafts) setPlanningDrafts(persisted.planningDrafts);
     if (persisted.savedTemplates) setSavedTemplates(mergeDefaultSavedTemplates(persisted.savedTemplates));
+    if (persisted.assetLibrary) setAssetLibrary(persisted.assetLibrary);
     if (persisted.equippedItems) setEquippedItems(persisted.equippedItems);
     if (persisted.selectedTrend) setSelectedTrend(persisted.selectedTrend);
     if (persisted.analysisDate) setAnalysisDate(persisted.analysisDate);
@@ -218,13 +221,50 @@ function useTrLabWorkspaceImpl() {
     setSavedTemplates((items = []) => items.filter((item) => item.id !== templateId && item.savedFrom !== 'example'));
   }, []);
 
+  const saveAsset = useCallback((asset) => {
+    const normalized = normalizeLibraryAsset(asset);
+    if (!normalized) return null;
+    setAssetLibrary((library) => ({
+      ...library,
+      characters: [normalized, ...(library?.characters ?? []).filter((item) => item.id !== normalized.id)].slice(0, 60)
+    }));
+    return normalized;
+  }, []);
+
+  const deleteAsset = useCallback((assetId) => {
+    if (!assetId) return;
+    setAssetLibrary((library) => ({
+      ...library,
+      characters: (library?.characters ?? []).filter((item) => item.id !== assetId)
+    }));
+  }, []);
+
   const studioTrend = useMemo(() => queue?.[0] ?? selectedTrend, [queue, selectedTrend]);
   const isQueued = useMemo(() => queue?.some((item) => item?.id === selectedTrend?.id), [queue, selectedTrend]);
 
   useEffect(() => {
+    if (!hydrated || migratedAssetLibraryRef.current) return;
+    migratedAssetLibraryRef.current = true;
+    const characters = [
+      ...collectCharacterAssetsFromWorks(works),
+      ...collectCharacterAssetsFromPlanningFormDrafts(works)
+    ];
+    if (!characters.length) return;
+    setAssetLibrary((library) => {
+      const existing = new Set((library?.characters ?? []).map((asset) => asset.id));
+      const migrated = characters.map(normalizeLibraryAsset).filter(Boolean).filter((asset) => !existing.has(asset.id));
+      if (!migrated.length) return library;
+      return {
+        ...library,
+        characters: [...migrated, ...(library?.characters ?? [])].slice(0, 60)
+      };
+    });
+  }, [hydrated, works]);
+
+  useEffect(() => {
     if (!hydrated) return;
-    saveWorkspaceState({ view, works, currentWorkId, queue, contentPlans, planningDrafts, savedTemplates, equippedItems, selectedTrend, analysisDate, selectedChannelProfiles, selectedAreas, excludedAreas });
-  }, [hydrated, view, works, currentWorkId, queue, contentPlans, planningDrafts, savedTemplates, equippedItems, selectedTrend, analysisDate, selectedChannelProfiles, selectedAreas, excludedAreas]);
+    saveWorkspaceState({ view, works, currentWorkId, queue, contentPlans, planningDrafts, savedTemplates, assetLibrary, equippedItems, selectedTrend, analysisDate, selectedChannelProfiles, selectedAreas, excludedAreas });
+  }, [hydrated, view, works, currentWorkId, queue, contentPlans, planningDrafts, savedTemplates, assetLibrary, equippedItems, selectedTrend, analysisDate, selectedChannelProfiles, selectedAreas, excludedAreas]);
 
   useEffect(() => {
     if (!hydrated || !isDateText(analysisDate) || loadedAnalysisDateRef.current === analysisDate) return;
@@ -261,6 +301,10 @@ function useTrLabWorkspaceImpl() {
     setSavedTemplates,
     saveTemplate,
     deleteSavedTemplate,
+    assetLibrary,
+    setAssetLibrary,
+    saveAsset,
+    deleteAsset,
     equippedItems,
     setEquippedItems,
     equipItem,
@@ -355,6 +399,7 @@ function loadWorkspaceState() {
       contentPlans: isPlainObject(parsed.contentPlans) ? parsed.contentPlans : {},
       planningDrafts: Array.isArray(parsed.planningDrafts) ? parsed.planningDrafts : [],
       savedTemplates: Array.isArray(parsed.savedTemplates) ? parsed.savedTemplates.map(normalizeSavedTemplate) : DEFAULT_SAVED_TEMPLATES,
+      assetLibrary: normalizeAssetLibrary(parsed.assetLibrary),
       equippedItems: isPlainObject(parsed.equippedItems) ? parsed.equippedItems : {},
       selectedTrend: parsed.selectedTrend && typeof parsed.selectedTrend === 'object' ? parsed.selectedTrend : null,
       analysisDate: isDateText(parsed.analysisDate) ? parsed.analysisDate : todayKstDate(),
@@ -380,6 +425,7 @@ function saveWorkspaceState(state) {
       contentPlans: isPlainObject(state.contentPlans) ? state.contentPlans : {},
       planningDrafts: Array.isArray(state.planningDrafts) ? state.planningDrafts.slice(0, 24) : [],
       savedTemplates: Array.isArray(state.savedTemplates) ? mergeDefaultSavedTemplates(state.savedTemplates).slice(0, 30) : DEFAULT_SAVED_TEMPLATES,
+      assetLibrary: normalizeAssetLibrary(state.assetLibrary),
       equippedItems: isPlainObject(state.equippedItems) ? state.equippedItems : {},
       selectedTrend: state.selectedTrend ?? null,
       analysisDate: isDateText(state.analysisDate) ? state.analysisDate : todayKstDate(),
@@ -433,6 +479,94 @@ function normalizeSavedTemplate(template = {}) {
   };
 }
 
+function normalizeAssetLibrary(library = {}) {
+  return {
+    characters: Array.isArray(library?.characters)
+      ? library.characters.map(normalizeLibraryAsset).filter(Boolean).slice(0, 60)
+      : []
+  };
+}
+
+function collectCharacterAssetsFromWorks(works = []) {
+  const seen = new Set();
+  return works.flatMap((work) => {
+    const drafts = [
+      work?.planningDraft,
+      ...(Array.isArray(work?.drafts?.planning) ? work.drafts.planning : [])
+    ].filter(Boolean);
+    return drafts.flatMap((draft) => Array.isArray(draft.characterAssets) ? draft.characterAssets : [])
+      .map((asset) => ({
+        ...asset,
+        sourceWorkId: asset.sourceWorkId || work.id,
+        sourceWorkTitle: asset.sourceWorkTitle || work.title
+      }));
+  }).filter((asset) => {
+    if (!asset?.url || seen.has(asset.id)) return false;
+    seen.add(asset.id);
+    return true;
+  });
+}
+
+function collectCharacterAssetsFromPlanningFormDrafts(works = []) {
+  if (typeof window === 'undefined') return [];
+  const workById = new Map(works.map((work) => [work.id, work]));
+  const prefix = 'trlab.planning.form-draft.v1';
+  const seen = new Set();
+  const assets = [];
+  try {
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (!key || !key.startsWith(prefix)) continue;
+      const parsed = JSON.parse(window.localStorage.getItem(key) || 'null');
+      const characterAssets = Array.isArray(parsed?.characterAssets) ? parsed.characterAssets : [];
+      const workId = key.startsWith(`${prefix}.`) ? key.slice(prefix.length + 1) : '';
+      const work = workById.get(workId);
+      characterAssets.forEach((asset) => {
+        if (!asset?.url || seen.has(asset.id)) return;
+        seen.add(asset.id);
+        assets.push({
+          ...asset,
+          sourceWorkId: asset.sourceWorkId || work?.id || workId,
+          sourceWorkTitle: asset.sourceWorkTitle || work?.title || ''
+        });
+      });
+    }
+  } catch {
+    return assets;
+  }
+  return assets;
+}
+
+function normalizeLibraryAsset(asset = {}) {
+  if (!asset || typeof asset !== 'object' || !asset.url) return null;
+  const now = new Date().toISOString();
+  return {
+    ...asset,
+    id: `${asset.id ?? `asset-${Date.now()}`}`,
+    type: `${asset.type ?? 'character'}`,
+    name: `${asset.name ?? asset.title ?? '이미지 에셋'}`.trim() || '이미지 에셋',
+    role: `${asset.role ?? ''}`,
+    traits: `${asset.traits ?? ''}`,
+    prompt: `${asset.prompt ?? ''}`,
+    url: `${asset.url}`,
+    provider: `${asset.provider ?? 'openai'}`,
+    model: `${asset.model ?? ''}`,
+    sourceWorkId: `${asset.sourceWorkId ?? ''}`,
+    sourceWorkTitle: `${asset.sourceWorkTitle ?? ''}`,
+    styleLabel: `${asset.styleLabel ?? ''}`,
+    detailLabel: `${asset.detailLabel ?? ''}`,
+    createdAt: asset.createdAt || now,
+    savedAt: asset.savedAt || now,
+    defaultPlacement: isPlainObject(asset.defaultPlacement) ? asset.defaultPlacement : {
+      x: 0.58,
+      y: 0.28,
+      width: 0.32,
+      height: 0.42,
+      anchor: 'right-middle'
+    }
+  };
+}
+
 function mergeDefaultSavedTemplates(templates = []) {
   const items = templates.map(normalizeSavedTemplate);
   const ids = new Set(items.map((item) => item.id));
@@ -469,6 +603,7 @@ function normalizeWork(input = {}) {
     status: input.status || 'draft',
     metadata: isPlainObject(input.metadata) ? { ...defaultWorkMetadata(), ...input.metadata } : defaultWorkMetadata(),
     equippedItems: isPlainObject(input.equippedItems) ? input.equippedItems : {},
+    drafts: isPlainObject(input.drafts) ? normalizeWorkDrafts(input.drafts) : {},
     planningDraft: input.planningDraft ?? null,
     contentPlan: input.contentPlan ?? null,
     assets: isPlainObject(input.assets) ? input.assets : {},
@@ -488,12 +623,20 @@ function normalizeWorkUpdate(work = {}) {
     status: `${work.status ?? 'draft'}`,
     metadata: isPlainObject(work.metadata) ? { ...defaultWorkMetadata(), ...work.metadata } : defaultWorkMetadata(),
     equippedItems: isPlainObject(work.equippedItems) ? work.equippedItems : {},
+    drafts: isPlainObject(work.drafts) ? normalizeWorkDrafts(work.drafts) : {},
     planningDraft: work.planningDraft ?? null,
     contentPlan: work.contentPlan ?? null,
     assets: isPlainObject(work.assets) ? work.assets : {},
     output: isPlainObject(work.output) ? work.output : {},
     createdAt: work.createdAt || now,
     updatedAt: now
+  };
+}
+
+function normalizeWorkDrafts(drafts = {}) {
+  return {
+    ...drafts,
+    planning: Array.isArray(drafts.planning) ? drafts.planning.slice(0, 12) : []
   };
 }
 
@@ -507,9 +650,9 @@ function statusFromSlot(slot, item, fallback = 'draft') {
 
 function defaultWorkMetadata() {
   return {
-    ageGroups: ['20s', '30s'],
-    gender: 'all',
-    situations: ['work', 'saving'],
+    ageGroups: ['none'],
+    gender: 'none',
+    situations: ['none'],
     objective: 'save',
     tone: 'empathy',
     channel: 'instagram',

@@ -1,6 +1,7 @@
 'use client';
 
 import CardNews from '@/core/TrLab/Components/Desktop/Systems/TrLab/CardNews';
+import Assets from '@/core/TrLab/Components/Desktop/Systems/TrLab/Assets';
 import Collection from '@/core/TrLab/Components/Desktop/Systems/TrLab/Collection';
 import Home from '@/core/TrLab/Components/Desktop/Systems/TrLab/Home';
 import Metadata from '@/core/TrLab/Components/Desktop/Systems/TrLab/Metadata';
@@ -15,6 +16,7 @@ import Works from '@/core/TrLab/Components/Desktop/Systems/TrLab/Works';
 import useTrLabWorkspace from '@/core/TrLab/modules/controller/useTrLabWorkspace';
 import {
   ROUTER_TRLAB_CARDNEWS,
+  ROUTER_TRLAB_ASSETS,
   ROUTER_TRLAB_COLLECTION,
   ROUTER_TRLAB_METADATA,
   ROUTER_TRLAB_PLAN,
@@ -30,6 +32,7 @@ export const desktopRouteList = [
   { path: 'overview', element: WorkOverview },
   { path: ROUTER_TRLAB_METADATA, element: Metadata },
   { path: ROUTER_TRLAB_TEMPLATES, element: Templates },
+  { path: ROUTER_TRLAB_ASSETS, element: Assets },
   { path: ROUTER_TRLAB_WORKS, element: Works },
   { path: ROUTER_TRLAB_PLANNING, element: Planning },
   { path: ROUTER_TRLAB_PROFILES, element: Profiles },

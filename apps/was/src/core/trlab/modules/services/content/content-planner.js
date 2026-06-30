@@ -35,15 +35,17 @@ export async function createContentPlan(input) {
 function contentPlannerSystemPrompt() {
   return [
     '한국어 인스타그램 카드뉴스 편집장.',
-    '말투는 20대 중반 여성 정보계정처럼 다정하고 감각적인 해요체로 쓴다.',
+    '사용자가 입력한 manualBrief.prompt, manualBrief.contentDirection, planningDraft.contentDirection을 최우선으로 따른다.',
+    '사용자 전개 프롬프트가 형식, 말투, 흐름, 제외 조건을 지정하면 기본 편집장 규칙보다 우선한다.',
+    '말투는 사용자가 지정한 tone을 따른다. tone이 없을 때만 다정하고 명확한 해요체를 기본값으로 쓴다.',
     '과한 애교, 밈, 유행어, 느낌표 남발은 피하고 차분하지만 예쁜 문장으로 쓴다.',
     '주어진 트렌드 후보와 근거를 바탕으로 실제 카드에 그대로 들어갈 제목과 본문을 작성한다.',
     '본문은 기사 요약, 출처 설명, 제작 지시가 아니라 독자가 가져갈 데이터, 기준, 비교 포인트, 주의 조건이 담긴 완성 문구여야 한다.',
     '표지를 제외한 각 카드는 읽고 난 뒤 남는 정보가 달라야 한다.',
-    '상품/소비 트렌드는 구매 이유, 비교 기준, 안 살 이유, 체크리스트로 바꾼다.',
+    '상품/소비 트렌드 같은 분류 규칙은 사용자가 요청한 전개와 충돌하지 않을 때만 참고한다.',
     '카드뉴스를 실제 제작할 수 있도록 전체 productionBrief와 카드별 visualBrief를 반드시 작성한다.',
     'visualBrief에는 장면 시나리오, 배경 생성 프롬프트, Pexels 검색어, 소품, 구도, 안전 여백, 저작권/브랜드 사용 정책을 분리한다.',
-    '화장품, 육아용품, 자동차, 식품, 전자기기처럼 주제가 달라도 제품 실물/사용 장면/비교 자료/저장 체크가 한 흐름으로 보이게 설계한다.',
+    '주제가 무엇이든 사용자 요청에 필요한 실물, 사용 장면, 비교 자료, 저장 체크를 선택적으로 설계한다. 요청에 없는 도메인 예시는 끼워 넣지 않는다.',
     '인기 있다, 뜨고 있다, 저장 목록에 올라왔다처럼 정보가 없는 문장은 쓰지 않는다.',
     '근거에 없는 숫자와 가짜 후기는 만들지 않는다.',
     '반드시 JSON만 반환한다.'
@@ -85,7 +87,7 @@ function buildPrompt(input) {
       templateBrief ? '템플릿이 텍스트/정보형 계열이면 폰트 톤, 글자 배치, 체크/번호/표 구성, 안전 여백이 visualBrief에 반영되어야 한다.' : '',
       'request.suggestedCardFlow의 role과 mission을 우선 따른다. 더 좋은 흐름이 있으면 바꿀 수 있지만 각 카드의 역할은 서로 달라야 한다.',
       '각 cards 항목의 body는 해당 카드 mission에 대한 답이어야 한다. 앞 카드와 같은 문장, 같은 결론, 같은 표현을 반복하지 않는다.',
-      '말투는 20대 중반 여성 인스타 정보계정처럼 부드러운 해요체로 쓴다. 너무 딱딱한 보고서체, 과한 광고체, 애교체는 금지.',
+      '말투는 request의 대상 독자와 tone을 따른다. tone이 없으면 부드러운 해요체를 기본으로 쓰고, 너무 딱딱한 보고서체, 과한 광고체, 애교체는 금지.',
       '문장은 짧고 예쁘게 쓴다. 단, 감성만 남기지 말고 정보와 기준이 함께 남아야 한다.',
       '표지를 제외한 모든 body에는 독자가 얻어갈 정보 1개 이상을 넣는다. 예: 구매 판단 기준, 비교 축, 확인할 근거, 피해야 할 조건, 실제 적용 기준.',
       '인기/화제/강세를 말하는 데서 끝내지 말고 왜 그런지, 무엇을 봐야 하는지, 어떤 기준으로 판단할지까지 쓴다.',
@@ -358,20 +360,27 @@ function compactCandidate(input) {
 
 function buildManualPrompt(input, manual) {
   const templateBrief = normalizeTemplateBrief(input);
+  const suggestedCardFlow = manualCardFlowForPrompt(input, manual, templateBrief);
+  const planningFlow = planningStoryFlow(input);
   return JSON.stringify({
-    task: '사용자 직접 입력 주제와 컷 수만 중심으로 인스타 카드뉴스 기획안 JSON을 완성한다.',
+    task: '사용자 직접 입력 기획서를 기준으로 인스타 카드뉴스 기획안 JSON을 완성한다.',
     manualRequest: {
       topic: manual.topic,
       prompt: manual.prompt,
+      contentDirection: manual.contentDirection,
       audience: manual.audience || '저장할 만한 실용 정보를 찾는 독자',
       tone: manual.tone || '친근하지만 근거 있는 말투',
       cardCount: manual.cardCount,
       template: templateBrief,
-      suggestedCardFlow: cardFlowForPrompt(input, { id: 'manual', angle: manual.prompt }, manual.cardCount)
+      planningFlow,
+      suggestedCardFlow
     },
     rules: [
-      `${manual.cardCount}컷 정확히. 첫 장은 표지, 이후 흐름은 주제에 가장 자연스럽게 직접 설계한다.`,
-      templateBrief ? 'manualRequest.template이 있으면 suggestedCardFlow의 templateSlot, mission, productionSettings를 일반 구성보다 우선한다.' : '',
+      `${manual.cardCount}컷 정확히 작성한다.`,
+      planningFlow.length ? 'manualRequest.planningFlow는 사용자가 기획 단계에서 확정한 컷별 흐름이다. 카드 수, 순서, 각 카드의 운동명/내용을 바꾸지 말고 이 흐름을 카드별 title/body/visualBrief에 반영한다.' : '첫 장은 표지, 이후 흐름은 주제에 가장 자연스럽게 직접 설계한다.',
+      manual.contentDirection ? 'manualRequest.contentDirection을 최우선으로 따른다. 포함/표현/제외 요청을 카드 흐름, 문구, visualBrief에 반영한다.' : '',
+      '숨겨진 도메인별 고정 템플릿이나 예시 주제 흐름을 끼워 넣지 않는다. manualRequest에 없는 어린이집/오메가3/제품/육아 같은 특화 예시는 만들지 않는다.',
+      templateBrief ? 'manualRequest.template이 있으면 제작 형식과 레이아웃 기준으로만 참고한다. 사용자가 적은 contentDirection과 prompt의 전개 의도가 더 우선이다.' : '',
       '반응/비교/데이터/체크 같은 고정 순서에 맞추지 않는다.',
       'title과 body는 실제 카드에 그대로 들어갈 완성 문구다.',
       'visualPrompt와 visualItems는 배경/이미지/표/그래프 제작용 지시로 분리한다.',
@@ -433,18 +442,125 @@ function buildManualPrompt(input, manual) {
   });
 }
 
+function manualCardFlowForPrompt(input, manual, templateBrief) {
+  const desiredCardCount = manual.cardCount;
+  const planningFlow = planningStoryFlow(input);
+  if (planningFlow.length) return fitPlanningStoryFlow(planningFlow, desiredCardCount);
+  const direction = [manual.contentDirection, manual.prompt].filter(Boolean).join(' ');
+  if (wantsTutorialDirection(direction)) {
+    return fitManualFlow([
+      ['cover', '주제와 결과 약속을 먼저 보여준다.', '독자가 무엇을 따라 하면 되는지 한 줄로 약속한다.'],
+      ['content_angle', '준비물, 조건, 전체 순서를 한눈에 정리한다.', '필요한 도구, 난이도, 순서처럼 실행 전 기준을 쓴다.'],
+      ['content_angle', '첫 번째 단계의 자세, 행동, 기준을 구체적으로 설명한다.', '시작 자세, 움직임, 횟수/시간/강도 중 필요한 숫자를 쓴다.'],
+      ['content_angle', '두 번째 단계의 자세, 행동, 기준을 구체적으로 설명한다.', '자주 틀리는 지점과 교정 포인트를 함께 쓴다.'],
+      ['content_angle', '세 번째 단계나 변형 방법을 설명한다.', '쉬운 버전, 어려운 버전, 휴식 기준 중 필요한 내용을 쓴다.'],
+      ['checklist', '마지막 저장 체크리스트로 실행 기준을 정리한다.', '오늘 바로 확인할 항목 3개로 마무리한다.']
+    ], desiredCardCount);
+  }
+  if (templateBrief?.cardPlan?.length) {
+    return fitTemplateCardPlan(templateBrief, desiredCardCount);
+  }
+  return fitManualFlow([
+    ['cover', '주제와 결과 약속을 먼저 보여준다.', '독자가 얻을 결과를 한 줄로 약속한다.'],
+    ['content_angle', '핵심 기준 또는 첫 번째 내용을 설명한다.', '사용자 요청에서 가장 중요한 정보를 먼저 쓴다.'],
+    ['content_angle', '두 번째 기준, 예시, 단계 중 필요한 내용을 설명한다.', '앞 카드와 다른 정보가 남게 쓴다.'],
+    ['comparison', '비교가 필요할 때만 선택지를 나란히 보여준다.', '기준이 없으면 비교 대신 예시나 단계로 대체한다.'],
+    ['misconception', '헷갈리기 쉬운 점이나 주의 조건을 정리한다.', '근거 없는 단정 없이 확인 기준을 쓴다.'],
+    ['checklist', '저장하거나 실행할 체크리스트로 마무리한다.', '다음 행동이 분명하게 끝낸다.']
+  ], desiredCardCount);
+}
+
+function planningStoryFlow(input = {}) {
+  const setup = input.contentSetup && typeof input.contentSetup === 'object' ? input.contentSetup : {};
+  const planning = input.planningDraft && typeof input.planningDraft === 'object'
+    ? input.planningDraft
+    : setup.planningDraft && typeof setup.planningDraft === 'object'
+      ? setup.planningDraft
+      : {};
+  return `${planning.storyFlow ?? ''}`
+    .split('\n')
+    .map((item) => cleanManualText(item))
+    .filter(Boolean)
+    .slice(0, 12);
+}
+
+function hasPlanningStoryFlow(input = {}) {
+  return planningStoryFlow(input).length > 0;
+}
+
+function fitPlanningStoryFlow(items = [], desiredCardCount) {
+  const normalized = items.map((item, index) => {
+    const [titlePart, ...rest] = item.split(/\s*\/\s*|\s*:\s*/).map((part) => cleanManualText(part)).filter(Boolean);
+    const title = titlePart || `카드 ${index + 1}`;
+    const note = rest.join(' / ') || item;
+    return {
+      page: index + 1,
+      role: index === 0 ? 'cover' : index === items.length - 1 ? 'checklist' : 'content_angle',
+      mission: item,
+      bodyGuidance: note,
+      lockedTitle: title,
+      planningFlowItem: item
+    };
+  });
+  if (normalized.length >= desiredCardCount) return normalized.slice(0, desiredCardCount).map((item, index) => ({ ...item, page: index + 1 }));
+  const filled = [...normalized];
+  while (filled.length < desiredCardCount) {
+    filled.splice(Math.max(1, filled.length - 1), 0, {
+      role: 'content_angle',
+      mission: '기획 흐름을 보강하는 추가 카드',
+      bodyGuidance: '앞 카드와 겹치지 않게 기획 주제의 구체 실행 기준을 보강한다.',
+      lockedTitle: `보강 ${filled.length + 1}`,
+      planningFlowItem: '기획 흐름 보강'
+    });
+  }
+  return filled.map((item, index) => ({ ...item, page: index + 1 }));
+}
+
+function fitManualFlow(items, desiredCardCount) {
+  const cards = items.map(([role, mission, bodyGuidance], index) => ({
+    page: index + 1,
+    role,
+    mission,
+    bodyGuidance
+  }));
+  if (cards.length >= desiredCardCount) return cards.slice(0, desiredCardCount).map((item, index) => ({ ...item, page: index + 1 }));
+  const filled = [...cards];
+  while (filled.length < desiredCardCount) {
+    filled.splice(Math.max(1, filled.length - 1), 0, {
+      role: 'content_angle',
+      mission: '앞 카드와 겹치지 않는 구체 예시나 실행 기준을 보강한다.',
+      bodyGuidance: '사용자 전개 요청에 맞는 추가 단계나 예시를 쓴다.'
+    });
+  }
+  return filled.map((item, index) => ({ ...item, page: index + 1 }));
+}
+
+function wantsTutorialDirection(value = '') {
+  return /방법|루틴|순서|단계|따라|시연|자세|횟수|세트|휴식|운동|튜토리얼|how\s*to|guide/i.test(`${value ?? ''}`);
+}
+
 function normalizeManualBrief(input = {}) {
   if (input.sourceMode !== 'manual' && !input.manualBrief) return null;
   const raw = input.manualBrief && typeof input.manualBrief === 'object' ? input.manualBrief : {};
+  const setup = input.contentSetup && typeof input.contentSetup === 'object' ? input.contentSetup : {};
+  const planning = input.planningDraft && typeof input.planningDraft === 'object'
+    ? input.planningDraft
+    : setup.planningDraft && typeof setup.planningDraft === 'object'
+      ? setup.planningDraft
+      : {};
   const topic = cleanManualText(raw.topic ?? input.topic ?? input.label ?? input.keyword);
-  const prompt = cleanManualText(raw.prompt ?? input.prompt ?? input.summary);
+  const prompt = cleanManualText(raw.prompt ?? planning.prompt ?? input.prompt ?? input.summary);
+  const contentDirection = cleanManualText(raw.contentDirection ?? planning.contentDirection);
   if (!topic && !prompt) return null;
+  const storyFlowCount = planningStoryFlow(input).length;
+  const cardCount = storyFlowCount || raw.cardCount || input.cardCount;
   return {
     topic: topic || cleanManualText(input.label ?? input.keyword) || '사용자 입력 주제',
     prompt,
-    audience: cleanManualText(raw.audience ?? input.targetAudience),
-    tone: cleanManualText(raw.tone),
-    cardCount: clampCardCount(raw.cardCount ?? input.cardCount)
+    contentDirection,
+    audience: cleanManualText(raw.audience ?? planning.audience ?? input.targetAudience),
+    tone: cleanManualText(raw.tone ?? planning.tone),
+    cardCount: clampCardCount(cardCount)
   };
 }
 
@@ -964,6 +1080,7 @@ function normalizeChecklistCard(card, input) {
 }
 
 function enforceOmega3VisualDataCards(cards = [], input = {}) {
+  if (hasPlanningStoryFlow(input)) return cards;
   const topic = [
     primaryTopic(input),
     input?.selectedHookTitle,
@@ -1025,7 +1142,7 @@ function visualDataEnrichmentMeta(cards = [], input = {}) {
       sources: (card.visualData.sources ?? []).map((source) => source.label).filter(Boolean).slice(0, 3)
     }));
   const profiles = [];
-  if (isOmega3Topic(topic)) profiles.push('omega3_official_sources');
+  if (!hasPlanningStoryFlow(input) && isOmega3Topic(topic)) profiles.push('omega3_official_sources');
   return {
     enabled: true,
     mode: profiles.length ? 'curated_verified_profile' : dataCards.length ? 'ai_or_input_visualData' : 'none',
@@ -1509,10 +1626,12 @@ function checklistEmphasisForIntent(intent = {}) {
 
 function normalizeManualPlan(data, input, provider, manual) {
   const desiredCardCount = manual.cardCount;
+  const sourcePlanningFlow = planningStoryFlow(input);
+  const planningFlow = sourcePlanningFlow.length ? fitPlanningStoryFlow(sourcePlanningFlow, desiredCardCount) : [];
   const cards = Array.isArray(data.cards) && data.cards.length ? data.cards : manualFallbackCards(input, desiredCardCount);
   const referenceStyle = data.referenceStyle ?? chooseReferenceStyle(input);
   const rawCards = ensureManualCarouselCards(cards, input, desiredCardCount).slice(0, desiredCardCount);
-  const normalizedCards = rawCards.map((card, index) => normalizeManualCard(card, input, index, rawCards.length, referenceStyle));
+  const normalizedCards = rawCards.map((card, index) => normalizeManualCard(applyPlanningFlowToCard(card, planningFlow[index]), input, index, rawCards.length, referenceStyle));
   const cardsWithVisualData = enforceOmega3VisualDataCards(normalizedCards, input);
   return withProductionReadyPlan({
     provider,
@@ -1527,7 +1646,9 @@ function normalizeManualPlan(data, input, provider, manual) {
     coreAngle: data.coreAngle ?? manual.prompt ?? manual.topic,
     referenceStyle,
     referencePattern: normalizeReferencePattern(data.referencePattern, referenceStyle),
-    carouselBlueprint: ensureList(data.carouselBlueprint, defaultBlueprint(input)).slice(0, desiredCardCount),
+    carouselBlueprint: planningFlow.length
+      ? planningFlow.map((item, index) => `${index + 1}. ${item.planningFlowItem || item.mission || item.lockedTitle}`)
+      : ensureList(data.carouselBlueprint, defaultBlueprint(input)).slice(0, desiredCardCount),
     hookTitles: ensureList(data.hookTitles, [manual.topic]).map((title) => compactTitle(title, input, 28)).slice(0, 5),
     captionFirstLine: normalizeCaptionFirstLine(data.captionFirstLine, input),
     captionBody: normalizeCaptionBody(data.captionBody, input),
@@ -1538,6 +1659,39 @@ function normalizeManualPlan(data, input, provider, manual) {
     sourceNotes: ensureList(data.sourceNotes, ['사용자 입력 기반']),
     cards: cardsWithVisualData
   }, input, data);
+}
+
+function applyPlanningFlowToCard(card = {}, flowItem) {
+  if (!flowItem) return card;
+  return {
+    ...card,
+    page: flowItem.page ?? card.page,
+    role: flowItem.role || card.role,
+    title: flowItem.lockedTitle || card.title,
+    body: strengthenBodyWithPlanningFlow(card.body, flowItem),
+    mission: flowItem.mission || card.mission,
+    bodyGuidance: flowItem.bodyGuidance || card.bodyGuidance,
+    planningFlowItem: flowItem.planningFlowItem || flowItem.mission,
+    visualPrompt: card.visualPrompt || `${flowItem.planningFlowItem || flowItem.mission}을 캐릭터 행동과 운동 자세가 보이게 구성. 텍스트는 이미지에 넣지 않고 카드 편집 레이어로 처리.`,
+    visualItems: card.visualItems?.length ? card.visualItems : planningFlowVisualItems(flowItem)
+  };
+}
+
+function strengthenBodyWithPlanningFlow(body, flowItem) {
+  const cleanedBody = cleanCardBody(body);
+  const guidance = cleanCardBody(flowItem?.bodyGuidance || flowItem?.planningFlowItem || flowItem?.mission);
+  if (!guidance) return cleanedBody;
+  if (!cleanedBody) return guidance;
+  if (cleanedBody.includes(guidance) || guidance.includes(cleanedBody)) return cleanedBody;
+  return `${cleanedBody}\n${guidance}`.split('\n').filter(Boolean).slice(0, 3).join('\n');
+}
+
+function planningFlowVisualItems(flowItem = {}) {
+  return `${flowItem.planningFlowItem || flowItem.mission || flowItem.lockedTitle || ''}`
+    .split(/\s*\/\s*|\s*:\s*|,\s*/)
+    .map((item) => cleanManualText(item))
+    .filter(Boolean)
+    .slice(0, 4);
 }
 
 function ensureCarouselCards(cards, input, desiredCardCount = getDesiredCardCount(input)) {
@@ -1637,7 +1791,7 @@ function normalizeManualCard(card, input, index, total, referenceStyle) {
 }
 
 function normalizeDataCardContract(card, input) {
-  const omega3Data = omega3VisualDataForCard(card, input);
+  const omega3Data = hasPlanningStoryFlow(input) ? null : omega3VisualDataForCard(card, input);
   const omega3DataLike = omega3Data && omega3Data.type === 'bar_chart';
   if (omega3Data && (card.role === 'comparison' || card.layout === 'comparison_board')) {
     return { ...card, visualData: omega3Data, dataPoint: card.dataPoint || omega3Data.sourceSummary };
@@ -2738,7 +2892,8 @@ function fallbackPlan(input) {
   const manual = normalizeManualBrief(input);
   const desiredCardCount = getDesiredCardCount(input);
   const label = manual?.topic ?? primaryTopic(input) ?? '사용자 입력 주제';
-  const daycareShortage = isDaycareShortageTopic(`${label} ${manual?.prompt ?? input.summary ?? ''}`);
+  const planningFlow = planningStoryFlow(input);
+  const daycareShortage = !planningFlow.length && isDaycareShortageTopic(`${label} ${manual?.prompt ?? input.summary ?? ''}`);
   const cards = fallbackCardsForCount(input, desiredCardCount);
   return withProductionReadyPlan({
     provider: 'fallback',
@@ -2751,11 +2906,13 @@ function fallbackPlan(input) {
     },
     primaryTopic: label,
     selectedHookTitle: cleanManualText(input.selectedHookTitle),
-    targetAudience: daycareShortage ? '어린이집 입소와 대기 문제를 겪는 부모' : '트렌드를 저장해두고 싶은 20대 후반 여성 독자',
+    targetAudience: daycareShortage ? '어린이집 입소와 대기 문제를 겪는 부모' : manual?.audience || input.targetAudience || '주제에 관심 있는 독자',
     coreAngle: daycareShortage ? '어린이집 부족을 정원 문제가 아니라 위치, 시간, 신뢰 조건이 어긋나는 문제로 풀어냅니다.' : manual?.prompt || input.production?.suggestedAngle || input.summary || label,
     referenceStyle: chooseReferenceStyle(input),
     referencePattern: normalizeReferencePattern(undefined, chooseReferenceStyle(input)),
-    carouselBlueprint: (daycareShortage ? daycareShortageBlueprint() : defaultBlueprint(input)).slice(0, desiredCardCount),
+    carouselBlueprint: planningFlow.length
+      ? fitPlanningStoryFlow(planningFlow, desiredCardCount).map((item, index) => `${index + 1}. ${item.planningFlowItem || item.mission || item.lockedTitle}`)
+      : (daycareShortage ? daycareShortageBlueprint() : defaultBlueprint(input)).slice(0, desiredCardCount),
     hookTitles: daycareShortage ? ['왜 어린이집은 늘 부족할까?', '자리보다 조건이 문제예요', '입소 전 볼 기준 3개'] : [`${label}, 왜 지금 뜰까?`, `${label} 핵심 포인트 5가지`],
     captionFirstLine: normalizeCaptionFirstLine('', input),
     captionBody: normalizeCaptionBody('', input),
@@ -2786,7 +2943,7 @@ function fallbackCardsForCount(input, desiredCardCount) {
 
 function normalizeCaptionFirstLine(value, input) {
   const topic = primaryTopic(input);
-  const fallback = isDaycareShortageTopic(`${topic} ${input.summary ?? ''}`)
+  const fallback = !hasPlanningStoryFlow(input) && isDaycareShortageTopic(`${topic} ${input.summary ?? ''}`)
     ? '어린이집 부족, 정원만의 문제가 아니에요'
     : `${topic}, 그냥 넘기기 아까워요`;
   return cleanAiTone(`${value || fallback}`)
@@ -2810,6 +2967,15 @@ function captionBodyFallback(input) {
   const topic = primaryTopic(input) ?? '이 주제';
   const topicSubject = withSubjectJosa(topic);
   const intent = classifyContentIntent(input);
+  const planningFlow = planningStoryFlow(input);
+  if (planningFlow.length) {
+    const preview = planningFlow.slice(0, 3).join('\n');
+    return [
+      `${topicSubject} 사용자가 기획한 흐름대로 정리했어요.`,
+      preview,
+      '저장해두고 각 컷의 순서와 실행 포인트를 그대로 확인해보세요.'
+    ].join('\n\n');
+  }
   if (isDaycareShortageTopic(`${topic} ${input.summary ?? ''} ${input.manualBrief?.prompt ?? ''}`)) {
     return [
       '어린이집이 늘 부족하게 느껴지는 건 자리 수 하나로 설명하기 어려워요.',
@@ -2856,7 +3022,7 @@ function normalizeCaptionCTA(value) {
 
 function normalizeHashtags(value, input) {
   const base = Array.isArray(value) ? value : [];
-  if (isDaycareShortageTopic(`${primaryTopic(input)} ${input.summary ?? ''} ${input.manualBrief?.prompt ?? ''}`)) {
+  if (!hasPlanningStoryFlow(input) && isDaycareShortageTopic(`${primaryTopic(input)} ${input.summary ?? ''} ${input.manualBrief?.prompt ?? ''}`)) {
     return [...new Set([...base, '어린이집', '어린이집입소', '입소대기', '육아정보', '육아현실', '맞벌이육아', '부모정보'].map((tag) => normalizeHashtag(tag)).filter(Boolean))].slice(0, 8);
   }
   const labelWords = `${primaryTopic(input) ?? ''}`
@@ -2937,7 +3103,18 @@ function fallbackCards(input) {
 function manualFallbackCards(input, desiredCardCount = getDesiredCardCount(input)) {
   const manual = normalizeManualBrief(input);
   const topic = manual?.topic ?? input.label ?? input.keyword ?? '사용자 입력 주제';
-  const prompt = manual?.prompt || `${topic}을 카드뉴스로 정리`;
+  const prompt = manual?.contentDirection || manual?.prompt || `${topic}을 카드뉴스로 정리`;
+  const planningFlow = planningStoryFlow(input);
+  if (planningFlow.length) {
+    return fitPlanningStoryFlow(planningFlow, desiredCardCount).map((flow, index) => makeManualCard(
+      index + 1,
+      flow.lockedTitle || `카드 ${index + 1}`,
+      flow.bodyGuidance || flow.planningFlowItem || flow.mission,
+      flow.role,
+      flow.role === 'cover' ? 'cover_text' : flow.role === 'checklist' ? 'checklist' : 'handwritten_research',
+      flow.planningFlowItem || flow.mission
+    ));
+  }
   if (isDaycareShortageTopic(`${topic} ${prompt}`)) return daycareShortageCards(input, desiredCardCount);
   if (isOmega3Topic(`${topic} ${prompt} ${input.summary ?? ''}`)) return omega3FallbackCards(input, desiredCardCount);
   const base = [
@@ -3208,6 +3385,12 @@ function isInternalVisualLabel(value) {
 
 function defaultVisualItems(input, role, card = {}) {
   const label = primaryTopic(input) ?? '주제';
+  if (hasPlanningStoryFlow(input)) {
+    return [card.title, card.emphasis, label]
+      .map((item) => cleanManualText(item))
+      .filter(Boolean)
+      .slice(0, 4);
+  }
   const intent = classifyContentIntent(input);
   const dataPoint = `${card.dataPoint ?? ''}`.trim();
   if (intent.id === 'parent_social_issue') {
@@ -3315,7 +3498,7 @@ function canonicalManualRole(index, total, value) {
 }
 
 function normalizeLayout(value, role, index, referenceStyle) {
-  const allowed = ['cover_photo', 'cover_text', 'handwritten_research', 'comparison_board', 'data_chart', 'quote_card', 'checklist'];
+  const allowed = ['cover_photo', 'cover_text', 'toon_panel', 'handwritten_research', 'comparison_board', 'data_chart', 'quote_card', 'checklist'];
   const compatible = compatibleLayouts(role, referenceStyle);
   if (allowed.includes(value) && compatible.includes(value)) return value;
   if (role === 'cover') return compatible[0] ?? (index === 0 ? 'cover_text' : 'cover_photo');
@@ -3333,11 +3516,11 @@ function compatibleLayouts(role, referenceStyle) {
   }
   return {
     community_signal: ['quote_card'],
-    why_now: ['handwritten_research', 'quote_card'],
+    why_now: ['toon_panel', 'handwritten_research', 'quote_card'],
     comparison: ['comparison_board'],
     data_scene: ['data_chart'],
     misconception: ['quote_card'],
-    content_angle: ['handwritten_research'],
+    content_angle: ['toon_panel', 'handwritten_research'],
     closing: ['checklist'],
     checklist: ['checklist']
   }[role] ?? ['handwritten_research'];

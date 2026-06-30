@@ -159,7 +159,11 @@ export function recommendContentTemplate(payload) {
     json: {
       topic: cleanText(payload?.topic),
       audience: cleanText(payload?.audience),
-      goal: cleanText(payload?.goal)
+      goal: cleanText(payload?.goal),
+      contentDirection: cleanText(payload?.contentDirection),
+      metadata: payload?.metadata && typeof payload.metadata === 'object' ? payload.metadata : undefined,
+      contentBrief: payload?.contentBrief && typeof payload.contentBrief === 'object' ? payload.contentBrief : undefined,
+      planningDraft: payload?.planningDraft && typeof payload.planningDraft === 'object' ? payload.planningDraft : undefined
     }
   }).json();
 }
@@ -215,11 +219,14 @@ function sanitizeContentPlanPayload(payload = {}) {
     manualBrief: payload.manualBrief ? {
       topic: cleanText(payload.manualBrief.topic),
       prompt: cleanText(payload.manualBrief.prompt),
+      contentDirection: cleanText(payload.manualBrief.contentDirection),
       channelName: cleanText(payload.manualBrief.channelName),
       audience: cleanText(payload.manualBrief.audience),
       tone: cleanText(payload.manualBrief.tone),
       cardCount: Number(payload.manualBrief.cardCount) || undefined
     } : undefined,
+    contentSetup: payload.contentSetup && typeof payload.contentSetup === 'object' ? payload.contentSetup : undefined,
+    planningDraft: payload.planningDraft && typeof payload.planningDraft === 'object' ? payload.planningDraft : undefined,
     cardCount: Number(payload.cardCount) || undefined,
     searchVerification: payload.searchVerification ? {
       query: cleanText(payload.searchVerification.query),

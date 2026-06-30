@@ -3,7 +3,7 @@ import { Button } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Butto
 import { CardNewsMaker } from './CardNewsMaker';
 import { InstatoonWorkflowBoard } from './components/InstatoonWorkflowBoard';
 
-export function CardNewsView({ studio, work, setView, contentPlans }) {
+export function CardNewsView({ studio, work, assetLibrary, setView, contentPlans }) {
   const plan = studio?.id ? contentPlans[studio.id] : null;
   if (!studio) {
     const fallbackStudio = { label: 'Medical Decision', channelName: '@medical.decision' };
@@ -34,7 +34,7 @@ export function CardNewsView({ studio, work, setView, contentPlans }) {
         </div>
       </section>
       {plan ? (
-        <CardNewsMaker studio={studio} plan={plan} work={work} />
+        <CardNewsMaker studio={studio} plan={plan} work={work} assetLibrary={assetLibrary} />
       ) : (
         <InstatoonWorkflowBoard studio={studio} plan={{ cards: [], referenceStyle: 'handdrawn_research' }} styleKey="note" templateProduction={studio.contentSetup} />
       )}

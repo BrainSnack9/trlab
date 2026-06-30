@@ -1,9 +1,10 @@
 'use client';
 
 import { Check, Loader2, Save, Search, Sparkles, Trash2 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Button/Button';
 import { recommendContentTemplate } from '@/core/TrLab/modules/clients/api';
+import { buildContentBrief, contentBriefToTemplateRecommendationPayload } from '@/core/TrLab/modules/content/contentBrief';
 import useTrLabWorkspace from '@/core/TrLab/modules/controller/useTrLabWorkspace';
 import useWorkDialogs from '@/core/TrLab/modules/controller/useWorkDialogs';
 import { templateCategories as categories, templateItems } from '@/core/TrLab/modules/templates/templateCatalog';
@@ -26,9 +27,13 @@ const canvasInputClass = 'h-9 w-full rounded-md border border-slate-200 bg-white
 const recommendInputClass = 'h-10 rounded-md border border-slate-200 bg-slate-50 px-3 text-sm font-medium outline-none transition focus:border-slate-400 focus:bg-white';
 
 export default function Templates() {
-  const { currentWork, equippedItems, equipItem, setView, createWork, setContentPlans, setQueue, setSelectedTrend, savedTemplates, saveTemplate, deleteSavedTemplate } = useTrLabWorkspace();
+  const { currentWork, equippedItems, equipItem, setView, createWork, updateCurrentWork, setPlanningDrafts, setContentPlans, setQueue, setSelectedTrend, savedTemplates, saveTemplate, deleteSavedTemplate } = useTrLabWorkspace();
   const { createWorkWithDialog } = useWorkDialogs();
   const workEquippedItems = currentWork?.equippedItems ?? equippedItems;
+  const planningDraft = currentWork?.planningDraft ?? null;
+  const [localPlanningDraft, setLocalPlanningDraft] = useState(null);
+  const effectivePlanningDraft = useMemo(() => mergePlanningDraftSources(planningDraft, localPlanningDraft), [planningDraft, localPlanningDraft]);
+  const contentBrief = useMemo(() => buildContentBrief(currentWork, { planningDraft: effectivePlanningDraft }), [currentWork, effectivePlanningDraft]);
   const equippedId = workEquippedItems?.template?.id;
   const allTemplates = useMemo(() => [...(savedTemplates ?? []), ...templateItems], [savedTemplates]);
   const equippedTemplate = allTemplates.find((item) => item.id === equippedId);
@@ -36,7 +41,18 @@ export default function Templates() {
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState(equippedId || templateItems[0].id);
   const [activeLibrary, setActiveLibrary] = useState('all');
-  const [recommendInput, setRecommendInput] = useState({ topic: '', audience: '', goal: '' });
+  const planningRecommendationInput = useMemo(() => makeRecommendationInputFromPlanning(effectivePlanningDraft, currentWork), [currentWork, effectivePlanningDraft]);
+  const planningInputKey = useMemo(() => [
+    effectivePlanningDraft?.id,
+    effectivePlanningDraft?.updatedAt,
+    effectivePlanningDraft?.savedAt,
+    effectivePlanningDraft?.topic,
+    effectivePlanningDraft?.audience,
+    effectivePlanningDraft?.goal,
+    effectivePlanningDraft?.contentDirection
+  ].filter(Boolean).join('|'), [effectivePlanningDraft]);
+  const [recommendInput, setRecommendInput] = useState(planningRecommendationInput);
+  const [recommendInputEdited, setRecommendInputEdited] = useState(false);
   const [recommendState, setRecommendState] = useState({ loading: false, error: '', result: null });
   const [templateSetups, setTemplateSetups] = useState(() => {
     const template = workEquippedItems?.template;
@@ -86,8 +102,21 @@ export default function Templates() {
       : displayedTemplates;
 
   const selectedTemplate = allTemplates.find((item) => item.id === selectedId) ?? displayedTemplates[0] ?? templateItems[0];
-  const selectedSetup = templateSetups[selectedTemplate.id] ?? setupFromTemplate(selectedTemplate);
+  const lockedPageCount = contentBrief?.generation?.cardCount || effectivePlanningDraft?.cardCount || 0;
+  const selectedSetup = {
+    ...(templateSetups[selectedTemplate.id] ?? setupFromTemplate(selectedTemplate)),
+    ...(lockedPageCount ? { pageCount: lockedPageCount } : {})
+  };
   const configuredTemplate = useMemo(() => configureTemplate(selectedTemplate, selectedSetup), [selectedTemplate, selectedSetup]);
+
+  useEffect(() => {
+    setLocalPlanningDraft(loadPlanningFormDraft(currentWork?.id));
+  }, [currentWork?.id]);
+
+  useEffect(() => {
+    if (!effectivePlanningDraft || recommendInputEdited) return;
+    setRecommendInput(planningRecommendationInput);
+  }, [effectivePlanningDraft, planningInputKey, planningRecommendationInput, recommendInputEdited]);
 
   const updateTemplateSetup = (patch) => {
     setTemplateSetups((current) => ({
@@ -101,7 +130,10 @@ export default function Templates() {
   };
 
   const applyTemplate = (item) => {
-    const configuredItem = configureTemplate(item, templateSetups[item.id] ?? setupFromTemplate(item));
+    const configuredItem = configureTemplate(item, {
+      ...(templateSetups[item.id] ?? setupFromTemplate(item)),
+      ...(lockedPageCount ? { pageCount: lockedPageCount } : {})
+    });
     if (!currentWork) {
       createWorkWithDialog({
         initialTitle: `${configuredItem.label} 작업물`,
@@ -113,15 +145,16 @@ export default function Templates() {
       });
       return;
     }
+    persistEffectivePlanningDraft(effectivePlanningDraft, { template: configuredItem, setPlanningDrafts, updateCurrentWork });
     equipItem('template', configuredItem);
     setView('overview');
   };
   const requestRecommendation = async () => {
-    const topic = recommendInput.topic.trim();
+    const topic = (contentBrief?.generation?.topic || recommendInput.topic).trim();
     if (!topic || recommendState.loading) return;
     setRecommendState({ loading: true, error: '', result: null });
     try {
-      const result = await recommendContentTemplate(recommendInput);
+      const result = await recommendContentTemplate(contentBriefToTemplateRecommendationPayload(contentBrief, recommendInput));
       const firstTemplateId = result?.recommendations?.[0]?.templateId;
       if (firstTemplateId && templateItems.some((item) => item.id === firstTemplateId)) setSelectedId(firstTemplateId);
       setActiveLibrary('recommend');
@@ -169,8 +202,8 @@ export default function Templates() {
     <div className="mx-auto max-w-7xl space-y-4">
       <div className="flex min-h-10 flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-        <h1 className="text-xl font-semibold tracking-normal text-slate-950">템플릿 선택</h1>
-        <p className="mt-1 text-sm font-medium text-slate-500">주제를 먼저 넣고 추천을 받은 뒤, 필요하면 직접 비교해서 고릅니다.</p>
+        <h1 className="text-xl font-semibold tracking-normal text-slate-950">템플릿 추천</h1>
+        <p className="mt-1 text-sm font-medium text-slate-500">상세 기획서를 기준으로 추천을 받은 뒤, 필요하면 직접 비교해서 고릅니다.</p>
         </div>
         <div className="grid grid-cols-3 gap-2 rounded-lg border border-slate-200 bg-white p-1 text-xs font-semibold text-slate-500">
           <TemplateStat label="추천" value={recommendations.length} />
@@ -179,19 +212,24 @@ export default function Templates() {
         </div>
       </div>
 
+      {currentWork && !effectivePlanningDraft ? <PlanningRequiredPanel onGoPlanning={() => setView('planning')} /> : null}
+
       <section className="grid min-h-[720px] gap-5 lg:grid-cols-[minmax(0,1fr)_400px]">
         <div className="space-y-4">
-          <TemplateRecommendationPanel
-            value={recommendInput}
-            state={recommendState}
-            selectedId={selectedId}
-            onChange={setRecommendInput}
-            onSubmit={requestRecommendation}
-            onSelect={(id) => {
-              setSelectedId(id);
-              setActiveLibrary('recommend');
-            }}
-          />
+          {currentWork && !effectivePlanningDraft ? null : (
+            <TemplateRecommendationPanel
+              value={recommendInput}
+              state={recommendState}
+              planningDraft={effectivePlanningDraft}
+              contentBrief={contentBrief}
+              onGoPlanning={() => setView('planning')}
+              onSubmit={requestRecommendation}
+              onSelect={(id) => {
+                setSelectedId(id);
+                setActiveLibrary('recommend');
+              }}
+            />
+          )}
 
           <TemplateLibraryPanel
             activeLibrary={activeLibrary}
@@ -232,7 +270,7 @@ export default function Templates() {
             <MetaBox label="유형" value={configuredTemplate.formatSignal} />
           </div>
 
-          <TemplateSetupControls setup={selectedSetup} template={selectedTemplate} onChange={updateTemplateSetup} />
+          <TemplateSetupControls setup={selectedSetup} template={selectedTemplate} contentBrief={contentBrief} onChange={updateTemplateSetup} />
 
           <Button className="mt-3 w-full justify-center" variant="outline" onClick={saveConfiguredTemplate}>
             <Save className="h-4 w-4" />
@@ -461,59 +499,234 @@ function TemplateLibraryEmpty({ activeLibrary }) {
   );
 }
 
-function TemplateRecommendationPanel({ value, state, onChange, onSubmit }) {
+function PlanningRequiredPanel({ onGoPlanning }) {
+  return (
+    <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 shadow-sm">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <div className="text-sm font-semibold text-amber-950">상세 기획서가 먼저 필요합니다</div>
+          <p className="mt-1 text-sm font-medium leading-6 text-amber-800">템플릿은 주제만으로 고르지 않고, 독자와 컷 흐름, 제작 지시가 정리된 뒤 추천합니다.</p>
+        </div>
+        <Button className="shrink-0 bg-amber-950 text-white hover:bg-amber-900" onClick={onGoPlanning}>
+          기획하러 가기
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+function TemplateRecommendationPanel({ value, state, planningDraft, contentBrief, onGoPlanning, onSubmit }) {
   const recommendations = state.result?.recommendations ?? [];
-  const update = (key) => (event) => onChange((current) => ({ ...current, [key]: event.target.value }));
+  const generation = contentBrief?.generation ?? {};
+  const format = contentBrief?.format ?? {};
+  const flowLimit = Math.min(12, Math.max(3, Number(generation.cardCount || planningDraft?.cardCount) || 12));
+  const flowItems = `${planningDraft?.storyFlow ?? ''}`.split('\n').map((item) => item.trim()).filter(Boolean).slice(0, flowLimit);
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
               <Sparkles className="h-4 w-4 text-slate-500" />
-              AI로 방향 잡기
+              기획 기준 템플릿 추천
             </div>
             {recommendations.length ? <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">추천 {recommendations.length}개</span> : null}
           </div>
-          <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1.25fr)_minmax(0,0.9fr)_minmax(0,0.9fr)]">
-          <input
-            id="template-recommend-topic"
-            name="templateRecommendTopic"
-            className={recommendInputClass}
-            value={value.topic}
-            onChange={update('topic')}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') onSubmit();
-            }}
-            placeholder="예: 홈트레이닝 운동 구성 짜는 법"
-          />
-          <input
-            id="template-recommend-audience"
-            name="templateRecommendAudience"
-            className={recommendInputClass}
-            value={value.audience}
-            onChange={update('audience')}
-            placeholder="대상 독자"
-          />
-          <input
-            id="template-recommend-goal"
-            name="templateRecommendGoal"
-            className={recommendInputClass}
-            value={value.goal}
-            onChange={update('goal')}
-            placeholder="목표"
-          />
-          </div>
+          {planningDraft ? (
+            <div className="mt-3 rounded-md bg-slate-50 p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200">{format.label || planningDraft.formatLabel || planningDraft.format || '형식 미정'}</span>
+                <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200">{generation.cardCount || planningDraft.cardCount || 0}장</span>
+                {generation.tone || planningDraft.tone ? <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200">{generation.tone || planningDraft.tone}</span> : null}
+              </div>
+              <div className="mt-3 text-sm font-semibold leading-5 text-slate-950">{planningDraft.title || generation.topic}</div>
+              <div className="mt-1 text-xs font-medium leading-5 text-slate-600">{generation.audience || planningDraft.audience || '대상 독자 미입력'}</div>
+              {generation.contentDirection || planningDraft.contentDirection ? (
+                <div className="mt-2 line-clamp-2 rounded bg-white px-2.5 py-2 text-xs font-medium leading-5 text-slate-600">
+                  {generation.contentDirection || planningDraft.contentDirection}
+                </div>
+              ) : null}
+              {flowItems.length ? (
+                <div className="mt-3 grid max-h-56 gap-1.5 overflow-y-auto pr-1 sm:grid-cols-2">
+                  {flowItems.map((item, index) => (
+                    <span key={`${item}-${index}`} className="rounded bg-white px-2 py-1 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-100">
+                      {index + 1}. {item}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
-        <Button className="shrink-0 justify-center" onClick={onSubmit} disabled={state.loading || !value.topic.trim()}>
-          {state.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          {state.loading ? '추천 중' : '추천 받기'}
-        </Button>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button variant="outline" onClick={onGoPlanning}>기획 수정</Button>
+          <Button className="justify-center" onClick={onSubmit} disabled={state.loading || !(generation.topic || value.topic)?.trim()}>
+            {state.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            {state.loading ? '추천 중' : '기획 기준 추천'}
+          </Button>
+        </div>
       </div>
 
       {state.error ? <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{state.error}</div> : null}
     </section>
   );
+}
+
+function makeRecommendationInputFromPlanning(planningDraft, work) {
+  const metadata = work?.metadata ?? {};
+  return {
+    topic: cleanDraftText(planningDraft?.topic) || cleanDraftText(metadata.goal) || cleanDraftText(work?.title),
+    audience: cleanDraftText(planningDraft?.audience) || cleanDraftText(metadata.audienceNote),
+    goal: cleanDraftText(planningDraft?.goal) || cleanDraftText(metadata.objective) || cleanDraftText(metadata.goal)
+  };
+}
+
+const PLANNING_FORM_DRAFT_KEY = 'trlab.planning.form-draft.v1';
+
+function loadPlanningFormDraft(workId) {
+  if (!workId || typeof window === 'undefined') return null;
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(`${PLANNING_FORM_DRAFT_KEY}.${workId}`) || 'null');
+    return normalizePlanningDraftForTemplate(parsed);
+  } catch {
+    return null;
+  }
+}
+
+function mergePlanningDraftSources(workDraft, localDraft) {
+  const normalizedWorkDraft = normalizePlanningDraftForTemplate(workDraft);
+  const normalizedLocalDraft = normalizePlanningDraftForTemplate(localDraft);
+  if (!normalizedWorkDraft) return normalizedLocalDraft;
+  if (!normalizedLocalDraft) return normalizedWorkDraft;
+  const workTime = Date.parse(normalizedWorkDraft.updatedAt || normalizedWorkDraft.savedAt || normalizedWorkDraft.createdAt || '');
+  const localTime = Date.parse(normalizedLocalDraft.savedAt || normalizedLocalDraft.updatedAt || normalizedLocalDraft.createdAt || '');
+  if (Number.isFinite(localTime) && (!Number.isFinite(workTime) || localTime >= workTime)) {
+    return normalizePlanningDraftForTemplate({ ...normalizedWorkDraft, ...normalizedLocalDraft });
+  }
+  return normalizePlanningDraftForTemplate({ ...normalizedLocalDraft, ...normalizedWorkDraft });
+}
+
+function persistEffectivePlanningDraft(planningDraft, { template, setPlanningDrafts, updateCurrentWork }) {
+  const draft = mergeTemplateIntoPlanningDraft(normalizePlanningDraftForTemplate(planningDraft), template);
+  if (!draft?.topic) return;
+  const now = new Date().toISOString();
+  const persistedDraft = {
+    ...draft,
+    id: draft.id || `planning-${Date.now()}`,
+    updatedAt: now,
+    createdAt: draft.createdAt || now
+  };
+  setPlanningDrafts?.((items = []) => [persistedDraft, ...items.filter((item) => item.id !== persistedDraft.id)]);
+  updateCurrentWork?.((work) => ({
+    ...work,
+    title: work.title === '새 카드뉴스 작업물' || !work.title ? persistedDraft.title : work.title,
+    drafts: {
+      ...(work.drafts ?? {}),
+      planning: [persistedDraft, ...(work.drafts?.planning ?? []).filter((item) => item.id !== persistedDraft.id)].slice(0, 12)
+    },
+    planningDraft: persistedDraft,
+    equippedItems: {
+      ...(work.equippedItems ?? {}),
+      planning: {
+        id: persistedDraft.id,
+        label: persistedDraft.title,
+        description: persistedDraft.topic || persistedDraft.goal,
+        meta: `${persistedDraft.cardCount || 0}컷`
+      }
+    },
+    status: work.status === 'draft' ? 'planning' : work.status
+  }));
+}
+
+function mergeTemplateIntoPlanningDraft(draft, template) {
+  if (!draft || !template) return draft;
+  const lockedCardCount = Number(draft.cardCount) || Number(template.pageCount) || template.pages?.length || 0;
+  return {
+    ...draft,
+    cardCount: lockedCardCount,
+    templateId: template.id || draft.templateId || '',
+    templateLabel: template.label || draft.templateLabel || '',
+    templateFormatSignal: template.formatSignal || draft.templateFormatSignal || '',
+    templateCanvas: template.canvas || draft.templateCanvas || '',
+    templatePlatforms: Array.isArray(template.platforms) ? template.platforms : draft.templatePlatforms,
+    templatePlatformSpecs: Array.isArray(template.platformSpecs) ? template.platformSpecs : draft.templatePlatformSpecs,
+    templateProduction: template.production ?? draft.templateProduction ?? null,
+    templateCardPlan: Array.isArray(template.cardPlan) ? template.cardPlan : draft.templateCardPlan,
+    templateEditorControls: Array.isArray(template.editorControls) ? template.editorControls : draft.templateEditorControls,
+    templateProductionFlow: Array.isArray(template.productionFlow) ? template.productionFlow : draft.templateProductionFlow,
+    templateLayoutSlots: Array.isArray(template.layoutSlots) ? template.layoutSlots : draft.templateLayoutSlots,
+    templateChannelStrategy: Array.isArray(template.channelStrategy) ? template.channelStrategy : draft.templateChannelStrategy,
+    templateBlueprint: template.templateBlueprint ?? draft.templateBlueprint ?? null,
+    templateSettings: {
+      ...(draft.templateSettings ?? {}),
+      ...(template.templateSettings ?? {}),
+      pageCount: lockedCardCount,
+      canvas: template.canvas || draft.templateCanvas || ''
+    }
+  };
+}
+
+function normalizePlanningDraftForTemplate(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const topic = cleanDraftText(value.topic);
+  const title = cleanDraftText(value.title) || (topic ? `${topic} 카드뉴스 기획` : '');
+  if (!topic && !title) return null;
+  return {
+    ...value,
+    id: cleanDraftText(value.id),
+    title,
+    topic,
+    audience: cleanDraftText(value.audience),
+    goal: cleanDraftText(value.goal),
+    contentDirection: cleanDraftMultilineText(value.contentDirection),
+    format: cleanDraftText(value.format),
+    formatLabel: cleanDraftText(value.formatLabel),
+    cardCount: Math.min(12, Math.max(0, Number(value.cardCount) || 0)),
+    detailLevel: cleanDraftText(value.detailLevel),
+    tone: cleanDraftText(value.tone),
+    storyFlow: cleanDraftMultilineText(value.storyFlow),
+    visualDirection: cleanDraftMultilineText(value.visualDirection),
+    promptGuide: cleanDraftMultilineText(value.promptGuide),
+    avoid: cleanDraftMultilineText(value.avoid),
+    characterName: cleanDraftText(value.characterName),
+    characterRole: cleanDraftText(value.characterRole),
+    characterTraits: cleanDraftText(value.characterTraits),
+    characterPrompt: cleanDraftMultilineText(value.characterPrompt),
+    characterStyleId: cleanDraftText(value.characterStyleId),
+    characterDetailLevel: cleanDraftText(value.characterDetailLevel),
+    characterAssets: Array.isArray(value.characterAssets) ? value.characterAssets.slice(0, 12) : [],
+    selectedCharacterId: cleanDraftText(value.selectedCharacterId),
+    templateId: cleanDraftText(value.templateId),
+    templateLabel: cleanDraftText(value.templateLabel),
+    templateFormatSignal: cleanDraftText(value.templateFormatSignal),
+    templateCanvas: cleanDraftText(value.templateCanvas),
+    templatePlatforms: Array.isArray(value.templatePlatforms) ? value.templatePlatforms.slice(0, 8).map(cleanDraftText).filter(Boolean) : [],
+    templatePlatformSpecs: Array.isArray(value.templatePlatformSpecs) ? value.templatePlatformSpecs.slice(0, 8) : [],
+    templateProduction: value.templateProduction && typeof value.templateProduction === 'object' ? value.templateProduction : null,
+    templateCardPlan: Array.isArray(value.templateCardPlan) ? value.templateCardPlan.slice(0, 12) : [],
+    templateEditorControls: Array.isArray(value.templateEditorControls) ? value.templateEditorControls.slice(0, 12) : [],
+    templateProductionFlow: Array.isArray(value.templateProductionFlow) ? value.templateProductionFlow.slice(0, 12) : [],
+    templateLayoutSlots: Array.isArray(value.templateLayoutSlots) ? value.templateLayoutSlots.slice(0, 12) : [],
+    templateChannelStrategy: Array.isArray(value.templateChannelStrategy) ? value.templateChannelStrategy.slice(0, 8) : [],
+    templateBlueprint: value.templateBlueprint && typeof value.templateBlueprint === 'object' && !Array.isArray(value.templateBlueprint) ? value.templateBlueprint : null,
+    templateSettings: value.templateSettings && typeof value.templateSettings === 'object' && !Array.isArray(value.templateSettings) ? value.templateSettings : {},
+    createdAt: cleanDraftText(value.createdAt),
+    updatedAt: cleanDraftText(value.updatedAt),
+    savedAt: cleanDraftText(value.savedAt)
+  };
+}
+
+function cleanDraftText(value) {
+  return `${value ?? ''}`.replace(/\s+/g, ' ').trim();
+}
+
+function cleanDraftMultilineText(value) {
+  return `${value ?? ''}`
+    .split('\n')
+    .map((line) => line.replace(/[ \t]+/g, ' ').trim())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 function TemplatePreview({ item, large = false }) {
@@ -725,7 +938,7 @@ function CoreTemplateSummary({ template, recommendation }) {
   );
 }
 
-function TemplateSetupControls({ setup, template, onChange }) {
+function TemplateSetupControls({ setup, template, contentBrief, onChange }) {
   const preset = CANVAS_PRESETS.find((item) => item.id === setup.canvasPreset) ?? CANVAS_PRESETS[0];
   const pageCount = normalizePageCount(setup.pageCount || template.pages?.length || 5);
   const choosePreset = (presetId) => {
@@ -738,23 +951,14 @@ function TemplateSetupControls({ setup, template, onChange }) {
   };
   return (
     <div className="mt-4 rounded-md bg-slate-50 p-3">
-      <div className="mb-3 text-xs font-semibold text-slate-500">템플릿 설정</div>
+      <div className="mb-3 text-xs font-semibold text-slate-500">템플릿 적용 설정</div>
       <div className="grid gap-3">
         <FieldInline label="페이지 수">
-          <div className="flex items-center gap-2">
-            <button type="button" className={stepButtonClass} onClick={() => onChange({ pageCount: pageCount - 1 })} aria-label="페이지 수 줄이기">-</button>
-            <input
-              id="template-page-count"
-              name="templatePageCount"
-              className="h-9 w-16 rounded-md border border-slate-200 bg-white px-2 text-center text-sm font-semibold text-slate-800 outline-none focus:border-slate-400"
-              type="number"
-              min="3"
-              max="12"
-              value={pageCount}
-              onChange={(event) => onChange({ pageCount: event.target.value })}
-            />
-            <button type="button" className={stepButtonClass} onClick={() => onChange({ pageCount: pageCount + 1 })} aria-label="페이지 수 늘리기">+</button>
-            <span className="text-[11px] font-medium text-slate-400">3~12장</span>
+          <div className="rounded-md border border-slate-200 bg-white px-3 py-2">
+            <div className="text-sm font-semibold text-slate-800">{pageCount}장</div>
+            <div className="mt-0.5 text-[11px] font-medium text-slate-400">
+              기획 단계에서 정한 컷 수를 유지합니다.
+            </div>
           </div>
         </FieldInline>
 
@@ -797,7 +1001,7 @@ function TemplateSetupControls({ setup, template, onChange }) {
           </FieldInline>
         </div>
         <div className="rounded bg-white px-2.5 py-2 text-[11px] font-medium text-slate-500">
-          적용 시 {pageCount}장, {canvasLabel({ ...setup, canvasPreset: setup.canvasPreset || preset.id })} 기준으로 기획 단계에 넘어갑니다.
+          적용 시 {contentBrief?.generation?.topic || '현재 기획'}의 {pageCount}장 흐름을 유지하고, {canvasLabel({ ...setup, canvasPreset: setup.canvasPreset || preset.id })} 캔버스만 템플릿에서 가져갑니다.
         </div>
       </div>
     </div>

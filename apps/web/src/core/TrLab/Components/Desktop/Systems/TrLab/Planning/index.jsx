@@ -4,25 +4,24 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, BookOpenText, Check, ClipboardList, FilePlus2, FolderKanban, Image as ImageIcon, Loader2, Save, Sparkles, UserRound, Wand2, X } from 'lucide-react';
 import { Badge } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Badge/Badge';
 import { Button } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Button/Button';
-import { GenerationOverlay, NoticeToast } from '@/core/TrLab/Components/Desktop/Molecules/TrLab/GenerationFeedback';
-import { assistPlanningStage, createContentPlan, generateContentImage } from '@/core/TrLab/modules/clients/api';
+import { NoticeToast } from '@/core/TrLab/Components/Desktop/Molecules/TrLab/GenerationFeedback';
+import { assistPlanningStage, generateContentImage } from '@/core/TrLab/modules/clients/api';
 import useTrLabWorkspace from '@/core/TrLab/modules/controller/useTrLabWorkspace';
 import useWorkDialogs from '@/core/TrLab/modules/controller/useWorkDialogs';
 import { resolveTemplateItem } from '@/core/TrLab/modules/templates/templateCatalog';
-import { mergeTemplateSetupIntoPlan } from '@/core/TrLab/modules/templates/templatePlanBridge';
 
 const FORMAT_PRESETS = [
   {
     id: 'instatoon',
     label: '인스타툰',
-    summary: '짧은 장면과 대사 중심',
+    summary: '툰으로 설명하는 단계형 가이드',
     defaults: {
       title: '인스타툰 카드뉴스 기획',
-      goal: '공감되는 상황을 짧은 장면으로 보여주고 저장/공유를 유도한다.',
-      promptGuide: '캐릭터와 배경은 단순하게 유지한다. 장면은 1컷에 하나의 감정만 담고, 대사는 짧고 자연스럽게 쓴다.',
-      visualDirection: '심플한 선화, 밝은 배경, 큰 표정, 과한 소품 금지',
-      storyFlow: '상황 제시\n감정 확대\n공감 포인트\n작은 반전 또는 정리\n저장/공유 유도',
-      avoid: '복잡한 세계관, 긴 대사, 작은 글씨, 과한 배경 묘사, 장면마다 다른 그림체'
+      goal: '독자가 이해할 내용을 캐릭터의 행동과 짧은 설명으로 보여주고 저장/실행을 유도한다.',
+      promptGuide: '사용자가 입력한 전개 요청을 우선한다. 공감 상황, 방법 설명, 루틴 시연, 제품 사용 장면 중 주제에 맞는 방향으로 컷을 구성한다.',
+      visualDirection: '심플한 선화, 핵심 행동이 보이는 구도, 짧은 말풍선, 큰 글씨, 필요한 경우 화살표/배지/체크 표시',
+      storyFlow: '주제와 약속 제시\n핵심 흐름 한눈에 보기\n첫 번째 장면 또는 단계\n두 번째 장면 또는 단계\n주의점 또는 변형\n저장 체크리스트',
+      avoid: '사용자 요청과 다른 감정 서사, 긴 대사, 작은 글씨, 핵심 행동이 보이지 않는 구도'
     }
   },
   {
@@ -53,19 +52,55 @@ const FORMAT_PRESETS = [
   }
 ];
 
+const CHARACTER_STYLE_PRESETS = [
+  {
+    id: 'rough-doodle',
+    label: '러프 낙서형',
+    summary: '대충 그린 듯한 손그림',
+    prompt: 'rough hand-drawn doodle toon style, imperfect marker lines, casual sketchbook feeling, playful uneven strokes, simple black ink, like a quick KakaoTalk-style note illustration'
+  },
+  {
+    id: 'clean-line',
+    label: '깔끔한 선화',
+    summary: '정돈된 인스타툰 선',
+    prompt: 'clean Korean Instagram toon line art, smooth confident outlines, simple rounded shapes, clear facial expressions, minimal flat color accents'
+  },
+  {
+    id: 'detailed-toon',
+    label: '디테일 일러스트',
+    summary: '소품/복장 디테일 강화',
+    prompt: 'polished detailed toon illustration, richer outfit and prop details, clean line art with soft shading, expressive pose, still reusable across panels'
+  },
+  {
+    id: 'semi-real',
+    label: '반실사 캐릭터',
+    summary: '비율과 표정이 조금 더 현실적',
+    prompt: 'semi-realistic Korean webtoon character style, natural body proportions, detailed facial features, soft painterly shading, editorial but still toon-friendly'
+  }
+];
+
+const CHARACTER_DETAIL_PRESETS = [
+  { id: 'simple', label: '단순', prompt: 'very simple silhouette, few details, thick readable lines, no shading' },
+  { id: 'balanced', label: '보통', prompt: 'balanced detail, clear outfit, readable expression, light accents only' },
+  { id: 'detailed', label: '자세히', prompt: 'more detailed outfit folds, hair texture, props, pose nuance, light shading' }
+];
+
 const DEFAULT_FORM = {
   title: '인스타툰 카드뉴스 기획',
   format: 'instatoon',
   topic: '',
   audience: '',
   goal: FORMAT_PRESETS[0].defaults.goal,
+  contentDirection: '',
   cardCount: 6,
   detailLevel: 'balanced',
-  tone: '담백하고 공감되는 말투',
-  characterName: '오늘이',
-  characterRole: '평범한 직장인 주인공',
-  characterTraits: '표정 변화가 크고, 작은 일에 속으로 많이 생각하지만 겉으로는 담담한 캐릭터',
-  characterPrompt: 'simple Korean Instagram toon main character, round face, clean black line art, warm neutral outfit, expressive eyes, minimal details, consistent character sheet, front view and three quarter view, no text',
+  tone: '',
+  characterName: '',
+  characterRole: '',
+  characterTraits: '',
+  characterPrompt: '',
+  characterStyleId: 'rough-doodle',
+  characterDetailLevel: 'simple',
   characterAssets: [],
   selectedCharacterId: '',
   visualDirection: FORMAT_PRESETS[0].defaults.visualDirection,
@@ -89,35 +124,135 @@ const DEFAULT_FORM = {
 };
 
 const PLANNING_FORM_DRAFT_KEY = 'trlab.planning.form-draft.v1';
+const metadataLabelMaps = {
+  ageGroups: {
+    '10s': '10대',
+    '20s': '20대',
+    '30s': '30대',
+    '40s': '40대',
+    '50s': '50대 이상',
+    all: '전 연령'
+  },
+  gender: {
+    all: '전체',
+    female: '여성',
+    male: '남성'
+  },
+  situations: {
+    saving: '절약',
+    selfDev: '자기계발',
+    health: '건강',
+    parenting: '육아',
+    work: '직장생활',
+    relationship: '연애/관계',
+    hobby: '취미',
+    purchase: '구매 고민',
+    search: '정보 탐색',
+    trend: '트렌드 확인',
+    other: '기타'
+  },
+  objective: {
+    save: '저장 유도',
+    share: '공유 유도',
+    purchase: '구매 전환',
+    comment: '댓글 유도',
+    awareness: '브랜드 인지',
+    education: '교육/설명',
+    other: '기타'
+  },
+  tone: {
+    empathy: '공감형',
+    info: '정보형',
+    humor: '유머형',
+    expert: '전문형',
+    emotional: '감성형',
+    hook: '자극적 후킹형',
+    other: '기타'
+  },
+  channel: {
+    instagram: '인스타그램',
+    blog: '블로그',
+    threads: '스레드',
+    shorts: '유튜브 쇼츠',
+    tiktok: '틱톡',
+    other: '기타'
+  }
+};
 
 export default function Planning() {
-  const { planningDrafts, setPlanningDrafts, setQueue, setSelectedTrend, setView, setContentPlans, currentWork, equipItem, updateCurrentWork } = useTrLabWorkspace();
+  const { planningDrafts, setPlanningDrafts, setView, currentWork, equipItem, updateCurrentWork, assetLibrary, saveAsset } = useTrLabWorkspace();
   const { createWorkWithDialog } = useWorkDialogs();
   const [form, setForm] = useState(DEFAULT_FORM);
   const [selectedDraftId, setSelectedDraftId] = useState('');
   const [draftLoaded, setDraftLoaded] = useState(false);
-  const [planState, setPlanState] = useState({ loading: false, error: '' });
   const [assistState, setAssistState] = useState({ loadingStage: '', error: '' });
   const [characterState, setCharacterState] = useState({ loading: false, error: '' });
+  const [savedDraft, setSavedDraft] = useState(null);
   const [imageDialog, setImageDialog] = useState(null);
   const [templateAppliedId, setTemplateAppliedId] = useState('');
   const equippedTemplate = useMemo(() => resolveEquippedTemplate(currentWork?.equippedItems?.template), [currentWork?.equippedItems?.template]);
   const selectedPreset = useMemo(() => FORMAT_PRESETS.find((preset) => preset.id === form.format) ?? FORMAT_PRESETS[0], [form.format]);
   const canSave = form.title.trim() && form.topic.trim();
-  const canGenerateCharacter = form.format === 'instatoon' && form.characterPrompt.trim() && !characterState.loading;
+  const canGenerateCharacter = form.format === 'instatoon' && !characterState.loading;
   const characterPreview = useMemo(() => makeCharacterPreview(form), [form]);
   const flowCards = useMemo(() => parseStoryFlow(form.storyFlow, form.cardCount), [form.storyFlow, form.cardCount]);
 
   useEffect(() => {
-    const draft = loadPlanningFormDraft();
-    if (draft) setForm((current) => ({ ...current, ...draft }));
+    if (!currentWork?.id) {
+      setForm(DEFAULT_FORM);
+      setSelectedDraftId('');
+      setDraftLoaded(true);
+      return;
+    }
+    setDraftLoaded(false);
+    const workDraft = currentWork.planningDraft;
+    const localDraft = loadPlanningFormDraft(currentWork.id);
+    if (workDraft?.id) {
+      setSelectedDraftId(workDraft.id);
+      setForm(formFromDraft(workDraft));
+    } else if (localDraft) {
+      setSelectedDraftId('');
+      setForm((current) => mergePlanningLocalDraft({ ...current, ...metadataFormFromWork(currentWork) }, localDraft));
+    } else {
+      setSelectedDraftId('');
+      setForm((current) => ({ ...current, ...metadataFormFromWork(currentWork) }));
+    }
+    setTemplateAppliedId('');
     setDraftLoaded(true);
-  }, []);
+  }, [currentWork?.id]);
 
   useEffect(() => {
-    if (!draftLoaded) return;
-    savePlanningFormDraft(form);
-  }, [draftLoaded, form]);
+    if (!draftLoaded || !currentWork?.id) return;
+    savePlanningFormDraft(form, currentWork.id);
+  }, [currentWork?.id, draftLoaded, form]);
+
+  useEffect(() => {
+    if (!draftLoaded || !currentWork?.id || currentWork?.planningDraft?.id) return;
+    const metadataForm = metadataFormFromWork(currentWork);
+    setForm((current) => ({
+      ...current,
+      title: metadataForm.title,
+      topic: metadataForm.topic,
+      audience: metadataForm.audience,
+      goal: metadataForm.goal,
+      contentDirection: current.contentDirection || metadataForm.contentDirection,
+      tone: metadataForm.tone,
+      format: metadataForm.format
+    }));
+  }, [
+    currentWork?.id,
+    currentWork?.title,
+    currentWork?.metadata?.goal,
+    currentWork?.metadata?.audienceNote,
+    currentWork?.metadata?.ageGroups,
+    currentWork?.metadata?.gender,
+    currentWork?.metadata?.situations,
+    currentWork?.metadata?.objective,
+    currentWork?.metadata?.tone,
+    currentWork?.metadata?.channel,
+    currentWork?.planningDraft?.id,
+    draftLoaded
+  ]);
 
   useEffect(() => {
     if (!draftLoaded || !equippedTemplate || currentWork?.planningDraft || templateAppliedId === equippedTemplate.id) return;
@@ -131,6 +266,17 @@ export default function Planning() {
     setSelectedDraftId(draft.id);
     setForm(formFromDraft(draft));
   }, [currentWork?.id, currentWork?.planningDraft, draftLoaded, selectedDraftId]);
+
+  useEffect(() => {
+    if (!savedDraft) return undefined;
+    const timer = window.setTimeout(() => setSavedDraft(null), 3600);
+    return () => window.clearTimeout(timer);
+  }, [savedDraft]);
+
+  useEffect(() => {
+    if (!draftLoaded || !form.characterAssets?.length) return;
+    form.characterAssets.forEach((asset) => saveAsset?.(asset));
+  }, [draftLoaded, form.characterAssets, saveAsset]);
 
   const update = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
   const updateTopic = (event) => {
@@ -247,7 +393,8 @@ export default function Planning() {
           imageSourceMode: 'ai_only'
         }
       });
-      const asset = normalizeCharacterAsset({ form, image: data.image, prompt });
+      const asset = normalizeCharacterAsset({ form, image: data.image, prompt, currentWork });
+      saveAsset?.(asset);
       setForm((current) => ({
         ...current,
         characterAssets: [asset, ...(current.characterAssets ?? [])].slice(0, 12),
@@ -260,6 +407,17 @@ export default function Planning() {
     setCharacterState({ loading: false, error: '' });
   };
   const selectCharacter = (assetId) => setForm((current) => ({ ...current, selectedCharacterId: assetId }));
+  const importCharacterAsset = (asset) => {
+    if (!asset?.url) return;
+    setForm((current) => ({
+      ...current,
+      characterAssets: [asset, ...(current.characterAssets ?? []).filter((item) => item.id !== asset.id)].slice(0, 12),
+      selectedCharacterId: asset.id,
+      characterName: current.characterName || asset.name || '',
+      characterRole: current.characterRole || asset.role || '',
+      characterTraits: current.characterTraits || asset.traits || ''
+    }));
+  };
   const removeCharacter = (assetId) => setForm((current) => {
     const nextAssets = (current.characterAssets ?? []).filter((asset) => asset.id !== assetId);
     return {
@@ -282,33 +440,20 @@ export default function Planning() {
     updateCurrentWork((work) => ({
       ...work,
       title: work.title === '새 카드뉴스 작업물' || !work.title ? draft.title : work.title,
+      drafts: {
+        ...(work.drafts ?? {}),
+        planning: [draft, ...(work.drafts?.planning ?? []).filter((item) => item.id !== draft.id)].slice(0, 12)
+      },
       planningDraft: draft,
       status: 'planning'
     }));
+    setSavedDraft({ id: draft.id, title: draft.title, savedAt: draft.updatedAt });
     return draft;
   };
-  const startProduction = async () => {
+  const completePlanning = () => {
     const draft = saveDraft();
     if (!draft) return;
-    const studio = draftToStudio(draft);
-    setSelectedTrend(studio);
-    setQueue((items = []) => [studio, ...items.filter((item) => item.id !== studio.id)]);
-    setPlanState({ loading: true, error: '' });
-    try {
-      const data = await createContentPlan(studio, { refresh: true });
-      const mergedPlan = mergeTemplateSetupIntoPlan(data.plan, studio);
-      setContentPlans((plans) => ({ ...plans, [studio.id]: mergedPlan }));
-      updateCurrentWork((work) => ({
-        ...work,
-        contentPlan: mergedPlan,
-        status: 'plan'
-      }));
-      setView('plan');
-    } catch (error) {
-      setPlanState({ loading: false, error: error instanceof Error ? error.message : 'AI 추천 생성에 실패했습니다.' });
-      return;
-    }
-    setPlanState({ loading: false, error: '' });
+    setView('templates');
   };
   const loadDraft = (draft) => {
     setSelectedDraftId(draft.id);
@@ -347,20 +492,17 @@ export default function Planning() {
 
   return (
     <div className="mx-auto max-w-[1120px] space-y-4">
-      <GenerationOverlay
-        open={planState.loading}
-        title="AI 추천을 생성하고 있어요"
-        description="제목 후보, 시나리오, 카드 초안을 단계별로 구성합니다."
-      />
-      <NoticeToast
-        title="AI 추천 생성 실패"
-        message={planState.error}
-        onClose={() => setPlanState((current) => ({ ...current, error: '' }))}
-      />
       <NoticeToast
         title="AI 도움 실패"
         message={assistState.error}
         onClose={() => setAssistState((current) => ({ ...current, error: '' }))}
+      />
+      <NoticeToast
+        title="초안 저장 완료"
+        message={savedDraft ? `${savedDraft.title} 초안이 작업물에 저장됐습니다.` : ''}
+        tone="info"
+        placement="bottom-center"
+        onClose={() => setSavedDraft(null)}
       />
       {imageDialog ? <ImageDialog image={imageDialog} onClose={() => setImageDialog(null)} /> : null}
 
@@ -368,25 +510,25 @@ export default function Planning() {
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
           <div className="min-w-0">
             <h1 className="text-xl font-semibold tracking-normal text-slate-950">기획</h1>
-            <p className="mt-2 text-sm font-medium leading-6 text-slate-500">템플릿 기준을 바탕으로 주제, 독자, 컷 흐름, 제작 조건을 확정합니다.</p>
+            <p className="mt-2 text-sm font-medium leading-6 text-slate-500">주제, 독자, 컷 흐름, 제작 조건을 먼저 확정한 뒤 이 기획서에 맞는 템플릿을 추천받습니다.</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <PlanningStat label="템플릿" value={equippedTemplate?.label || '미선택'} />
               <PlanningStat label="컷 수" value={`${Number(form.cardCount) || 0}컷`} />
               <PlanningStat label="저장 초안" value={`${planningDrafts.length}개`} />
+              {savedDraft ? <PlanningStat label="상태" value="방금 저장됨" tone="success" /> : null}
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={saveDraft} disabled={!canSave}>
-              <Save className="h-4 w-4" />
-              초안 저장
+            <Button variant="outline" onClick={saveDraft} disabled={!canSave} className={savedDraft ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : ''}>
+              {savedDraft ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}
+              {savedDraft ? '저장됨' : '초안 저장'}
             </Button>
-            <Button className="bg-indigo-600 text-white hover:bg-indigo-700" onClick={startProduction} disabled={!canSave || planState.loading}>
-              {planState.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-              {planState.loading ? '설계 생성 중' : '기획 완료하고 설계로'}
+            <Button className="bg-indigo-600 text-white hover:bg-indigo-700" onClick={completePlanning} disabled={!canSave}>
+              <ArrowRight className="h-4 w-4" />
+              기획 완료하고 템플릿 추천으로
             </Button>
           </div>
         </div>
-        {planState.error ? <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">{planState.error}</div> : null}
       </section>
 
       <main className="grid gap-4">
@@ -403,6 +545,11 @@ export default function Planning() {
                   <input id="planning-goal" name="goal" className={inputClass} value={form.goal} onChange={update('goal')} placeholder="예: 저장, 팔로우, 전환" />
                 </Field>
               </div>
+              <PromptDirectionEditor
+                value={form.contentDirection}
+                form={form}
+                onChange={(value) => setForm((current) => ({ ...current, contentDirection: value }))}
+              />
               <div className="grid gap-4 md:grid-cols-[150px_minmax(0,1fr)]">
                 <Field label="컷 수">
                   <input id="planning-card-count" name="cardCount" className={inputClass} type="number" min="3" max="12" value={form.cardCount} onChange={update('cardCount')} />
@@ -454,15 +601,20 @@ export default function Planning() {
             description="다음 설계 단계로 넘길 시각 방향과 금지 조건입니다."
             action={<AssistButton stage="production" loadingStage={assistState.loadingStage} disabled={!form.topic.trim()} onClick={requestPlanningAssist} />}
           >
+            {form.format === 'instatoon' ? (
+              <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3 text-xs font-semibold leading-5 text-slate-600">
+                캐릭터 그림체: {characterStylePreset(form.characterStyleId).label} · {characterDetailPreset(form.characterDetailLevel).label}
+              </div>
+            ) : null}
             <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <Field label="시각 방향">
+              <Field label="화면/이미지 방향">
                 <textarea className={textareaClass} value={form.visualDirection} onChange={update('visualDirection')} rows={6} />
               </Field>
               <Field label="피해야 할 것">
                 <textarea className={textareaClass} value={form.avoid} onChange={update('avoid')} rows={6} />
               </Field>
             </div>
-            <Field label="프롬프트 가이드">
+            <Field label="제작 프롬프트 가이드">
               <textarea className={`${textareaClass} mt-4`} value={form.promptGuide} onChange={update('promptGuide')} rows={5} />
             </Field>
           </StepSection>
@@ -475,14 +627,54 @@ export default function Planning() {
               description="인스타툰 계열 템플릿에서 반복 사용할 화자를 정합니다."
               action={<AssistButton stage="character" loadingStage={assistState.loadingStage} disabled={!form.topic.trim()} onClick={requestPlanningAssist} />}
             >
-              <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+              <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_400px]">
                 <div className="grid gap-4">
                   <div className="grid gap-4 md:grid-cols-2">
                     <Field label="캐릭터 이름"><input className={inputClass} value={form.characterName} onChange={update('characterName')} /></Field>
                     <Field label="캐릭터 역할"><input className={inputClass} value={form.characterRole} onChange={update('characterRole')} /></Field>
                   </div>
+                  <Field label="그림체 레퍼런스">
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {CHARACTER_STYLE_PRESETS.map((style) => {
+                        const selected = form.characterStyleId === style.id;
+                        return (
+                          <button
+                            key={style.id}
+                            type="button"
+                            className={`rounded-lg border p-3 text-left transition ${selected ? 'border-indigo-300 bg-indigo-50 text-indigo-900 ring-2 ring-indigo-100' : 'border-slate-200 bg-white text-slate-700 hover:border-indigo-200 hover:bg-indigo-50'}`}
+                            onClick={() => setForm((current) => ({ ...current, characterStyleId: style.id }))}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-sm font-semibold">{style.label}</span>
+                              <span className={`h-2.5 w-2.5 rounded-full ${selected ? 'bg-indigo-500' : 'bg-slate-200'}`} />
+                            </div>
+                            <div className="mt-1 text-xs font-medium leading-5 text-slate-500">{style.summary}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </Field>
+                  <Field label="디테일 정도">
+                    <div className="flex flex-wrap gap-2">
+                      {CHARACTER_DETAIL_PRESETS.map((detail) => (
+                        <button
+                          key={detail.id}
+                          type="button"
+                          className={`${promptChipClass} ${form.characterDetailLevel === detail.id ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : ''}`}
+                          onClick={() => setForm((current) => ({ ...current, characterDetailLevel: detail.id }))}
+                        >
+                          {detail.label}
+                        </button>
+                      ))}
+                    </div>
+                  </Field>
                   <Field label="캐릭터 특징"><textarea className={textareaClass} value={form.characterTraits} onChange={update('characterTraits')} rows={4} /></Field>
-                  <Field label="이미지 생성 프롬프트"><textarea className={textareaClass} value={form.characterPrompt} onChange={update('characterPrompt')} rows={5} /></Field>
+                  <Field label="추가 이미지 프롬프트"><textarea className={textareaClass} value={form.characterPrompt} onChange={update('characterPrompt')} rows={4} placeholder="선택한 그림체에 더하고 싶은 복장, 포즈, 표정, 소품만 적어주세요." /></Field>
+                  <CharacterAssetPicker
+                    assets={assetLibrary?.characters ?? []}
+                    currentAssets={form.characterAssets ?? []}
+                    onImport={importCharacterAsset}
+                  />
                   <div className="flex flex-wrap gap-2">
                     <Button variant="outline" onClick={autoCharacterPrompt}><Sparkles className="h-4 w-4" />자동 정리</Button>
                     <Button onClick={generateCharacter} disabled={!canGenerateCharacter}>
@@ -492,36 +684,32 @@ export default function Planning() {
                   </div>
                   {characterState.error ? <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">{characterState.error}</div> : null}
                 </div>
-                <CharacterPreview form={form} preview={characterPreview} onOpenImage={setImageDialog} onSelectCharacter={selectCharacter} onRemoveCharacter={removeCharacter} />
+                <CharacterPreview
+                  form={form}
+                  preview={characterPreview}
+                  onOpenImage={setImageDialog}
+                  onSelectCharacter={selectCharacter}
+                  onRemoveCharacter={removeCharacter}
+                />
               </div>
             </StepSection>
           ) : null}
 
-          <StepSection
-            step={form.format === 'instatoon' ? '5' : '4'}
-            icon={Sparkles}
-            title="템플릿 설정"
-            description="선택한 템플릿의 제작 기준을 마지막으로 확인합니다."
-            action={<AssistButton stage="template" loadingStage={assistState.loadingStage} disabled={!form.topic.trim() || !equippedTemplate} onClick={requestPlanningAssist} />}
-          >
-            <TemplatePlanningPanel template={equippedTemplate} form={form} onApply={applyEquippedTemplateToForm} onToggleSetting={toggleTemplateSetting} embedded />
-          </StepSection>
-
-          <StepSection step={form.format === 'instatoon' ? '6' : '5'} icon={Save} title="완료" description="초안을 저장하거나 바로 설계 단계로 넘어갑니다.">
+          <StepSection step={form.format === 'instatoon' ? '5' : '4'} icon={Save} title="완료" description="상세 기획서를 저장한 뒤 이 기획서에 맞는 템플릿을 추천받습니다.">
             <DraftList drafts={planningDrafts} selectedId={selectedDraftId} onLoad={loadDraft} />
             <div className="mt-4 flex flex-col gap-3 rounded-lg border border-indigo-100 bg-indigo-50 p-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <div className="text-sm font-semibold text-slate-950">기획이 끝났다면 설계를 생성하세요</div>
-                <p className="mt-1 text-xs font-medium leading-5 text-slate-600">현재 입력값을 저장한 뒤 다음 설계 페이지로 이동합니다.</p>
+                <div className="text-sm font-semibold text-slate-950">기획이 끝났다면 템플릿을 추천받으세요</div>
+                <p className="mt-1 text-xs font-medium leading-5 text-slate-600">현재 입력값을 상세 기획서로 저장한 뒤 템플릿 추천 페이지로 이동합니다.</p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" onClick={saveDraft} disabled={!canSave}>
-                  <Save className="h-4 w-4" />
-                  초안 저장
+                <Button variant="outline" onClick={saveDraft} disabled={!canSave} className={savedDraft ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : ''}>
+                  {savedDraft ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}
+                  {savedDraft ? '저장됨' : '초안 저장'}
                 </Button>
-                <Button className="bg-indigo-600 text-white hover:bg-indigo-700" onClick={startProduction} disabled={!canSave || planState.loading}>
-                  {planState.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-                  {planState.loading ? '설계 생성 중' : '기획 완료하고 설계로'}
+                <Button className="bg-indigo-600 text-white hover:bg-indigo-700" onClick={completePlanning} disabled={!canSave}>
+                  <ArrowRight className="h-4 w-4" />
+                  기획 완료하고 템플릿 추천으로
                 </Button>
               </div>
             </div>
@@ -534,11 +722,12 @@ export default function Planning() {
 const inputClass = 'h-10 rounded-md border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100';
 const textareaClass = 'min-h-24 resize-y rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100';
 
-function PlanningStat({ label, value }) {
+function PlanningStat({ label, value, tone = 'default' }) {
+  const success = tone === 'success';
   return (
-    <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs font-medium text-slate-500 ring-1 ring-slate-200">
-      <span className="block text-[11px] font-semibold text-slate-500">{label}</span>
-      <strong className="mt-0.5 block max-w-[180px] truncate text-sm font-semibold text-slate-950">{value}</strong>
+    <div className={success ? 'rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-600 ring-1 ring-emerald-100' : 'rounded-lg bg-slate-50 px-3 py-2 text-xs font-medium text-slate-500 ring-1 ring-slate-200'}>
+      <span className={success ? 'block text-[11px] font-semibold text-emerald-600' : 'block text-[11px] font-semibold text-slate-500'}>{label}</span>
+      <strong className={success ? 'mt-0.5 block max-w-[180px] truncate text-sm font-semibold text-emerald-700' : 'mt-0.5 block max-w-[180px] truncate text-sm font-semibold text-slate-950'}>{value}</strong>
     </div>
   );
 }
@@ -590,6 +779,79 @@ function AssistButton({ stage, loadingStage, disabled, onClick }) {
 
 function Field({ label, children }) {
   return <label className="grid gap-1.5"><span className="text-xs font-semibold text-slate-500">{label}</span>{children}</label>;
+}
+
+function PromptDirectionEditor({ value, form, onChange }) {
+  const applyTemplate = (type) => {
+    onChange(makeDirectionPrompt(type, form));
+  };
+  return (
+    <div className="grid gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="text-xs font-semibold text-slate-500">전개 프롬프트</div>
+          <p className="mt-1 text-xs font-medium leading-5 text-slate-500">AI가 형식보다 먼저 따를 제작 지시입니다.</p>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          <button type="button" className={promptChipClass} onClick={() => applyTemplate('tutorial')}>방법 설명</button>
+          <button type="button" className={promptChipClass} onClick={() => applyTemplate('story')}>공감 서사</button>
+          <button type="button" className={promptChipClass} onClick={() => applyTemplate('comparison')}>비교</button>
+          <button type="button" className={promptChipClass} onClick={() => applyTemplate('product')}>제품/선택</button>
+        </div>
+      </div>
+      <textarea
+        id="planning-content-direction"
+        name="contentDirection"
+        className={`${textareaClass} min-h-36 font-mono text-[13px]`}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        rows={7}
+        placeholder={[
+          '목적: 이 콘텐츠로 독자가 무엇을 하게 만들지 적어주세요.',
+          '포함: 꼭 들어가야 할 장면, 정보, 순서, 숫자, 기준을 적어주세요.',
+          '표현: 장면, 자료, 비교, 시연 등 보여주는 방식을 적어주세요.',
+          '제외: 원하지 않는 방향을 적어주세요.'
+        ].join('\n')}
+      />
+    </div>
+  );
+}
+
+const promptChipClass = 'rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700';
+
+function makeDirectionPrompt(type, form = {}) {
+  const topic = form.topic || '이 주제';
+  const audience = form.audience || '타깃 독자';
+  if (type === 'tutorial') {
+    return [
+      `목적: ${audience}가 ${topic}을 바로 따라 할 수 있게 만든다.`,
+      `포함: 준비물/조건, 단계별 순서, 각 단계의 핵심 행동, 필요한 숫자나 기준, 마지막 저장 체크리스트.`,
+      `표현: 감정 서사보다 과정을 시연하거나 예시를 보여주는 방식으로 구성한다.`,
+      `제외: 시작 전 고민만 보여주는 장면, 주제와 상관없는 표정 중심 컷, 긴 대사, 핵심 행동이 보이지 않는 구도.`
+    ].join('\n');
+  }
+  if (type === 'story') {
+    return [
+      `목적: ${audience}가 ${topic} 상황에 공감하고 저장/공유하게 만든다.`,
+      `포함: 실제로 겪는 상황, 감정 변화, 깨닫는 지점, 짧은 반전 또는 정리, 마지막 행동 유도.`,
+      `표현: 캐릭터의 표정과 짧은 대사로 흐름을 보여준다.`,
+      `제외: 설명문처럼 딱딱한 문장, 한 컷에 여러 메시지, 과한 설정.`
+    ].join('\n');
+  }
+  if (type === 'comparison') {
+    return [
+      `목적: ${audience}가 ${topic}을 비교해서 더 좋은 선택을 하게 만든다.`,
+      `포함: 비교 기준, A/B 차이, 추천 상황, 피해야 할 조건, 마지막 요약표.`,
+      `표현: 같은 기준을 반복해서 보여주고, 표/칩/체크 표시로 차이를 분명히 한다.`,
+      `제외: 기준 없는 순위, 근거 없는 단정, 작은 글씨가 많은 표.`
+    ].join('\n');
+  }
+  return [
+    `목적: ${audience}가 ${topic}을 선택하거나 구매/신청하기 전에 판단 기준을 알게 만든다.`,
+    `포함: 필요한 상황, 선택 기준, 핵심 장점, 주의할 조건, 다음 행동.`,
+    `표현: 제품이나 선택지를 바로 팔기보다 사용 상황과 판단 기준을 먼저 보여준다.`,
+    `제외: 과장 광고, 확인되지 않은 효능, 가격만 강조하는 구성.`
+  ].join('\n');
 }
 
 function Summary({ label, value }) {
@@ -674,7 +936,7 @@ function TemplatePlanningPanel({ template, form, onApply, onToggleSetting, embed
     return (
       <Wrapper className={embedded ? 'rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4' : 'rounded-lg border border-dashed border-slate-300 bg-white p-5'}>
         <div className="text-sm font-semibold text-slate-900">템플릿이 선택되지 않았습니다</div>
-        <p className="mt-1 text-sm font-medium leading-6 text-slate-500">템플릿을 먼저 선택하면 배경, 캐릭터, 폰트, 글자 배치 같은 제작 설정이 이 단계에 연결됩니다.</p>
+        <p className="mt-1 text-sm font-medium leading-6 text-slate-500">상세 기획서를 저장한 뒤 템플릿을 추천받으면 배경, 캐릭터, 폰트, 글자 배치 같은 제작 설정이 연결됩니다.</p>
       </Wrapper>
     );
   }
@@ -843,10 +1105,45 @@ function settingChipClass(active) {
   ].join(' ');
 }
 
+function CharacterAssetPicker({ assets = [], currentAssets = [], onImport }) {
+  const currentIds = new Set(currentAssets.map((asset) => asset.id));
+  const reusableAssets = assets.filter((asset) => asset?.url && !currentIds.has(asset.id)).slice(0, 12);
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="text-xs font-semibold text-slate-500">에셋에서 가져오기</div>
+        <Badge variant="outline">{assets.length}개</Badge>
+      </div>
+      {reusableAssets.length ? (
+        <div className="grid grid-cols-6 gap-2">
+          {reusableAssets.map((asset, index) => (
+            <button
+              key={asset.id}
+              type="button"
+              className="aspect-[4/5] overflow-hidden rounded-md border border-slate-200 bg-slate-50 transition hover:border-indigo-300 hover:ring-2 hover:ring-indigo-100"
+              onClick={() => onImport?.(asset)}
+              title={asset.name}
+              aria-label={`${index + 1}번 저장 캐릭터 가져오기`}
+            >
+              <img src={assetUrl(asset.url)} alt={asset.name} className="h-full w-full object-cover" />
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-md border border-dashed border-slate-200 bg-slate-50 p-3 text-xs font-medium leading-5 text-slate-500">
+          저장된 캐릭터 에셋이 없습니다.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CharacterPreview({ form, preview, onOpenImage, onSelectCharacter, onRemoveCharacter }) {
   const assets = form.characterAssets ?? [];
   const selectedAssetId = form.selectedCharacterId || assets[0]?.id || '';
   const selectedAsset = assets.find((asset) => asset.id === selectedAssetId);
+  const style = characterStylePreset(form.characterStyleId);
+  const detail = characterDetailPreset(form.characterDetailLevel);
   const roughPreview = {
     title: `${form.characterName || '캐릭터'} 러프 미리보기`,
     description: form.characterRole,
@@ -855,66 +1152,65 @@ function CharacterPreview({ form, preview, onOpenImage, onSelectCharacter, onRem
     name: form.characterName
   };
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div>
-          <div className="text-sm font-semibold text-slate-900">캐릭터 미리보기</div>
-          <div className="mt-1 text-xs font-medium text-slate-500">프롬프트를 기반으로 한 기획용 러프입니다.</div>
+    <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-slate-950">캐릭터 미리보기</div>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            <Badge variant="outline">{style.label}</Badge>
+            <Badge variant="outline">{detail.label}</Badge>
+          </div>
         </div>
-        <Badge variant="outline">{form.characterName || '캐릭터'}</Badge>
+        {selectedAsset ? <Badge>대표</Badge> : null}
       </div>
-      <div className="grid gap-3 md:grid-cols-[180px_minmax(0,1fr)] lg:grid-cols-1 2xl:grid-cols-[180px_minmax(0,1fr)]">
-        <button type="button" className="aspect-[4/5] overflow-hidden rounded-lg border bg-white text-left transition hover:border-indigo-300 hover:ring-2 hover:ring-slate-100" onClick={() => onOpenImage?.(selectedAsset?.url ? { ...selectedAsset, url: assetUrl(selectedAsset.url), title: selectedAsset.name } : roughPreview)}>
-          {selectedAsset?.url ? (
-            <img src={assetUrl(selectedAsset.url)} alt="생성된 캐릭터" className="h-full w-full object-cover" />
-          ) : (
-            <svg viewBox="0 0 320 400" className="h-full w-full" role="img" aria-label="캐릭터 미리보기">
-              <rect width="320" height="400" fill={preview.background} />
-              <circle cx="160" cy="112" r="58" fill={preview.skin} stroke="#1f2937" strokeWidth="5" />
-              <path d="M105 103c8-45 40-67 82-54 27 8 43 29 40 61-28-24-66-27-122-7Z" fill={preview.hair} />
-              <circle cx="137" cy="117" r="6" fill="#111827" />
-              <circle cx="183" cy="117" r="6" fill="#111827" />
-              <path d={preview.mouth} fill="none" stroke="#111827" strokeLinecap="round" strokeWidth="5" />
-              <path d="M102 244c9-52 39-82 58-82s49 30 58 82v94H102v-94Z" fill={preview.outfit} stroke="#1f2937" strokeWidth="5" />
-              <path d="M112 190c-26 20-39 54-38 96" fill="none" stroke="#1f2937" strokeLinecap="round" strokeWidth="8" />
-              <path d="M208 190c26 20 39 54 38 96" fill="none" stroke="#1f2937" strokeLinecap="round" strokeWidth="8" />
-              <rect x="72" y="282" width="176" height="42" rx="21" fill="#ffffff" opacity="0.86" />
-              <text x="160" y="308" textAnchor="middle" fill="#334155" fontSize="18" fontWeight="700">{preview.label}</text>
-            </svg>
-          )}
-        </button>
-        <div className="grid content-start gap-2 text-xs font-medium leading-5 text-slate-600">
-          <PreviewRow label="역할" value={form.characterRole} />
-          <PreviewRow label="성격" value={form.characterTraits} />
-          <PreviewRow label="핵심" value={preview.note} />
-        </div>
+      <button type="button" className="aspect-[4/5] w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-50 text-left transition hover:border-indigo-300 hover:ring-2 hover:ring-indigo-100" onClick={() => onOpenImage?.(selectedAsset?.url ? { ...selectedAsset, url: assetUrl(selectedAsset.url), title: selectedAsset.name } : roughPreview)}>
+        {selectedAsset?.url ? (
+          <img src={assetUrl(selectedAsset.url)} alt="생성된 캐릭터" className="h-full w-full object-cover" />
+        ) : (
+          <svg viewBox="0 0 320 400" className="h-full w-full" role="img" aria-label="캐릭터 미리보기">
+            <rect width="320" height="400" fill={preview.background} />
+            <circle cx="160" cy="112" r="58" fill={preview.skin} stroke="#1f2937" strokeWidth="5" />
+            <path d="M105 103c8-45 40-67 82-54 27 8 43 29 40 61-28-24-66-27-122-7Z" fill={preview.hair} />
+            <circle cx="137" cy="117" r="6" fill="#111827" />
+            <circle cx="183" cy="117" r="6" fill="#111827" />
+            <path d={preview.mouth} fill="none" stroke="#111827" strokeLinecap="round" strokeWidth="5" />
+            <path d="M102 244c9-52 39-82 58-82s49 30 58 82v94H102v-94Z" fill={preview.outfit} stroke="#1f2937" strokeWidth="5" />
+            <path d="M112 190c-26 20-39 54-38 96" fill="none" stroke="#1f2937" strokeLinecap="round" strokeWidth="8" />
+            <path d="M208 190c26 20 39 54 38 96" fill="none" stroke="#1f2937" strokeLinecap="round" strokeWidth="8" />
+            <rect x="72" y="282" width="176" height="42" rx="21" fill="#ffffff" opacity="0.86" />
+            <text x="160" y="308" textAnchor="middle" fill="#334155" fontSize="18" fontWeight="700">{preview.label}</text>
+          </svg>
+        )}
+      </button>
+      <div className="mt-3 min-w-0">
+        <div className="truncate text-sm font-semibold text-slate-950">{form.characterName || selectedAsset?.name || '캐릭터'}</div>
       </div>
-      <div className="mt-4">
-        <div className="mb-2 text-xs font-semibold text-slate-500">저장된 캐릭터</div>
-        <div className="grid gap-2">
-          {assets.length ? assets.map((asset, index) => (
-            <div key={asset.id} className={asset.id === selectedAssetId ? 'rounded-lg border border-slate-200 bg-white p-2 ring-2 ring-slate-100' : 'rounded-lg border border-slate-200 bg-white p-2'}>
-              <div className="flex gap-2">
-                <button type="button" className="h-16 w-12 overflow-hidden rounded-md border bg-slate-50 transition hover:border-indigo-300 hover:ring-2 hover:ring-slate-100" onClick={() => onOpenImage?.({ ...asset, url: assetUrl(asset.url), title: asset.name })}>
+      {assets.length ? (
+        <div className="mt-4">
+          <div className="mb-2 text-xs font-semibold text-slate-500">현재 기획</div>
+          <div className="grid grid-cols-4 gap-2">
+            {assets.map((asset, index) => (
+              <div key={asset.id} className="group relative">
+                <button
+                  type="button"
+                  className={`aspect-[4/5] w-full overflow-hidden rounded-md border bg-slate-50 transition hover:border-indigo-300 hover:ring-2 hover:ring-indigo-100 ${asset.id === selectedAssetId ? 'border-indigo-300 ring-2 ring-indigo-100' : 'border-slate-200'}`}
+                  onClick={() => onSelectCharacter?.(asset.id)}
+                  aria-label={`${index + 1}번 캐릭터 대표 선택`}
+                >
                   <img src={assetUrl(asset.url)} alt={asset.name} className="h-full w-full object-cover" />
                 </button>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <Badge variant={asset.id === selectedAssetId ? 'default' : 'outline'}>{index + 1}번</Badge>
-                    <strong className="truncate text-xs font-semibold text-slate-900">{asset.name}</strong>
-                  </div>
-                  <div className="mt-1 truncate text-[11px] font-medium text-slate-500">{asset.model || asset.provider || 'OpenAI image'}</div>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    <Button size="sm" variant="outline" onClick={() => onSelectCharacter?.(asset.id)}>대표 선택</Button>
-                    <Button size="sm" variant="outline" onClick={() => navigator.clipboard?.writeText(asset.prompt)}>프롬프트</Button>
-                    <Button size="sm" variant="outline" onClick={() => onRemoveCharacter?.(asset.id)}>삭제</Button>
-                  </div>
-                </div>
+                <button type="button" className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-white/90 text-slate-500 opacity-0 shadow-sm transition hover:text-red-600 group-hover:opacity-100" onClick={() => onRemoveCharacter?.(asset.id)} aria-label="캐릭터 삭제">
+                  <X className="h-3.5 w-3.5" />
+                </button>
               </div>
-            </div>
-          )) : <div className="rounded-lg border border-dashed bg-white p-3 text-xs font-medium leading-5 text-slate-500">생성된 캐릭터가 없습니다. 캐릭터 생성 버튼으로 OpenAI 이미지를 만든 뒤 저장하세요.</div>}
+            ))}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="mt-4 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3 text-xs font-medium leading-5 text-slate-500">
+          생성 전에는 선택한 그림체를 반영한 러프 미리보기가 표시됩니다.
+        </div>
+      )}
     </div>
   );
 }
@@ -957,10 +1253,6 @@ function RoughCharacterSvg({ preview, name }) {
   );
 }
 
-function PreviewRow({ label, value }) {
-  return <div className="rounded-md bg-white p-3"><div className="mb-1 text-[11px] font-semibold text-slate-400">{label}</div><div>{value || '-'}</div></div>;
-}
-
 function formFromDraft(draft = {}) {
   return {
     title: draft.title || DEFAULT_FORM.title,
@@ -968,6 +1260,7 @@ function formFromDraft(draft = {}) {
     topic: draft.topic ?? '',
     audience: draft.audience ?? '',
     goal: draft.goal ?? DEFAULT_FORM.goal,
+    contentDirection: draft.contentDirection ?? '',
     cardCount: draft.cardCount ?? DEFAULT_FORM.cardCount,
     detailLevel: draft.detailLevel ?? DEFAULT_FORM.detailLevel,
     tone: draft.tone ?? DEFAULT_FORM.tone,
@@ -975,6 +1268,8 @@ function formFromDraft(draft = {}) {
     characterRole: draft.characterRole ?? DEFAULT_FORM.characterRole,
     characterTraits: draft.characterTraits ?? DEFAULT_FORM.characterTraits,
     characterPrompt: draft.characterPrompt ?? DEFAULT_FORM.characterPrompt,
+    characterStyleId: draft.characterStyleId ?? DEFAULT_FORM.characterStyleId,
+    characterDetailLevel: draft.characterDetailLevel ?? DEFAULT_FORM.characterDetailLevel,
     characterAssets: Array.isArray(draft.characterAssets) ? draft.characterAssets : [],
     selectedCharacterId: draft.selectedCharacterId ?? draft.characterAssets?.[0]?.id ?? '',
     visualDirection: draft.visualDirection ?? DEFAULT_FORM.visualDirection,
@@ -1019,6 +1314,8 @@ function normalizeDraft(form, preset, draftId) {
     templateChannelStrategy: Array.isArray(form.templateChannelStrategy) ? form.templateChannelStrategy : [],
     templateBlueprint: isTemplateBlueprint(form.templateBlueprint) ? form.templateBlueprint : null,
     templateSettings: normalizeTemplateSettings(form.templateSettings),
+    characterStyleId: form.characterStyleId || DEFAULT_FORM.characterStyleId,
+    characterDetailLevel: form.characterDetailLevel || DEFAULT_FORM.characterDetailLevel,
     characterAssets: Array.isArray(form.characterAssets) ? form.characterAssets : [],
     selectedCharacterId: form.selectedCharacterId || form.characterAssets?.[0]?.id || '',
     updatedAt: now,
@@ -1040,6 +1337,7 @@ function draftToStudio(draft) {
       audience: draft.audience,
       tone: draft.tone,
       cardCount: draft.cardCount,
+      contentDirection: draft.contentDirection,
       channelName: '@trlab.insight'
     },
     contentIdeas: makeContentIdeas(draft),
@@ -1079,17 +1377,20 @@ function draftToStudio(draft) {
 
 function makeContentIdeas(draft) {
   const topic = draft.topic || '이 주제';
-  if (draft.format === 'instatoon') return [`${topic}, 나만 그런 줄 알았는데`, `${topic} 겪어본 사람만 아는 순간`, `${topic} 때문에 멈칫한 날`];
+  if (draft.format === 'instatoon') return [`${topic}을 툰으로 쉽게 따라 하기`, `${topic} 단계별 시연`, `${topic} 저장용 체크포인트`];
   if (draft.format === 'product') return [`${topic} 사기 전 보는 기준`, `${topic} 필요한 사람과 아닌 사람`, `${topic} 고를 때 놓치는 것`];
   return [`${topic} 한 번에 정리`, `${topic} 기준부터 볼게요`, `${topic} 저장용 체크리스트`];
 }
 
 function makePlanningAssistPayload(stage, form, preset, template) {
+  const characterStyle = characterStylePreset(form.characterStyleId);
+  const characterDetail = characterDetailPreset(form.characterDetailLevel);
   return {
     stage,
     topic: form.topic,
     audience: form.audience,
     goal: form.goal,
+    contentDirection: form.contentDirection,
     format: preset?.label || form.format,
     tone: form.tone,
     cardCount: form.cardCount,
@@ -1097,6 +1398,16 @@ function makePlanningAssistPayload(stage, form, preset, template) {
     visualDirection: form.visualDirection,
     promptGuide: form.promptGuide,
     avoid: form.avoid,
+    characterStyle: form.format === 'instatoon' ? {
+      id: characterStyle.id,
+      label: characterStyle.label,
+      prompt: characterStyle.prompt,
+      detailLevel: characterDetail.label,
+      detailPrompt: characterDetail.prompt,
+      role: form.characterRole,
+      traits: form.characterTraits
+    } : null,
+    instructionMode: inferInstructionMode(form),
     template: template ? {
       id: template.id,
       label: template.label,
@@ -1105,6 +1416,13 @@ function makePlanningAssistPayload(stage, form, preset, template) {
       editorControls: template.editorControls
     } : null
   };
+}
+
+function inferInstructionMode(form = {}) {
+  const text = `${form.topic ?? ''} ${form.goal ?? ''} ${form.contentDirection ?? ''} ${form.storyFlow ?? ''} ${form.promptGuide ?? ''}`;
+  if (/운동|홈트|루틴|상체|하체|코어|자세|횟수|세트|푸시업|팔굽혀|덤벨|플랭크|스쿼트|스트레칭/.test(text)) return 'exercise_tutorial';
+  if (/방법|하는 법|가이드|순서|체크리스트|계획|루틴/.test(text)) return 'how_to_tutorial';
+  return 'general';
 }
 
 function applyPlanningAssist(form, data = {}) {
@@ -1159,11 +1477,18 @@ function parseStoryFlow(value = '', cardCount = 6) {
 function makeAutoCharacterFields(form, preset) {
   const topic = form.topic || '일상 공감';
   const audience = form.audience || '인스타그램 독자';
+  const style = characterStylePreset(form.characterStyleId);
+  const detail = characterDetailPreset(form.characterDetailLevel);
   const isWork = /직장|출근|회사|퇴근|월요|업무|상사|동료/.test(`${topic} ${audience}`);
   const isParent = /육아|부모|엄마|아빠|아이|아기|어린이/.test(`${topic} ${audience}`);
-  const role = isParent ? '현실적인 초보 부모 주인공' : isWork ? '평범한 직장인 주인공' : `${audience}가 쉽게 이입하는 일상 주인공`;
+  const isTutorial = /방법|루틴|순서|단계|따라|시연|자세|횟수|세트|운동|튜토리얼/.test(`${topic} ${form.contentDirection} ${form.storyFlow}`);
+  const role = isTutorial
+    ? `${audience}에게 ${topic}을 시연하는 안내 캐릭터`
+    : isParent ? '현실적인 초보 부모 주인공' : isWork ? '평범한 직장인 주인공' : `${audience}가 쉽게 이입하는 일상 주인공`;
   const name = isParent ? '하루맘' : isWork ? '오늘이' : '모아';
-  const traits = isParent
+  const traits = isTutorial
+    ? '동작이 잘 보이는 단순한 복장, 과장되지 않은 표정, 손짓과 포즈로 핵심을 설명하는 캐릭터'
+    : isParent
     ? '눈 밑 피곤함은 살짝 있지만 표정이 따뜻하고, 당황-공감-작은 안도감이 잘 드러나는 캐릭터'
     : isWork
       ? '표정 변화가 크고, 속마음이 얼굴에 살짝 드러나며, 지친 듯하지만 귀여운 현실감이 있는 캐릭터'
@@ -1177,19 +1502,24 @@ function makeAutoCharacterFields(form, preset) {
       role,
       traits,
       `target audience: ${audience}`,
-      `clean black line art, round friendly face, expressive eyes, minimal outfit, warm neutral color palette`,
+      style.prompt,
+      detail.prompt,
+      `round friendly face, expressive eyes, reusable outfit`,
       `consistent character sheet, front view, side view, three quarter view, 3 facial expressions`,
-      `not too detailed, no text, no logo, no complex background`,
+      `no readable text, no logo, no complex background`,
       `style goal: ${preset.label}`
     ].join(', ')
   };
 }
 
-function normalizeCharacterAsset({ form, image, prompt }) {
+function normalizeCharacterAsset({ form, image, prompt, currentWork }) {
   const createdAt = new Date().toISOString();
   const id = `character-${Date.now()}`;
+  const style = characterStylePreset(form.characterStyleId);
+  const detail = characterDetailPreset(form.characterDetailLevel);
   return {
     id,
+    type: 'character',
     name: form.characterName || `캐릭터 ${createdAt.slice(11, 16)}`,
     role: form.characterRole,
     traits: form.characterTraits,
@@ -1197,6 +1527,10 @@ function normalizeCharacterAsset({ form, image, prompt }) {
     url: image?.url,
     provider: image?.provider || 'openai',
     model: image?.model || '',
+    sourceWorkId: currentWork?.id || '',
+    sourceWorkTitle: currentWork?.title || '',
+    styleLabel: style.label,
+    detailLabel: detail.label,
     createdAt,
     defaultPlacement: {
       x: 0.58,
@@ -1217,6 +1551,8 @@ function assetUrl(url = '') {
 }
 
 function makeCharacterImagePrompt(form) {
+  const style = characterStylePreset(form.characterStyleId);
+  const detail = characterDetailPreset(form.characterDetailLevel);
   return [
     'Create a reusable character reference image for a Korean Instagram toon carousel.',
     'Use OpenAI image generation. Output should be a clean character sheet, not a finished card.',
@@ -1225,16 +1561,20 @@ function makeCharacterImagePrompt(form) {
     `Traits: ${form.characterTraits || 'simple expressive character'}.`,
     `Topic context: ${form.topic || form.title}.`,
     `Audience: ${form.audience || 'Instagram readers'}.`,
-    `Style prompt: ${form.characterPrompt}.`,
+    `Reference style: ${style.label}. ${style.prompt}.`,
+    `Detail level: ${detail.label}. ${detail.prompt}.`,
+    form.characterPrompt ? `Additional user prompt: ${form.characterPrompt}.` : '',
     'Include one main full-body pose and two small expression variations if possible.',
     'Keep the design simple and reusable across many panels.',
     'No readable text, no logo, no watermark, no speech bubbles, no complex background.',
     'Use a plain light background so the character can later be placed on card layouts.'
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 }
 
 function makeCharacterPreview(form) {
-  const text = `${form.characterPrompt} ${form.characterTraits} ${form.characterRole}`;
+  const style = characterStylePreset(form.characterStyleId);
+  const detail = characterDetailPreset(form.characterDetailLevel);
+  const text = `${style.prompt} ${detail.prompt} ${form.characterPrompt} ${form.characterTraits} ${form.characterRole}`;
   const hue = hashText(text) % 360;
   const worried = /피곤|지친|당황|월요|출근|현실|초보/.test(text);
   return {
@@ -1244,8 +1584,16 @@ function makeCharacterPreview(form) {
     skin: '#f6d7bd',
     mouth: worried ? 'M138 145c15-10 30-10 45 0' : 'M138 142c13 15 32 15 45 0',
     label: (form.characterName || '캐릭터').slice(0, 8),
-    note: /consistent|시트|sheet/i.test(text) ? '여러 컷에서 같은 인물로 반복 사용' : '기획 단계 러프 미리보기'
+    note: `${style.label} · ${detail.label}`
   };
+}
+
+function characterStylePreset(id) {
+  return CHARACTER_STYLE_PRESETS.find((preset) => preset.id === id) ?? CHARACTER_STYLE_PRESETS[0];
+}
+
+function characterDetailPreset(id) {
+  return CHARACTER_DETAIL_PRESETS.find((preset) => preset.id === id) ?? CHARACTER_DETAIL_PRESETS[0];
 }
 
 function hashText(value = '') {
@@ -1261,6 +1609,7 @@ function makePlanningBriefPrompt(draft) {
   return [
     draft.goal,
     ``,
+    draft.contentDirection ? `전개 프롬프트:\n${draft.contentDirection}` : '',
     `형식: ${draft.formatLabel}`,
     draft.templateLabel ? `선택 템플릿: ${draft.templateLabel}\n템플릿 유형: ${draft.templateFormatSignal}\n캔버스: ${draft.templateCanvas}\n채널: ${(draft.templatePlatforms ?? []).join(', ')}` : '',
     `카드 흐름:\n${draft.storyFlow}`,
@@ -1279,15 +1628,72 @@ function makePlanningBriefPrompt(draft) {
   ].filter(Boolean).join('\n\n');
 }
 
-function loadPlanningFormDraft() {
+function loadPlanningFormDraft(workId) {
   if (typeof window === 'undefined') return null;
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(PLANNING_FORM_DRAFT_KEY) || 'null');
+    const parsed = JSON.parse(window.localStorage.getItem(planningFormDraftKey(workId)) || 'null');
     if (!parsed || typeof parsed !== 'object') return null;
     return sanitizePlanningFormDraft(parsed);
   } catch {
     return null;
   }
+}
+
+function metadataFormFromWork(work = {}) {
+  const metadata = work.metadata ?? {};
+  const topic = meaningfulWorkTitle(work.title) || cleanDraftText(metadata.goal);
+  const audience = [
+    cleanDraftText(metadata.audienceNote),
+    metadataListLabels(metadata.ageGroups, metadataLabelMaps.ageGroups).join(', '),
+    metadataLabel(metadata.gender, metadataLabelMaps.gender),
+    metadataListLabels(metadata.situations, metadataLabelMaps.situations).join(', ')
+  ].filter(Boolean).join(' / ');
+  const objective = metadataLabel(metadata.objective, metadataLabelMaps.objective);
+  const toneLabel = metadataLabel(metadata.tone, metadataLabelMaps.tone);
+  const channel = metadataLabel(metadata.channel, metadataLabelMaps.channel);
+  const goal = cleanDraftText(metadata.goal) || [objective, channel].filter(Boolean).join(' / ') || DEFAULT_FORM.goal;
+  const format = metadata.tone === 'info' || metadata.objective === 'education' || /방법|루틴|가이드|체크|정보|상체|운동/.test(`${topic} ${goal}`) ? 'information' : DEFAULT_FORM.format;
+  const preset = FORMAT_PRESETS.find((item) => item.id === format) ?? FORMAT_PRESETS[0];
+  return {
+    ...preset.defaults,
+    format,
+    title: topic ? `${topic} 카드뉴스 기획` : preset.defaults.title,
+    topic,
+    audience,
+    goal,
+    contentDirection: cleanDraftMultilineText(metadata.notes),
+    tone: toneLabel ? `${toneLabel} 말투` : DEFAULT_FORM.tone
+  };
+}
+
+function mergePlanningLocalDraft(base, localDraft) {
+  const next = { ...base, ...localDraft };
+  ['title', 'topic', 'audience', 'goal', 'tone'].forEach((key) => {
+    if (!cleanDraftText(localDraft?.[key])) next[key] = base[key];
+  });
+  if (!cleanDraftMultilineText(localDraft?.contentDirection)) next.contentDirection = base.contentDirection;
+  ['visualDirection', 'storyFlow', 'promptGuide', 'avoid'].forEach((key) => {
+    if (!cleanDraftMultilineText(localDraft?.[key])) next[key] = base[key];
+  });
+  return next;
+}
+
+function meaningfulWorkTitle(title = '') {
+  const cleaned = cleanDraftText(title);
+  if (!cleaned || /^새 카드뉴스 작업물$/.test(cleaned) || /^카드뉴스 작업물\s*\d*$/.test(cleaned)) return '';
+  return cleaned;
+}
+
+function metadataListLabels(values = [], labelMap = {}) {
+  return (Array.isArray(values) ? values : [])
+    .filter((value) => value && value !== 'none')
+    .map((value) => labelMap[value] ?? value)
+    .filter(Boolean);
+}
+
+function metadataLabel(value, labelMap = {}) {
+  if (!value || value === 'none') return '';
+  return labelMap[value] ?? value;
 }
 
 function resolveEquippedTemplate(template) {
@@ -1306,6 +1712,7 @@ function applyTemplateToForm(form, template, options = {}) {
     title: form.title?.trim() && form.title !== DEFAULT_FORM.title ? form.title : `${template.label} 기획`,
     topic,
     goal: template.description || preset.defaults.goal,
+    contentDirection: form.contentDirection || '',
     cardCount: template.pages?.length || Number(template.meta?.replace(/\D/g, '')) || form.cardCount,
     tone: toneFromTemplate(template) || form.tone,
     visualDirection: productionBrief || preset.defaults.visualDirection,
@@ -1417,16 +1824,20 @@ function isTemplateBlueprint(value) {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
-function savePlanningFormDraft(form) {
+function savePlanningFormDraft(form, workId) {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(PLANNING_FORM_DRAFT_KEY, JSON.stringify({
+    window.localStorage.setItem(planningFormDraftKey(workId), JSON.stringify({
       savedAt: new Date().toISOString(),
       ...sanitizePlanningFormDraft(form)
     }));
   } catch {
     // 임시저장 실패가 제작 흐름을 막으면 안 된다.
   }
+}
+
+function planningFormDraftKey(workId) {
+  return workId ? `${PLANNING_FORM_DRAFT_KEY}.${workId}` : PLANNING_FORM_DRAFT_KEY;
 }
 
 function sanitizePlanningFormDraft(value = {}) {
@@ -1436,6 +1847,7 @@ function sanitizePlanningFormDraft(value = {}) {
     topic: cleanDraftText(value.topic),
     audience: cleanDraftText(value.audience),
     goal: cleanDraftText(value.goal) || DEFAULT_FORM.goal,
+    contentDirection: cleanDraftMultilineText(value.contentDirection),
     cardCount: Math.min(12, Math.max(3, Number(value.cardCount) || DEFAULT_FORM.cardCount)),
     detailLevel: ['simple', 'balanced', 'specific'].includes(value.detailLevel) ? value.detailLevel : DEFAULT_FORM.detailLevel,
     tone: cleanDraftText(value.tone) || DEFAULT_FORM.tone,
@@ -1461,6 +1873,8 @@ function sanitizePlanningFormDraft(value = {}) {
     characterRole: cleanDraftText(value.characterRole) || DEFAULT_FORM.characterRole,
     characterTraits: cleanDraftText(value.characterTraits) || DEFAULT_FORM.characterTraits,
     characterPrompt: cleanDraftText(value.characterPrompt) || DEFAULT_FORM.characterPrompt,
+    characterStyleId: cleanDraftText(value.characterStyleId) || DEFAULT_FORM.characterStyleId,
+    characterDetailLevel: cleanDraftText(value.characterDetailLevel) || DEFAULT_FORM.characterDetailLevel,
     characterAssets: Array.isArray(value.characterAssets) ? value.characterAssets.slice(0, 12) : [],
     selectedCharacterId: cleanDraftText(value.selectedCharacterId)
   };

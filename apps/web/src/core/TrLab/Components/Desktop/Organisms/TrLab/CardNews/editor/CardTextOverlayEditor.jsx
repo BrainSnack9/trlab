@@ -29,7 +29,7 @@ const segmentColorValue = {
   green: () => '#22c55e'
 };
 
-export function CardTextOverlayEditor({ image, card, style, studio, backgroundActions, startOpen = false, draftScopeKey = '', cardNavigation }) {
+export function CardTextOverlayEditor({ image, card, style, studio, backgroundActions, assetLibrary, startOpen = false, draftScopeKey = '', cardNavigation }) {
   const scopeKey = draftScopeKey || `${image?.id || image?.url || ''}:${card?.page || 1}`;
   const draftKey = useMemo(() => `overlay:${scopeKey}`, [scopeKey]);
   const dataDraftKey = useMemo(() => `data:${scopeKey}`, [scopeKey]);
@@ -56,6 +56,7 @@ export function CardTextOverlayEditor({ image, card, style, studio, backgroundAc
   const commandInputRef = useRef(null);
   const editorActions = useCardTextOverlayActionsController();
   const { busy, error, productAssetBusyId, productAssetError } = editorActions;
+  const libraryAssets = Array.isArray(assetLibrary?.characters) ? assetLibrary.characters.filter((asset) => asset?.url).slice(0, 24) : [];
 
   useEffect(() => {
     const nextLayers = initialTextLayers(draftKey, card, style, studio);
@@ -721,6 +722,7 @@ export function CardTextOverlayEditor({ image, card, style, studio, backgroundAc
                 productAssetBusyId={productAssetBusyId}
                 productAssetError={productAssetError}
                 fetchProductAsset={fetchProductAsset}
+                libraryAssets={libraryAssets}
               />
             </div>
             <div className="mt-3">
@@ -1292,7 +1294,7 @@ function LayerListControls({ layers, selectedId, selectTextLayer, setEditingId, 
   );
 }
 
-function ProductAssetControls({ card, productAssets, selectedProduct, selectedProductId, selectProductAsset, patchProductAsset, addProductAsset, removeSelectedProduct, resetProductAssets, productAssetBusyId, productAssetError, fetchProductAsset }) {
+function ProductAssetControls({ card, productAssets, selectedProduct, selectedProductId, selectProductAsset, patchProductAsset, addProductAsset, removeSelectedProduct, resetProductAssets, productAssetBusyId, productAssetError, fetchProductAsset, libraryAssets = [] }) {
   const candidates = Array.isArray(card?.visualBrief?.productCandidates) ? card.visualBrief.productCandidates.filter((item) => item?.name).slice(0, 6) : [];
   async function uploadProductImage(event, product) {
     const file = event.target.files?.[0];
@@ -1340,6 +1342,24 @@ function ProductAssetControls({ card, productAssets, selectedProduct, selectedPr
                 <Button key={candidate.name} size="sm" variant="outline" className={`${lightButtonClass} justify-start`} onClick={() => addProductAsset(candidate)}>
                   {candidate.name}
                 </Button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        {libraryAssets.length ? (
+          <div className={darkNestedPanelClass}>
+            <div className="mb-2 text-[11px] font-black text-slate-300">에셋 저장소에서 추가</div>
+            <div className="grid grid-cols-4 gap-1.5">
+              {libraryAssets.map((asset) => (
+                <button
+                  key={asset.id}
+                  type="button"
+                  className="aspect-[4/5] overflow-hidden rounded border border-slate-700 bg-slate-950 transition hover:border-indigo-400 hover:ring-2 hover:ring-indigo-500/30"
+                  title={asset.name}
+                  onClick={() => addProductAsset(assetToProductCandidate(asset))}
+                >
+                  <img src={assetUrl(asset.url)} alt={asset.name} className="h-full w-full object-cover" />
+                </button>
               ))}
             </div>
           </div>
@@ -2386,16 +2406,38 @@ function defaultProductAssets(card = {}) {
 function defaultProductAsset(candidate = {}, index = 0) {
   const top = 360 + index * 190;
   return clampProductAsset({
-    id: `product-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
+    id: candidate.id || `product-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
     name: `${candidate.name ?? candidate.label ?? '추천 제품'}`.trim(),
     description: `${candidate.role ?? candidate.reason ?? candidate.imageUsePolicy ?? '왜 추천하는지 짧게 적어주세요.'}`.trim(),
     imageUrl: `${candidate.imageUrl ?? candidate.url ?? ''}`.trim(),
+    sourceProvider: `${candidate.sourceProvider ?? ''}`,
+    sourceLabel: `${candidate.sourceLabel ?? ''}`,
+    sourceUrl: `${candidate.sourceUrl ?? ''}`,
+    assetPrompt: `${candidate.assetPrompt ?? ''}`,
     x: 92,
     y: top,
     width: 896,
     height: 160,
     imageBoxWidth: 170
   });
+}
+
+function assetToProductCandidate(asset = {}) {
+  const styleText = [asset.styleLabel, asset.detailLabel].filter(Boolean).join(' / ');
+  return {
+    id: `asset-${asset.id || Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    name: asset.name || '저장 에셋',
+    role: asset.traits || styleText || asset.role || '저장소 에셋',
+    imageUrl: assetUrl(asset.url),
+    sourceProvider: asset.provider || 'asset-library',
+    sourceLabel: asset.sourceWorkTitle || styleText,
+    assetPrompt: asset.prompt || ''
+  };
+}
+
+function assetUrl(url = '') {
+  if (!url || /^(data:|https?:\/\/)/.test(url)) return url;
+  return url.startsWith('/') ? url : `/${url}`;
 }
 
 function clampProductAsset(product = {}) {

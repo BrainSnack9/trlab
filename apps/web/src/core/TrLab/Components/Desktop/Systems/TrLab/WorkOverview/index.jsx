@@ -7,8 +7,8 @@ import useWorkDialogs from '@/core/TrLab/modules/controller/useWorkDialogs';
 
 const steps = [
   ['metadata', '정보', '작업 목적과 대상을 정리합니다.', Info],
-  ['templates', '템플릿', '카드뉴스 구조를 선택합니다.', LayoutTemplate],
-  ['planning', '기획', '주제와 독자에 맞춰 기획안을 만듭니다.', ListChecks],
+  ['planning', '기획', '주제와 독자에 맞춰 상세 기획서를 만듭니다.', ListChecks],
+  ['templates', '템플릿', '상세 기획서에 맞는 구조를 선택합니다.', LayoutTemplate],
   ['plan', '설계', '카드별 문장과 흐름을 확정합니다.', FileJson2],
   ['cardnews', '제작', '이미지와 최종 결과물을 편집합니다.', Image]
 ];
@@ -31,6 +31,7 @@ export default function WorkOverview() {
 
   const nextStep = getNextStep(currentWork);
   const completion = steps.filter(([stage]) => isStepDone(currentWork, stage)).length;
+  const draftCount = workDraftCount(currentWork);
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
@@ -40,6 +41,7 @@ export default function WorkOverview() {
             <div className="text-xs font-medium uppercase tracking-[0.12em] text-slate-400">작업물 개요</div>
             <h1 className="mt-2 truncate text-2xl font-semibold tracking-normal text-slate-950">{currentWork.title}</h1>
             <p className="mt-2 text-sm font-medium text-slate-500">{completion}/{steps.length} 단계 완료</p>
+            {draftCount ? <p className="mt-2 text-sm font-semibold text-indigo-600">기획 초안 {draftCount}개 저장됨</p> : null}
           </div>
           <Button onClick={() => setView(nextStep.stage)}>
             {nextStep.cta}
@@ -79,8 +81,8 @@ function stepClass(active) {
 
 function getNextStep(work) {
   if (!isStepDone(work, 'metadata')) return { stage: 'metadata', cta: '정보 입력' };
-  if (!isStepDone(work, 'templates')) return { stage: 'templates', cta: '템플릿 선택' };
-  if (!isStepDone(work, 'planning')) return { stage: 'planning', cta: '기획하기' };
+  if (!isStepDone(work, 'planning')) return { stage: 'planning', cta: '상세 기획하기' };
+  if (!isStepDone(work, 'templates')) return { stage: 'templates', cta: '템플릿 추천' };
   if (!isStepDone(work, 'plan')) return { stage: 'plan', cta: '설계 확인' };
   return { stage: 'cardnews', cta: '제작하기' };
 }
@@ -88,10 +90,14 @@ function getNextStep(work) {
 function isStepDone(work, stage) {
   if (stage === 'metadata') return hasMetadata(work);
   if (stage === 'templates') return Boolean(work?.equippedItems?.template);
-  if (stage === 'planning') return Boolean(work?.equippedItems?.planning || work?.planningDraft);
+  if (stage === 'planning') return Boolean(work?.equippedItems?.planning || work?.planningDraft || workDraftCount(work));
   if (stage === 'plan') return Boolean(work?.contentPlan);
   if (stage === 'cardnews') return Boolean(work?.output?.cardnews);
   return false;
+}
+
+function workDraftCount(work) {
+  return Array.isArray(work?.drafts?.planning) ? work.drafts.planning.length : 0;
 }
 
 function hasMetadata(work) {

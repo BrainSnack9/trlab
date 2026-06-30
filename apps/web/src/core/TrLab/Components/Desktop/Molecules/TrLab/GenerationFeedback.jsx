@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Loader2, X } from 'lucide-react';
 import { Button } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Button/Button';
 
@@ -69,11 +70,16 @@ export function GenerationOverlay({ open, title = 'AI가 생성 중입니다', d
   );
 }
 
-export function NoticeToast({ message, title = '알림', tone = 'error', onClose }) {
+export function NoticeToast({ message, title = '알림', tone = 'error', placement = 'top-right', onClose }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   if (!message) return null;
   const isError = tone === 'error';
-  return (
-    <div className="fixed right-4 top-4 z-[90] w-[min(420px,calc(100vw-32px))] rounded-xl border bg-white p-4 shadow-2xl" role="alert">
+  const toast = (
+    <div className={toastPlacementClass(placement)} role="alert">
       <div className="flex items-start gap-3">
         <div className={['mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full', isError ? 'bg-red-500' : 'bg-indigo-500'].join(' ')} />
         <div className="min-w-0 flex-1">
@@ -88,4 +94,13 @@ export function NoticeToast({ message, title = '알림', tone = 'error', onClose
       </div>
     </div>
   );
+
+  if (!mounted || typeof document === 'undefined') return toast;
+  return createPortal(toast, document.body);
+}
+
+function toastPlacementClass(placement) {
+  const base = 'fixed z-[120] w-[min(420px,calc(100vw-32px))] rounded-xl border bg-white p-4 shadow-2xl';
+  if (placement === 'bottom-center') return `${base} inset-x-4 bottom-24 mx-auto`;
+  return `${base} right-4 top-4`;
 }

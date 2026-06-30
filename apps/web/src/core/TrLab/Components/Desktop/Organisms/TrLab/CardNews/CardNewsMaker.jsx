@@ -5,7 +5,7 @@ import { ControlPanel } from './components/ControlPanel';
 import { InstatoonWorkflowBoard } from './components/InstatoonWorkflowBoard';
 import { MakerHeader } from './components/MakerHeader';
 
-export function CardNewsMaker({ studio, plan, work }) {
+export function CardNewsMaker({ studio, plan, work, assetLibrary }) {
   const templateProduction = useMemo(() => resolveTemplateProduction({ work, studio, plan }), [work, studio, plan]);
   const maker = useCardNewsMakerController({ studio, plan, initialProductionSettings: templateProduction?.settings });
   const {
@@ -46,6 +46,7 @@ export function CardNewsMaker({ studio, plan, work }) {
           generatedImageHistory={generatedImageHistory}
           setGeneratedImage={setGeneratedImage}
           selectGeneratedImage={selectGeneratedImage}
+          assetLibrary={assetLibrary}
         />
         <ControlPanel
           card={card}

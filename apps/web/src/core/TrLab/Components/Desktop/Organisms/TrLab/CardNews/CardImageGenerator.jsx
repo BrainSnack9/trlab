@@ -3,7 +3,7 @@ import { Button } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Butto
 import { useCardImageController } from '@/core/TrLab/modules/controller/card-news/useCardImageController';
 import { GeneratedImage } from './components/GeneratedImage';
 
-export function CardImageGenerator({ card, selected, style, studio, plan, generatedImage, generatedImageHistory = [], onGenerated, onSelectGenerated, cards = [], onSelectCard }) {
+export function CardImageGenerator({ card, selected, style, studio, plan, generatedImage, generatedImageHistory = [], onGenerated, onSelectGenerated, cards = [], onSelectCard, assetLibrary }) {
   const {
     image,
     loading,
@@ -61,6 +61,7 @@ export function CardImageGenerator({ card, selected, style, studio, plan, genera
         studio={studio}
         backgroundActions={backgroundActions}
         copyImagePrompt={copyImagePrompt}
+        assetLibrary={assetLibrary}
       />
     </div>
   );

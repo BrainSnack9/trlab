@@ -1,7 +1,7 @@
 import { CardImageGenerator } from '../CardImageGenerator';
 import { CarouselStrip } from './CarouselStrip';
 
-export function CardWorkspace({ cards, selected, setSelected, card, style, studio, plan, generatedImage, generatedImageHistory, setGeneratedImage, selectGeneratedImage }) {
+export function CardWorkspace({ cards, selected, setSelected, card, style, studio, plan, generatedImage, generatedImageHistory, setGeneratedImage, selectGeneratedImage, assetLibrary }) {
   return (
     <div className="space-y-4">
       <CarouselStrip cards={cards} selected={selected} setSelected={setSelected} />
@@ -17,6 +17,7 @@ export function CardWorkspace({ cards, selected, setSelected, card, style, studi
         generatedImageHistory={generatedImageHistory}
         onGenerated={setGeneratedImage}
         onSelectGenerated={selectGeneratedImage}
+        assetLibrary={assetLibrary}
       />
     </div>
   );

@@ -49,7 +49,7 @@ export function makeImagePrompt({ studio, plan, card, style, editInstruction, pr
   }
   const styleName = style?.name ?? '정보형 카드뉴스';
   const topic = visualTopic({ studio, plan, card });
-  const scene = backplateSceneDirection({ card, topic, style });
+  const scene = backplateSceneDirection({ studio, plan, card, topic, style });
   const visualBrief = card?.visualBrief ?? {};
   const productionBrief = plan?.productionBrief ?? {};
   const revision = cleanPromptText(editInstruction, 800);
@@ -124,29 +124,32 @@ function cleanPromptText(value, maxLength = 1000) {
   return `${value ?? ''}`.replace(/\s+/g, ' ').trim().slice(0, maxLength);
 }
 
-function backplateSceneDirection({ card = {}, topic = '', style = {} } = {}) {
+function backplateSceneDirection({ studio = {}, plan = {}, card = {}, topic = '', style = {} } = {}) {
   const raw = cleanPromptText(card.visualPrompt, 420);
   const role = card?.role;
   const layout = card?.layout;
   const dataLike = role === 'data_scene' || role === 'comparison' || layout === 'data_chart' || layout === 'comparison_board';
   const reactionLike = role === 'community_signal' || role === 'misconception' || layout === 'quote_card';
   if (reactionLike) {
-    return `${topicSpecificScene(topic, raw)} Show consumer reaction through real-life context and negative space only, with no social UI, comment bubbles, quote cards, speech bubbles, phone screenshots, or readable snippets.`;
+    return `${topicSpecificScene(topic, raw, { studio, plan })} Show consumer reaction through real-life context and negative space only, with no social UI, comment bubbles, quote cards, speech bubbles, phone screenshots, or readable snippets.`;
   }
   if (dataLike) {
-    return `${topicSpecificScene(topic, raw)} Include a blank calm central panel or empty split areas for later verified SVG data overlays. Do not draw rows with content, ingredient lists, efficacy graphics, chart marks, comparison values, or labels.`;
+    return `${topicSpecificScene(topic, raw, { studio, plan })} Include a blank calm central panel or empty split areas for later verified SVG data overlays. Do not draw rows with content, ingredient lists, efficacy graphics, chart marks, comparison values, or labels.`;
   }
   if (role === 'checklist' || layout === 'checklist') {
-    return `${topicSpecificScene(topic, raw)} Add three broad blank horizontal safe areas for later checklist text, without checkmarks, ticks, numbers, or labels.`;
+    return `${topicSpecificScene(topic, raw, { studio, plan })} Add three broad blank horizontal safe areas for later checklist text, without checkmarks, ticks, numbers, or labels.`;
   }
   if (role === 'cover' || layout === 'cover_text' || layout === 'cover_photo') {
-    return `${topicSpecificScene(topic, raw)} Use a strong full-bleed subject and a calm lower safe area for the cover title.`;
+    return `${topicSpecificScene(topic, raw, { studio, plan })} Use a strong full-bleed subject and a calm lower safe area for the cover title.`;
   }
-  return `${topicSpecificScene(topic, raw)} Use a clean research/editorial backplate with blank paper-like areas for later text overlays.`;
+  return `${topicSpecificScene(topic, raw, { studio, plan })} Use a clean research/editorial backplate with blank paper-like areas for later text overlays.`;
 }
 
-function topicSpecificScene(topic = '', raw = '') {
+function topicSpecificScene(topic = '', raw = '', context = {}) {
   const text = `${topic} ${raw}`;
+  if (hasPlanningStoryFlow(context) && hasSpecificUserSceneDirection(raw)) {
+    return `Use the user-provided card scene direction as the source of truth: ${cleanPromptText(raw, 360)}. Do not add unrelated domain examples, products, people, or story beats.`;
+  }
   if (/아기\s*욕조|유해성분|환경호르몬|육아용품/i.test(text)) {
     return 'Clean baby product safety-check scene: unlabeled baby bath item, water droplets, soft bathroom shelf, magnifier, neutral safety mood.';
   }
@@ -168,6 +171,23 @@ function topicSpecificScene(topic = '', raw = '') {
   const sanitized = sanitizeSceneText(raw);
   if (sanitized) return sanitized;
   return 'Topic-specific realistic editorial scene with one strong subject, quiet background texture, and generous negative space.';
+}
+
+function hasSpecificUserSceneDirection(value = '') {
+  const text = cleanPromptText(value, 420);
+  if (text.length < 14) return false;
+  if (/한눈에 보여주는|설명하는 인포그래픽|카드$|quote_card|cover_text|data_chart|comparison_board|handwritten_research|checklist/i.test(text)) return false;
+  return true;
+}
+
+function hasPlanningStoryFlow({ studio = {}, plan = {} } = {}) {
+  return Boolean(
+    cleanPromptText(studio?.planningDraft?.storyFlow)
+    || cleanPromptText(studio?.contentSetup?.planningDraft?.storyFlow)
+    || cleanPromptText(studio?.contentBrief?.planning?.storyFlow)
+    || cleanPromptText(plan?.contentSetup?.planningDraft?.storyFlow)
+    || cleanPromptText(plan?.planningDraft?.storyFlow)
+  );
 }
 
 function sceneContextSummary(value = '') {

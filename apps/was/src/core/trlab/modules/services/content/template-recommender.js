@@ -91,22 +91,28 @@ export async function recommendTemplates(input = {}) {
   const topic = clean(input.topic);
   const audience = clean(input.audience);
   const goal = clean(input.goal);
-  if (!topic) return fallbackRecommendation({ topic, audience, goal });
+  const contentBrief = normalizeContentBrief(input.contentBrief);
+  const contentDirection = clean(input.contentDirection) || contentBrief?.generation?.contentDirection || '';
+  const planningDraft = normalizePlanningDraft(input.planningDraft) || normalizePlanningDraft(contentBrief?.planning);
+  const metadata = normalizeMetadata(input.metadata) || normalizeMetadata(contentBrief?.metadata);
+  if (!topic) return fallbackRecommendation({ topic, audience, goal, contentDirection, planningDraft, metadata });
 
   if (!hasAIProvider()) {
-    return fallbackRecommendation({ topic, audience, goal, source: 'fallback' });
+    return fallbackRecommendation({ topic, audience, goal, contentDirection, planningDraft, metadata, source: 'fallback' });
   }
 
   try {
     const { data, meta } = await generateAIJson(JSON.stringify({
-      task: '사용자의 카드뉴스 주제에 맞는 템플릿을 추천한다.',
-      userInput: { topic, audience, goal },
+      task: '사용자의 상세 카드뉴스 기획서에 맞는 템플릿을 추천한다.',
+      userInput: { topic, audience, goal, contentDirection, metadata, planningDraft },
       templates: TEMPLATES,
       rules: [
         '정확히 3개 템플릿을 추천한다.',
         '가장 적합한 템플릿을 첫 번째로 둔다.',
-        'reason은 사용자의 주제와 템플릿 구조를 연결해서 한 문장으로 쓴다.',
-        'setupHint는 다음 기획 단계에 입력하면 좋은 방향을 한 문장으로 쓴다.',
+        'planningDraft.format 또는 formatLabel은 사용자가 이미 고른 콘텐츠 형식이다. 명백히 모순되지 않으면 이 형식을 우선 존중한다.',
+        '인스타툰/컷툰 형식에서 방법 설명이나 루틴 주제라면 감정 공감 서사보다 행동, 자세, 단계, 횟수를 보여줄 수 있는 툰 템플릿을 우선한다.',
+        'reason은 상세 기획서의 독자, 컷 흐름, 제작 지시와 템플릿 구조를 연결해서 한 문장으로 쓴다.',
+        'setupHint는 선택한 템플릿을 설계 단계에 반영할 방향을 한 문장으로 쓴다.',
         'avoidNote는 이 템플릿을 고를 때 피해야 할 방향을 짧게 쓴다.'
       ],
       jsonShape: {
@@ -119,11 +125,11 @@ export async function recommendTemplates(input = {}) {
         }]
       }
     }), {
-      systemPrompt: '한국어 인스타그램 카드뉴스 기획자. 주제와 목적을 보고 가장 적합한 콘텐츠 템플릿을 고른다. 반드시 JSON만 반환한다.'
+      systemPrompt: '한국어 인스타그램 카드뉴스 기획자. 상세 기획서를 보고 가장 적합한 콘텐츠 템플릿을 고른다. 반드시 JSON만 반환한다.'
     });
-    return normalizeRecommendation(data, { topic, audience, goal, source: 'ai', meta });
+    return normalizeRecommendation(data, { topic, audience, goal, contentDirection, planningDraft, metadata, source: 'ai', meta });
   } catch (error) {
-    return fallbackRecommendation({ topic, audience, goal, source: 'fallback', warning: error.message });
+    return fallbackRecommendation({ topic, audience, goal, contentDirection, planningDraft, metadata, source: 'fallback', warning: error.message });
   }
 }
 
@@ -136,7 +142,7 @@ function normalizeRecommendation(data, context) {
   return {
     source: context.source,
     topic: context.topic,
-    recommendations: uniqueByTemplate(filled).slice(0, 3),
+    recommendations: rankRecommendationsForPlanning(uniqueByTemplate(filled), context).slice(0, 3),
     model: context.meta?.model,
     usage: context.meta?.usage
   };
@@ -151,13 +157,43 @@ function normalizeRecommendationItem(item = {}) {
     formatSignal: template.formatSignal,
     confidence: clampConfidence(item.confidence),
     reason: clean(item.reason) || `${template.label}은 이 주제의 흐름을 잡기 좋습니다.`,
-    setupHint: clean(item.setupHint) || '다음 기획 단계에서 주제와 독자를 입력하고 AI 추천을 받으세요.',
+    setupHint: clean(item.setupHint) || '설계 단계에서 상세 기획서와 이 템플릿 구조를 함께 반영하세요.',
     avoidNote: clean(item.avoidNote) || ''
   };
 }
 
 function fallbackRecommendation(context = {}) {
-  const text = `${context.topic ?? ''} ${context.audience ?? ''} ${context.goal ?? ''}`.toLowerCase();
+  const text = [
+    context.topic,
+    context.audience,
+    context.goal,
+    context.contentDirection,
+    context.planningDraft?.format,
+    context.planningDraft?.formatLabel,
+    context.planningDraft?.contentDirection,
+    context.planningDraft?.storyFlow,
+    context.planningDraft?.visualDirection,
+    context.planningDraft?.promptGuide,
+    context.planningDraft?.avoid,
+    context.planningDraft?.characterName,
+    context.planningDraft?.characterRole,
+    context.planningDraft?.characterTraits,
+    context.planningDraft?.characterPrompt,
+    context.planningDraft?.characterStyleId,
+    context.planningDraft?.characterDetailLevel,
+    context.planningDraft?.templateLabel,
+    context.planningDraft?.templateFormatSignal,
+    context.planningDraft?.templateCanvas,
+    formatArrayText(context.planningDraft?.templateCardPlan),
+    formatArrayText(context.planningDraft?.templateEditorControls),
+    formatArrayText(context.planningDraft?.templateProductionFlow),
+    formatArrayText(context.planningDraft?.templateLayoutSlots),
+    formatArrayText(context.planningDraft?.templateChannelStrategy),
+    formatObjectText(context.planningDraft?.templateSettings),
+    context.metadata?.objective,
+    context.metadata?.tone,
+    context.metadata?.channel
+  ].filter(Boolean).join(' ').toLowerCase();
   const scores = TEMPLATES.map((template) => {
     const bestScore = template.bestFor.reduce((score, keyword) => score + (text.includes(keyword.toLowerCase()) ? 2 : 0), 0);
     const labelScore = text.includes(template.label.toLowerCase()) ? 2 : 0;
@@ -181,7 +217,108 @@ function fallbackRecommendation(context = {}) {
   };
 }
 
+function normalizePlanningDraft(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return {
+    id: clean(value.id),
+    title: clean(value.title),
+    topic: clean(value.topic),
+    audience: clean(value.audience),
+    goal: clean(value.goal),
+    contentDirection: clean(value.contentDirection),
+    format: clean(value.format),
+    formatLabel: clean(value.formatLabel),
+    cardCount: Number(value.cardCount) || 0,
+    detailLevel: clean(value.detailLevel),
+    tone: clean(value.tone),
+    storyFlow: clean(value.storyFlow),
+    visualDirection: clean(value.visualDirection),
+    promptGuide: clean(value.promptGuide),
+    avoid: clean(value.avoid),
+    characterName: clean(value.characterName),
+    characterRole: clean(value.characterRole),
+    characterTraits: clean(value.characterTraits),
+    characterPrompt: clean(value.characterPrompt),
+    characterStyleId: clean(value.characterStyleId),
+    characterDetailLevel: clean(value.characterDetailLevel),
+    selectedCharacterId: clean(value.selectedCharacterId),
+    characterAssets: Array.isArray(value.characterAssets) ? value.characterAssets.slice(0, 12).map((asset) => ({
+      id: clean(asset?.id),
+      name: clean(asset?.name),
+      role: clean(asset?.role),
+      traits: clean(asset?.traits),
+      styleLabel: clean(asset?.styleLabel),
+      detailLabel: clean(asset?.detailLabel)
+    })) : [],
+    templateId: clean(value.templateId),
+    templateLabel: clean(value.templateLabel),
+    templateFormatSignal: clean(value.templateFormatSignal),
+    templateCanvas: clean(value.templateCanvas),
+    templatePlatforms: Array.isArray(value.templatePlatforms) ? value.templatePlatforms.slice(0, 8).map(clean).filter(Boolean) : [],
+    templateCardPlan: Array.isArray(value.templateCardPlan) ? value.templateCardPlan.slice(0, 12) : [],
+    templateEditorControls: Array.isArray(value.templateEditorControls) ? value.templateEditorControls.slice(0, 12) : [],
+    templateProductionFlow: Array.isArray(value.templateProductionFlow) ? value.templateProductionFlow.slice(0, 12) : [],
+    templateLayoutSlots: Array.isArray(value.templateLayoutSlots) ? value.templateLayoutSlots.slice(0, 12) : [],
+    templateChannelStrategy: Array.isArray(value.templateChannelStrategy) ? value.templateChannelStrategy.slice(0, 8) : [],
+    templateSettings: value.templateSettings && typeof value.templateSettings === 'object' && !Array.isArray(value.templateSettings) ? value.templateSettings : {}
+  };
+}
+
+function formatArrayText(value) {
+  if (!Array.isArray(value)) return '';
+  return value.flat(Infinity).map(clean).filter(Boolean).join(' ');
+}
+
+function formatObjectText(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
+  return Object.entries(value).flatMap(([key, item]) => [key, ...(Array.isArray(item) ? item : [item])]).map(clean).filter(Boolean).join(' ');
+}
+
+function normalizeMetadata(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return {
+    objective: clean(value.objective),
+    tone: clean(value.tone),
+    channel: clean(value.channel),
+    audienceNote: clean(value.audienceNote),
+    goal: clean(value.goal),
+    notes: clean(value.notes)
+  };
+}
+
+function normalizeContentBrief(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return {
+    generation: value.generation && typeof value.generation === 'object' ? {
+      topic: clean(value.generation.topic),
+      audience: clean(value.generation.audience),
+      goal: clean(value.generation.goal),
+      contentDirection: clean(value.generation.contentDirection)
+    } : {},
+    metadata: value.metadata && typeof value.metadata === 'object' ? value.metadata : null,
+    planning: value.planning && typeof value.planning === 'object' ? {
+      ...value.planning,
+      format: value.format?.id || value.planning.format,
+      formatLabel: value.format?.label || value.planning.formatLabel,
+      templateId: value.template?.id || value.planning.templateId,
+      templateLabel: value.template?.label || value.planning.templateLabel,
+      templateFormatSignal: value.template?.formatSignal || value.planning.templateFormatSignal,
+      templateCanvas: value.template?.canvas || value.planning.templateCanvas,
+      templatePlatforms: value.template?.platforms || value.planning.templatePlatforms,
+      templateCardPlan: value.template?.cardPlan || value.planning.templateCardPlan,
+      templateEditorControls: value.template?.editorControls || value.planning.templateEditorControls,
+      templateProductionFlow: value.template?.productionFlow || value.planning.templateProductionFlow,
+      templateLayoutSlots: value.template?.layoutSlots || value.planning.templateLayoutSlots,
+      templateChannelStrategy: value.template?.channelStrategy || value.planning.templateChannelStrategy,
+      templateSettings: value.template?.settings || value.planning.templateSettings
+    } : null
+  };
+}
+
 function semanticTemplateScore(text, templateId) {
+  if (/인스타툰|instatoon|컷툰|툰|캐릭터/.test(text) && templateId === 'painpoint-toon') return /방법|어떻게|구성|짜는|순서|루틴|체크|가이드|기준|팁|자세|횟수|세트/.test(text) ? 8 : 5;
+  if (/인스타툰|instatoon|컷툰|툰|캐릭터/.test(text) && templateId === 'instatoon-empathy') return /공감|상황|일상|감정|대화/.test(text) ? 7 : 3;
+  if (/인스타툰|instatoon|컷툰|툰|캐릭터/.test(text) && templateId === 'info-checklist') return /행동|자세|횟수|세트|시연|동작/.test(text) ? -2 : 0;
   if (/방법|어떻게|구성|짜는|순서|루틴|체크|가이드|기준|팁/.test(text) && templateId === 'info-checklist') return 5;
   if (/내가|저는|실패|경험|고민|불안|솔직|사연|에세이|연재|다음/.test(text) && templateId === 'first-person-essay') return 5;
   if (/세계관|무드|감성|캠페인|브랜드 선언|분위기|사진|영상미/.test(text) && templateId === 'brand-worldview') return 5;
@@ -215,13 +352,13 @@ function fallbackReason(templateId, topic) {
 
 function fallbackSetupHint(templateId, topic) {
   const label = topic || '주제';
-  if (templateId === 'blank-canvas') return `${label}의 독자, 목표, 원하는 분위기만 먼저 입력하고 AI 구성 추천으로 시작하세요.`;
-  if (templateId === 'info-checklist') return `${label}의 핵심 기준, 순서, 체크 항목을 다음 기획 단계에 입력하세요.`;
-  if (templateId === 'first-person-essay') return `${label}을 겪은 화자, 실패 장면, 다음 편 떡밥을 다음 기획 단계에 입력하세요.`;
-  if (templateId === 'brand-worldview') return `${label}의 브랜드 무드, 사진 방향, 남기고 싶은 문장을 다음 기획 단계에 입력하세요.`;
-  if (templateId === 'painpoint-toon') return `${label}에서 타겟이 겪는 불편, 해결 기능 1개, 단일 CTA를 입력하세요.`;
-  if (templateId === 'story-before-after') return `${label}의 문제 상태와 바뀐 결과를 대비해서 입력하세요.`;
-  return `${label}을 어떤 독자에게 어떤 행동으로 연결할지 다음 기획 단계에 입력하세요.`;
+  if (templateId === 'blank-canvas') return `${label}의 상세 기획서를 바탕으로 설계 단계에서 자유롭게 컷 구성을 생성하세요.`;
+  if (templateId === 'info-checklist') return `${label}의 핵심 기준, 순서, 체크 항목을 설계 단계 카드별 문장에 반영하세요.`;
+  if (templateId === 'first-person-essay') return `${label}을 겪은 화자, 실패 장면, 다음 편 떡밥을 설계 단계에 반영하세요.`;
+  if (templateId === 'brand-worldview') return `${label}의 브랜드 무드, 사진 방향, 남기고 싶은 문장을 설계 단계에 반영하세요.`;
+  if (templateId === 'painpoint-toon') return `${label}에서 타겟이 겪는 불편, 해결 기능 1개, 단일 CTA를 설계 단계에 반영하세요.`;
+  if (templateId === 'story-before-after') return `${label}의 문제 상태와 바뀐 결과를 대비해서 설계하세요.`;
+  return `${label}을 어떤 독자에게 어떤 행동으로 연결할지 설계 단계에 반영하세요.`;
 }
 
 function uniqueByTemplate(items) {
@@ -231,6 +368,38 @@ function uniqueByTemplate(items) {
     seen.add(item.templateId);
     return true;
   });
+}
+
+function rankRecommendationsForPlanning(items = [], context = {}) {
+  const preference = preferredTemplateOrder(context);
+  if (!preference.length) return items;
+  const order = new Map(preference.map((templateId, index) => [templateId, index]));
+  return [...items].sort((a, b) => {
+    const rankA = order.has(a.templateId) ? order.get(a.templateId) : Number.MAX_SAFE_INTEGER;
+    const rankB = order.has(b.templateId) ? order.get(b.templateId) : Number.MAX_SAFE_INTEGER;
+    if (rankA !== rankB) return rankA - rankB;
+    return 0;
+  });
+}
+
+function preferredTemplateOrder(context = {}) {
+  const text = [
+    context.planningDraft?.format,
+    context.planningDraft?.formatLabel,
+    context.planningDraft?.contentDirection,
+    context.planningDraft?.storyFlow,
+    context.topic,
+    context.goal
+  ].filter(Boolean).join(' ').toLowerCase();
+  if (/인스타툰|instatoon|컷툰|툰/.test(text)) {
+    if (/방법|어떻게|구성|짜는|순서|루틴|체크|가이드|기준|팁|자세|횟수|세트|시연|동작/.test(text)) {
+      return ['painpoint-toon', 'instatoon-empathy', 'info-checklist', 'blank-canvas'];
+    }
+    return ['instatoon-empathy', 'painpoint-toon', 'story-before-after', 'blank-canvas'];
+  }
+  if (/제품|product|추천형|구매/.test(text)) return ['product-guide', 'ranking-pick', 'info-checklist'];
+  if (/정보|information|교육|설명|체크|가이드/.test(text)) return ['info-checklist', 'myth-fact', 'story-before-after'];
+  return [];
 }
 
 function clampConfidence(value) {

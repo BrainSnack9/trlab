@@ -11,6 +11,7 @@ export function useContentPlanController({
   setQueue,
   setView,
   setContentPlans,
+  updateCurrentWork,
   defaultCardCount = DEFAULT_CARD_COUNT
 }) {
   const [manualState, setManualState] = useState({ loading: false, error: '' });
@@ -29,16 +30,44 @@ export function useContentPlanController({
   const createTrendPlan = async () => {
     if (!studio) return;
     const selectedHookTitle = (setup.title || titleCandidates[0] || studio.label || '').trim();
+    const storyFlowCount = countStoryFlowItems(studio?.planningDraft?.storyFlow)
+      || countStoryFlowItems(studio?.contentSetup?.planningDraft?.storyFlow)
+      || countStoryFlowItems(studio?.contentBrief?.planning?.storyFlow)
+      || countStoryFlowItems(studio?.contentSetup?.contentBrief?.planning?.storyFlow);
+    const lockedCardCount = firstPositiveNumber([
+      storyFlowCount,
+      studio?.contentBrief?.generation?.cardCount,
+      studio?.contentSetup?.contentBrief?.generation?.cardCount,
+      studio?.planningDraft?.cardCount,
+      studio?.manualBrief?.cardCount,
+      studio?.contentSetup?.cardCount,
+      studio?.cardCount,
+      defaultCardCount
+    ]);
     setGenerationState({ loading: true, error: '', cached: false });
     try {
       const requestStudio = {
         ...studio,
-        cardCount: Number(setup.cardCount) || defaultCardCount,
+        cardCount: Number(lockedCardCount) || defaultCardCount,
+        planningDraft: studio.planningDraft ?? studio.contentSetup?.planningDraft,
+        manualBrief: {
+          ...(studio.manualBrief ?? {}),
+          cardCount: Number(lockedCardCount) || defaultCardCount
+        },
+        contentSetup: {
+          ...(studio.contentSetup ?? {}),
+          cardCount: Number(lockedCardCount) || defaultCardCount
+        },
         selectedHookTitle
       };
       const data = await createContentPlan(requestStudio, { refresh: true });
       const mergedPlan = mergeTemplateSetupIntoPlan(data.plan, requestStudio);
       setContentPlans((plans) => ({ ...plans, [studio.id]: mergedPlan }));
+      updateCurrentWork?.((work) => ({
+        ...work,
+        contentPlan: mergedPlan,
+        status: work.status === 'template' || work.status === 'planning' ? 'plan' : work.status
+      }));
       setGenerationState({ loading: false, error: '', cached: Boolean(data.cached) });
     } catch (error) {
       setGenerationState({ loading: false, error: error.message, cached: false });
@@ -53,6 +82,7 @@ export function useContentPlanController({
       const mergedPlan = mergeTemplateSetupIntoPlan(data.plan, manualStudio);
       setQueue((items = []) => [manualStudio, ...items.filter((item) => item?.id !== manualStudio.id)]);
       setContentPlans((plans) => ({ ...plans, [manualStudio.id]: mergedPlan }));
+      updateCurrentWork?.((work) => ({ ...work, contentPlan: mergedPlan, status: 'plan' }));
       setView('plan');
     } catch (error) {
       setManualState({ loading: false, error: error.message });
@@ -79,4 +109,12 @@ export function useContentPlanController({
     createTrendPlan,
     createManualPlan
   };
+}
+
+function countStoryFlowItems(value) {
+  return `${value ?? ''}`.split('\n').map((item) => item.trim()).filter(Boolean).length;
+}
+
+function firstPositiveNumber(values = []) {
+  return values.map((value) => Number(value)).find((value) => Number.isFinite(value) && value > 0) || 0;
 }

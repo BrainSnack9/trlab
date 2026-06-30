@@ -1,12 +1,13 @@
-import { ClipboardList, Database, FileJson2, FileText, FolderKanban, Images, Info, LayoutTemplate, ServerCog, UserRoundCog } from 'lucide-react';
+import { ClipboardList, Database, FileJson2, FileText, FolderKanban, Images, Info, LayoutTemplate, PackageOpen, ServerCog, UserRoundCog } from 'lucide-react';
 
 export const workListStep = ['works', '목록', '작업물 목록', FolderKanban];
+export const workAssetStep = ['assets', '에셋', '작업물 이미지 요소', PackageOpen];
 
 export const steps = [
   ['overview', '개요', '작업물 개요', FileText],
   ['metadata', '정보', '작업 정보', Info],
-  ['templates', '템플릿', '템플릿', LayoutTemplate],
-  ['planning', '기획', '기획', ClipboardList],
+  ['planning', '기획', '상세 기획', ClipboardList],
+  ['templates', '템플릿', '기획 기반 템플릿', LayoutTemplate],
   ['plan', '설계', '콘텐츠 설계', FileJson2],
   ['cardnews', '제작', '이미지 제작', Images]
 ];
