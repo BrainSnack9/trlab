@@ -41,6 +41,9 @@ function contentPlannerSystemPrompt() {
     '본문은 기사 요약, 출처 설명, 제작 지시가 아니라 독자가 가져갈 데이터, 기준, 비교 포인트, 주의 조건이 담긴 완성 문구여야 한다.',
     '표지를 제외한 각 카드는 읽고 난 뒤 남는 정보가 달라야 한다.',
     '상품/소비 트렌드는 구매 이유, 비교 기준, 안 살 이유, 체크리스트로 바꾼다.',
+    '카드뉴스를 실제 제작할 수 있도록 전체 productionBrief와 카드별 visualBrief를 반드시 작성한다.',
+    'visualBrief에는 장면 시나리오, 배경 생성 프롬프트, Pexels 검색어, 소품, 구도, 안전 여백, 저작권/브랜드 사용 정책을 분리한다.',
+    '화장품, 육아용품, 자동차, 식품, 전자기기처럼 주제가 달라도 제품 실물/사용 장면/비교 자료/저장 체크가 한 흐름으로 보이게 설계한다.',
     '인기 있다, 뜨고 있다, 저장 목록에 올라왔다처럼 정보가 없는 문장은 쓰지 않는다.',
     '근거에 없는 숫자와 가짜 후기는 만들지 않는다.',
     '반드시 JSON만 반환한다.'
@@ -62,19 +65,24 @@ function buildPrompt(input) {
   if (manual) return buildManualPrompt(input, manual);
   const desiredCardCount = getDesiredCardCount(input);
   const intent = classifyContentIntent(input);
+  const templateBrief = normalizeTemplateBrief(input);
   return JSON.stringify({
     task: '아래 주제와 컷 수만 중심으로 인스타 카드뉴스 기획안 JSON을 완성한다.',
     request: {
       cardCount: desiredCardCount,
       topic: primaryTopic(input),
-      coverTitle: cleanManualText(input.selectedHookTitle) || primaryTopic(input),
+      coverTitle: cleanManualText(input.selectedHookTitle),
       intent: intent.id,
       titlePattern: intent.titlePattern,
       angle: intent.angle,
+      template: templateBrief,
       suggestedCardFlow: cardFlowForPrompt(input, intent, desiredCardCount)
     },
     rules: [
       `${desiredCardCount}장 정확히 작성한다. 1장은 표지, 2장부터는 주제에 가장 좋은 전개를 직접 설계한다.`,
+      templateBrief ? 'request.template이 있으면 request.suggestedCardFlow의 templateSlot, mission, productionSettings를 일반 role 규칙보다 우선한다.' : '',
+      templateBrief ? '템플릿이 인스타툰/컷툰 계열이면 캐릭터, 말풍선, 컷 연출, 배경 선택이 카드별 visualBrief에 반영되어야 한다.' : '',
+      templateBrief ? '템플릿이 텍스트/정보형 계열이면 폰트 톤, 글자 배치, 체크/번호/표 구성, 안전 여백이 visualBrief에 반영되어야 한다.' : '',
       'request.suggestedCardFlow의 role과 mission을 우선 따른다. 더 좋은 흐름이 있으면 바꿀 수 있지만 각 카드의 역할은 서로 달라야 한다.',
       '각 cards 항목의 body는 해당 카드 mission에 대한 답이어야 한다. 앞 카드와 같은 문장, 같은 결론, 같은 표현을 반복하지 않는다.',
       '말투는 20대 중반 여성 인스타 정보계정처럼 부드러운 해요체로 쓴다. 너무 딱딱한 보고서체, 과한 광고체, 애교체는 금지.',
@@ -87,10 +95,13 @@ function buildPrompt(input) {
       '검증 가능한 표/그래프/비교표가 필요한 카드는 visualData에 실제 값, 단위, 행, 출처명을 구조화한다. 근거가 없으면 visualData를 비운다.',
       'visualData 숫자와 비교 항목은 candidate.evidence, searchVerification, 또는 널리 알려진 공식 기준처럼 출처를 설명할 수 있는 것만 쓴다.',
       'body에는 출처명, Search SERP, 네이트판, 기사 제목, URL, 기획 메모, 근거 라벨을 넣지 않는다.',
-      `표지 제목은 request.coverTitle을 최우선으로 사용한다. 다른 후보는 hookTitles에만 넣는다.`,
+      'request.coverTitle이 비어 있으면 topic을 그대로 표지 제목으로 쓰지 말고, 독자의 고민/상황/결과 약속이 드러나는 새 제목을 만든다.',
+      'hookTitles에는 topic 복붙이 아니라 제목 후보를 3개 이상 넣는다. 반드시 1번은 어그로성 있는 후킹형, 2번은 팩트형, 3번은 추천형 제목이어야 한다.',
+      '어그로성 제목은 불안/궁금증/반전/공감 상황으로 넘기고 싶게 만든다. 팩트형 제목은 무엇을 알게 되는지 명확히 말한다. 추천형 제목은 독자가 바로 써먹을 방법/기준/체크를 약속한다.',
+      'request.coverTitle이 있을 때만 표지 제목으로 최우선 사용한다. 없으면 hookTitles 중 가장 좋은 제목을 cards[0].title로 사용한다.',
       `${intent.rule}`,
       '숫자는 근거에 있는 것만 쓴다. 근거 숫자가 없으면 숫자를 만들지 말고 상황/반복 언급/비교 기준으로 설계한다.'
-    ],
+    ].filter(Boolean),
     jsonStructure: {
       targetAudience: '',
       coreAngle: '',
@@ -104,6 +115,37 @@ function buildPrompt(input) {
       summary: '',
       riskNotes: [''],
       sourceNotes: ['내부 참고용. 카드에는 직접 노출하지 않음'],
+      contentSetup: {
+        templateId: '',
+        templateLabel: '',
+        templateFormatSignal: '',
+        templateCanvas: '',
+        templatePlatformSpecs: [],
+        templateProduction: {},
+        templateCardPlan: [],
+        templateEditorControls: [],
+        templateProductionFlow: [],
+        templateLayoutSlots: [],
+        templateChannelStrategy: [],
+        templateBlueprint: {},
+        templateSettings: {}
+      },
+      productionBrief: {
+        contentCategory: 'beauty|parenting_product|automotive|food|tech|pet|finance|real_estate|general',
+        designConcept: '카드뉴스 전체 디자인 콘셉트',
+        moodKeywords: ['clean editorial', 'premium magazine'],
+        palette: ['대표 색상 3~5개'],
+        typographyTone: '제목/본문 타이포 톤',
+        visualConsistency: '전 컷을 묶는 반복 요소',
+        assetStrategy: 'Pexels 실사 배경 사용, 브랜드 제품은 직접 촬영/비식별 생성 등',
+        pexelsStrategy: {
+          enabled: true,
+          globalQueries: ['영문 검색어'],
+          orientation: 'portrait',
+          usePolicy: 'Pexels 이미지는 배경/참고용으로 사용하고 제품명/로고/라벨은 오버레이하지 않음'
+        },
+        imageGenerationPolicy: '텍스트/로고/라벨 없는 백플레이트만 생성하고 모든 문구는 SVG로 얹음'
+      },
       cards: [{
         page: 1,
         role: 'cover|why_now|community_signal|comparison|data_scene|misconception|content_angle|checklist|closing 중 자연스럽게 선택',
@@ -113,6 +155,18 @@ function buildPrompt(input) {
         body: '카드에 보일 본문 1~3줄',
         visualPrompt: '배경/장면/이미지/표/그래프/포인트 연출. 글자 삽입 지시 금지',
         visualItems: ['시각 요소나 표/그래프 라벨 2~4개'],
+        visualBrief: {
+          scenario: '이 카드가 보여줄 구체적 장면',
+          scenarioType: 'product_reveal|usage_scene|brand_map|search_keywords|comparison|data_panel|misconception|checklist|closing',
+          backgroundPrompt: '텍스트 없는 배경 이미지 생성 프롬프트',
+          pexelsQuery: '영문 Pexels 검색어',
+          referenceImageIntent: 'Pexels 이미지를 직접 배경으로 쓸지, AI 재생성 참고로 쓸지',
+          productCandidates: [{ name: '제품/브랜드 예시', role: '왜 넣는지', imageUsePolicy: '직접 촬영/참고용/비식별 생성' }],
+          props: ['소품 2~5개'],
+          composition: '제목/본문이 올라갈 여백과 피사체 위치',
+          overlaySafeArea: '예: lower 35%, left calm panel',
+          negativePrompt: '텍스트, 로고, 라벨, 가짜 수치 금지'
+        },
         visualData: {
           type: 'bar_chart|evidence_table|comparison_table 중 하나. 없으면 생략',
           title: '검증 데이터 제목',
@@ -136,6 +190,10 @@ function buildPrompt(input) {
 }
 
 function cardFlowForPrompt(input, intent, desiredCardCount) {
+  const templateBrief = normalizeTemplateBrief(input);
+  if (templateBrief?.cardPlan?.length) {
+    return fitTemplateCardPlan(templateBrief, desiredCardCount);
+  }
   const label = primaryTopic(input) ?? '이 주제';
   const base = flowRolesForIntent(intent).map((role) => ({
     role,
@@ -149,9 +207,60 @@ function cardFlowForPrompt(input, intent, desiredCardCount) {
   }));
 }
 
+function fitTemplateCardPlan(templateBrief, desiredCardCount) {
+  const source = templateBrief.cardPlan.length ? templateBrief.cardPlan : (templateBrief.pages ?? []).map((page) => [page, `${page} 역할에 맞는 카드`]);
+  const slots = source.map(([title, note], index) => ({
+    page: index + 1,
+    role: roleForTemplateSlot(title, index, source.length),
+    layout: layoutForTemplateSlot(templateBrief, title, index),
+    templateSlot: title,
+    mission: note || `${title} 역할을 수행한다.`,
+    bodyGuidance: bodyGuidanceForTemplateSlot(templateBrief, title),
+    productionSettings: templateBrief.settings
+  }));
+  if (slots.length >= desiredCardCount) return slots.slice(0, desiredCardCount).map((item, index) => ({ ...item, page: index + 1 }));
+  const filled = [...slots];
+  while (filled.length < desiredCardCount) {
+    const last = filled.at(-1);
+    filled.splice(Math.max(1, filled.length - 1), 0, {
+      ...last,
+      templateSlot: '보강',
+      mission: '앞 카드와 겹치지 않는 구체 예시나 기준을 보강한다.',
+      bodyGuidance: '짧은 예시 또는 판단 기준을 추가한다.'
+    });
+  }
+  return filled.map((item, index) => ({ ...item, page: index + 1 }));
+}
+
+function roleForTemplateSlot(title, index, total) {
+  const text = `${title ?? ''}`.toLowerCase();
+  if (index === 0 || /cover|후킹|표지|상황|문제|before/.test(text)) return index === 0 ? 'cover' : 'why_now';
+  if (/감정|속마음|공감|힌트/.test(text)) return 'community_signal';
+  if (/반전|오해|사실|근거/.test(text)) return 'misconception';
+  if (/비교|랭킹|기준|추천|순위|after|전환/.test(text)) return 'comparison';
+  if (/체크|저장|cta|신청|공개|메시지/.test(text) || index === total - 1) return 'checklist';
+  return 'content_angle';
+}
+
+function layoutForTemplateSlot(templateBrief, title, index) {
+  const signal = `${templateBrief.formatSignal ?? ''} ${templateBrief.id ?? ''}`.toLowerCase();
+  const text = `${title ?? ''}`.toLowerCase();
+  if (/툰|toon|대화/.test(signal)) return index === 0 ? 'cover_text' : 'toon_panel';
+  if (/check|체크|저장/.test(text)) return 'checklist';
+  if (/비교|ranking|랭킹|순위|before|after/.test(`${signal} ${text}`)) return 'comparison_board';
+  if (/fact|근거|데이터|오해|사실/.test(`${signal} ${text}`)) return 'data_chart';
+  return index === 0 ? 'cover_text' : 'handwritten_research';
+}
+
+function bodyGuidanceForTemplateSlot(templateBrief, title) {
+  const settings = formatTemplateSettingsForPrompt(templateBrief.settings);
+  const settingLine = settings ? ` 선택 제작 옵션: ${settings}.` : '';
+  return `${title} 컷 역할에 맞춰 실제 카드 문구 1~3줄을 쓴다.${settingLine}`;
+}
+
 function flowRolesForIntent(intent = {}) {
   if (intent.id === 'consumer_product_marketing' || intent.id === 'pet_consumer_product') {
-    return ['cover', 'why_now', 'community_signal', 'comparison', 'misconception', 'content_angle', 'data_scene', 'checklist'];
+    return ['cover', 'content_angle', 'why_now', 'community_signal', 'comparison', 'data_scene', 'misconception', 'checklist'];
   }
   if (intent.id === 'parent_social_issue') {
     return ['cover', 'community_signal', 'why_now', 'comparison', 'misconception', 'data_scene', 'content_angle', 'checklist'];
@@ -184,13 +293,15 @@ function flowMission(role, input = {}, intent = {}) {
   const label = primaryTopic(input) ?? '이 주제';
   if (role === 'cover') return '독자가 넘기고 싶게 만드는 표지 질문 또는 한 줄 약속';
   if (role === 'why_now') return intent.id === 'consumer_product_marketing' || intent.id === 'pet_consumer_product'
-    ? '왜 지금 이 제품/브랜드를 사려는지 구매 판단 기준 제시'
+    ? '실제 사용 장면을 통해 왜 지금 이 제품/브랜드를 사려는지 제시'
     : '왜 지금 이 이슈를 봐야 하는지 타이밍과 변화 기준 제시';
   if (role === 'community_signal') return '사람들이 실제로 궁금해하거나 저장한 이유를 기준/고민 형태로 요약';
   if (role === 'comparison') return '혼자 보면 안 보이는 비교 축과 판단 기준 제시';
   if (role === 'data_scene') return '근거에 있는 숫자나 반복 신호를 하나만 골라 독자가 해석할 기준으로 전환';
   if (role === 'misconception') return '과장하거나 오해하기 쉬운 지점과 피해야 할 조건 분리';
-  if (role === 'content_angle') return `${label}을 독자 입장에서 적용할 수 있는 기준으로 전환`;
+  if (role === 'content_angle') return intent.id === 'consumer_product_marketing' || intent.id === 'pet_consumer_product'
+    ? `${label}을 제품 실물/카테고리 공개 컷으로 전환`
+    : `${label}을 독자 입장에서 적용할 수 있는 기준으로 전환`;
   if (role === 'checklist') return '마지막에 저장할 판단 기준 3개 제시';
   return '앞 카드와 겹치지 않는 새 관점 제시';
 }
@@ -201,11 +312,11 @@ function flowBodyGuidance(role, label, intent = {}) {
   if (intent.id === 'consumer_product_marketing' || intent.id === 'pet_consumer_product') {
     return ({
       why_now: '구매 이유를 부드럽게 쓴다. 유행/인기라는 말만 쓰지 말고 성분, 가격, 후기, 사용감 중 판단 기준을 제시한다.',
-      community_signal: '후기, 사용감, 망설임, 저장 이유 중 하나를 구체화하고 독자가 확인할 포인트를 자연스럽게 남긴다.',
-      comparison: '가격, 성분, 용도, 리뷰, 재구매 중 2~4개 비교 기준을 예쁘고 짧게 제시한다.',
-      data_scene: '근거 숫자가 있으면 하나만 해석하고, 없으면 반복 언급을 수치처럼 단정하지 말고 확인 기준으로 바꾼다.',
+      community_signal: '후기, 사용감, 망설임, 저장 이유 중 하나를 구체화하고 독자가 확인할 포인트를 자연스럽게 남긴다. 장면은 소비자가 고르는 순간으로 잡는다.',
+      comparison: '가격, 성분, 용도, 리뷰, 재구매 중 2~4개 비교 기준을 예쁘고 짧게 제시한다. 카드에는 표가 올라갈 빈 영역을 남긴다.',
+      data_scene: '대표 브랜드/제품군/검색 키워드를 구조화한다. 근거 숫자가 있으면 하나만 해석하고, 없으면 반복 언급을 수치처럼 단정하지 않는다.',
       misconception: '사지 말아야 할 조건이나 광고 문구와 실제 기준의 차이를 부드럽게 짚는다.',
-      content_angle: '제품 소개가 아니라 왜 장바구니에 들어갔는지, 독자가 무엇을 확인해야 하는지로 바꾼다.'
+      content_angle: '제품 소개 컷이다. 제품 실물, 비식별 패키지, 사용 소품, 카테고리명을 통해 무엇을 다루는지 바로 보이게 한다.'
     })[role] ?? `${label}을 구매 판단 기준으로 바꾼다.`;
   }
   return ({
@@ -221,6 +332,7 @@ function flowBodyGuidance(role, label, intent = {}) {
 function compactCandidate(input) {
   const manual = normalizeManualBrief(input);
   const intent = manual ? null : classifyContentIntent(input);
+  const template = normalizeTemplateBrief(input);
   return {
     label: primaryTopic(input),
     originalLabel: input.label ?? input.keyword,
@@ -229,6 +341,7 @@ function compactCandidate(input) {
     manualBrief: manual,
     category: input.category,
     production: input.production,
+    template,
     validation: input.validation,
     aiAnalysis: input.aiAnalysis,
     selectedHookTitle: input.selectedHookTitle,
@@ -244,6 +357,7 @@ function compactCandidate(input) {
 }
 
 function buildManualPrompt(input, manual) {
+  const templateBrief = normalizeTemplateBrief(input);
   return JSON.stringify({
     task: '사용자 직접 입력 주제와 컷 수만 중심으로 인스타 카드뉴스 기획안 JSON을 완성한다.',
     manualRequest: {
@@ -251,10 +365,13 @@ function buildManualPrompt(input, manual) {
       prompt: manual.prompt,
       audience: manual.audience || '저장할 만한 실용 정보를 찾는 독자',
       tone: manual.tone || '친근하지만 근거 있는 말투',
-      cardCount: manual.cardCount
+      cardCount: manual.cardCount,
+      template: templateBrief,
+      suggestedCardFlow: cardFlowForPrompt(input, { id: 'manual', angle: manual.prompt }, manual.cardCount)
     },
     rules: [
       `${manual.cardCount}컷 정확히. 첫 장은 표지, 이후 흐름은 주제에 가장 자연스럽게 직접 설계한다.`,
+      templateBrief ? 'manualRequest.template이 있으면 suggestedCardFlow의 templateSlot, mission, productionSettings를 일반 구성보다 우선한다.' : '',
       '반응/비교/데이터/체크 같은 고정 순서에 맞추지 않는다.',
       'title과 body는 실제 카드에 그대로 들어갈 완성 문구다.',
       'visualPrompt와 visualItems는 배경/이미지/표/그래프 제작용 지시로 분리한다.',
@@ -262,7 +379,7 @@ function buildManualPrompt(input, manual) {
       'body에는 작성하세요/넣어주세요/보여줘요/확인해야 해요 같은 제작 지시문 금지.',
       '트렌드 감지/검색 신호/커뮤니티 반응을 임의로 넣지 말고 사용자 입력에만 맞춘다.',
       'captionFirstLine, captionBody, captionCTA, hashtags 포함.'
-    ],
+    ].filter(Boolean),
     jsonStructure: {
       targetAudience: '',
       coreAngle: '',
@@ -276,6 +393,17 @@ function buildManualPrompt(input, manual) {
       summary: '',
       riskNotes: [''],
       sourceNotes: ['사용자 입력 기반'],
+      productionBrief: {
+        contentCategory: 'beauty|parenting_product|automotive|food|tech|pet|general',
+        designConcept: '카드뉴스 전체 디자인 콘셉트',
+        moodKeywords: [''],
+        palette: [''],
+        typographyTone: '',
+        visualConsistency: '',
+        assetStrategy: '',
+        pexelsStrategy: { enabled: true, globalQueries: [''], orientation: 'portrait', usePolicy: '' },
+        imageGenerationPolicy: ''
+      },
       cards: [{
         page: 1,
         role: '',
@@ -285,6 +413,18 @@ function buildManualPrompt(input, manual) {
         body: '',
         visualPrompt: '',
         visualItems: [''],
+        visualBrief: {
+          scenario: '',
+          scenarioType: '',
+          backgroundPrompt: '',
+          pexelsQuery: '',
+          referenceImageIntent: '',
+          productCandidates: [{ name: '', role: '', imageUsePolicy: '' }],
+          props: [''],
+          composition: '',
+          overlaySafeArea: '',
+          negativePrompt: ''
+        },
         visualData: { type: '', title: '', items: [], columns: [], rows: [], callouts: [], sources: [] },
         emphasis: ''
       }]
@@ -308,9 +448,155 @@ function normalizeManualBrief(input = {}) {
   };
 }
 
+function normalizeTemplateBrief(input = {}) {
+  const setup = input.contentSetup && typeof input.contentSetup === 'object' ? input.contentSetup : {};
+  const planning = input.planningDraft && typeof input.planningDraft === 'object'
+    ? input.planningDraft
+    : setup.planningDraft && typeof setup.planningDraft === 'object'
+      ? setup.planningDraft
+      : {};
+  const template = setup.template && typeof setup.template === 'object' ? setup.template : {};
+  const production = planning.templateProduction ?? setup.templateProduction ?? template.production ?? null;
+  const cardPlan = normalizeCardPlan(planning.templateCardPlan ?? setup.templateCardPlan ?? template.cardPlan);
+  const editorControls = normalizeTemplateControlGroups(planning.templateEditorControls ?? setup.templateEditorControls ?? template.editorControls);
+  const productionFlow = normalizeTemplateProductionFlow(planning.templateProductionFlow ?? setup.templateProductionFlow ?? template.productionFlow);
+  const layoutSlots = normalizeCardPlan(planning.templateLayoutSlots ?? setup.templateLayoutSlots ?? template.layoutSlots);
+  const channelStrategy = normalizeTemplateChannelStrategy(planning.templateChannelStrategy ?? setup.templateChannelStrategy ?? template.channelStrategy);
+  const blueprint = normalizeTemplateBlueprint(planning.templateBlueprint ?? setup.templateBlueprint ?? template.templateBlueprint);
+  const settings = normalizeTemplateSettings(planning.templateSettings ?? setup.templateSettings);
+  const pages = normalizeStringList(planning.templatePages ?? setup.templatePages ?? template.pages, [], 12, 24);
+  const platformSpecs = normalizeTemplatePlatformSpecs(planning.templatePlatformSpecs ?? setup.templatePlatformSpecs ?? template.platformSpecs);
+  if (!template.id && !production?.groups?.length && !cardPlan.length && !editorControls.length && !productionFlow.length && !layoutSlots.length && !channelStrategy.length && !blueprint && !Object.keys(settings).length) return null;
+  return {
+    id: cleanManualText(template.id ?? planning.templateId ?? setup.templateId),
+    label: cleanManualText(template.label ?? planning.templateLabel ?? setup.templateLabel),
+    formatSignal: cleanManualText(template.formatSignal ?? planning.templateFormatSignal ?? setup.templateFormatSignal),
+    canvas: cleanManualText(template.canvas ?? planning.templateCanvas ?? setup.templateCanvas),
+    platforms: normalizeStringList(template.platforms ?? planning.templatePlatforms ?? setup.templatePlatforms, [], 8, 32),
+    platformSpecs,
+    pages,
+    production: normalizeTemplateProduction(production),
+    cardPlan,
+    editorControls,
+    productionFlow,
+    layoutSlots,
+    channelStrategy,
+    blueprint,
+    settings
+  };
+}
+
+function normalizeTemplateProduction(production) {
+  if (!production || typeof production !== 'object' || !Array.isArray(production.groups)) return null;
+  return {
+    nextStep: cleanManualText(production.nextStep),
+    groups: production.groups
+      .filter((group) => Array.isArray(group) && group[0])
+      .slice(0, 12)
+      .map(([title, items]) => [cleanManualText(title), normalizeStringList(items, [], 16, 40)])
+  };
+}
+
+function normalizeCardPlan(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item) => Array.isArray(item) && item[0])
+    .slice(0, 12)
+    .map(([title, note]) => [cleanManualText(title), cleanManualText(note)]);
+}
+
+function normalizeTemplateControlGroups(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((group) => Array.isArray(group) && group[0])
+    .slice(0, 12)
+    .map(([title, items]) => [cleanManualText(title), normalizeStringList(items, [], 16, 40)]);
+}
+
+function normalizeTemplateProductionFlow(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item) => Array.isArray(item) && item[0])
+    .slice(0, 12)
+    .map(([title, note]) => [cleanManualText(title), cleanManualText(note)]);
+}
+
+function normalizeTemplateChannelStrategy(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item) => Array.isArray(item) && item[0])
+    .slice(0, 8)
+    .map(([platform, items]) => [cleanManualText(platform), normalizeStringList(items, [], 12, 80)])
+    .filter(([platform, items]) => platform || items.length);
+}
+
+function normalizeTemplateBlueprint(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const cardBlueprints = normalizeTemplateCardBlueprints(value.cardBlueprints);
+  const platformExport = Array.isArray(value.platformExport)
+    ? value.platformExport.slice(0, 8).map((item) => ({
+      platform: cleanManualText(item?.platform),
+      placements: normalizeStringList(item?.placements, [], 8, 60),
+      ratios: normalizeStringList(item?.ratios, [], 8, 24),
+      exportCheck: normalizeStringList(item?.exportCheck, [], 12, 80)
+    })).filter((item) => item.platform || item.exportCheck.length)
+    : [];
+  const blueprint = {
+    format: cleanManualText(value.format),
+    idealCards: cleanManualText(value.idealCards),
+    planningRule: cleanManualText(value.planningRule),
+    bestFor: normalizeStringList(value.bestFor, [], 12, 50),
+    productionChecklist: normalizeStringList(value.productionChecklist, [], 12, 80),
+    cardBlueprints,
+    platformExport
+  };
+  return Object.values(blueprint).some((item) => Array.isArray(item) ? item.length : item) ? blueprint : null;
+}
+
+function normalizeTemplateCardBlueprints(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item) => Array.isArray(item) && item[0])
+    .slice(0, 12)
+    .map(([title, note, items]) => [cleanManualText(title), cleanManualText(note), normalizeStringList(items, [], 8, 50)]);
+}
+
+function normalizeTemplatePlatformSpecs(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item) => item && typeof item === 'object')
+    .slice(0, 8)
+    .map((item) => ({
+      platform: cleanManualText(item.platform),
+      canvas: cleanManualText(item.canvas),
+      safeArea: cleanManualText(item.safeArea),
+      behavior: cleanManualText(item.behavior)
+    }))
+    .filter((item) => item.platform || item.canvas || item.safeArea || item.behavior);
+}
+
+function normalizeTemplateSettings(settings) {
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return {};
+  return Object.entries(settings).reduce((result, [key, values]) => {
+    const cleanKey = cleanManualText(key);
+    const cleanValues = normalizeStringList(values, [], 16, 40);
+    if (!cleanKey || !cleanValues.length) return result;
+    return { ...result, [cleanKey]: cleanValues };
+  }, {});
+}
+
+function formatTemplateSettingsForPrompt(settings = {}) {
+  return Object.entries(normalizeTemplateSettings(settings))
+    .map(([title, values]) => `${title}=${values.join('/')}`)
+    .join(', ');
+}
+
 function getDesiredCardCount(input = {}) {
   const manual = normalizeManualBrief(input);
   if (manual) return manual.cardCount;
+  const templateBrief = normalizeTemplateBrief(input);
+  if (templateBrief?.cardPlan?.length) return clampCardCount(templateBrief.cardPlan.length);
+  if (templateBrief?.pages?.length) return clampCardCount(templateBrief.pages.length);
   return input.cardCount ? clampCardCount(input.cardCount) : DEFAULT_TREND_CARD_COUNT;
 }
 
@@ -596,10 +882,13 @@ function normalizeTrendPlan(data, input, provider) {
     .map((card, index) => enforceIntentCard(card, input, intent, index));
   const finalCards = (hasCompleteAiCards ? normalizeChecklistCards(baseFinalCards, input) : ensureFinalChecklist(baseFinalCards, input))
     .map((card, index) => (index === 0 && input.selectedHookTitle ? { ...card, title: compactTitle(input.selectedHookTitle, input, 32) } : card));
-  const cardsWithVisualData = enforceOmega3VisualDataCards(finalCards, input);
   const hookTitles = normalizeHookTitles(data.hookTitles, input, intent);
   const selectedHookTitle = cleanManualText(input.selectedHookTitle);
-  return {
+  const titleFixedCards = !selectedHookTitle && hookTitles[0] && isTopicCopyTitle(finalCards[0]?.title, input)
+    ? [{ ...finalCards[0], title: hookTitles[0] }, ...finalCards.slice(1)]
+    : finalCards;
+  const cardsWithVisualData = enforceOmega3VisualDataCards(titleFixedCards, input);
+  return withProductionReadyPlan({
     provider,
     generation: {
       source: shouldReplaceAiCards ? 'ai_with_local_rewrite' : 'ai',
@@ -626,7 +915,7 @@ function normalizeTrendPlan(data, input, provider) {
     riskNotes: ensureList(data.riskNotes, ['근거가 부족한 수치는 단정하지 마세요.']),
     sourceNotes: filterSourceNotes(ensureList(data.sourceNotes, getEvidence(input, intent)), intent, input),
     cards: cardsWithVisualData
-  };
+  }, input, data);
 }
 
 function enforceCardLength(card) {
@@ -747,6 +1036,454 @@ function visualDataEnrichmentMeta(cards = [], input = {}) {
   };
 }
 
+function withProductionReadyPlan(plan, input = {}, aiData = {}) {
+  const productionBrief = normalizeProductionBrief(aiData.productionBrief, input, plan);
+  const templateBrief = normalizeTemplateBrief(input);
+  const cards = applyTemplateSlots(plan.cards ?? [], templateBrief).map((card) => ({
+    ...card,
+    visualBrief: normalizeVisualBrief(card.visualBrief, input, card, productionBrief)
+  }));
+  return {
+    ...plan,
+    contentSetup: templateBrief ? {
+      ...(plan.contentSetup ?? {}),
+      templateId: templateBrief.id,
+      templateLabel: templateBrief.label,
+      templateFormatSignal: templateBrief.formatSignal,
+      templateCanvas: templateBrief.canvas,
+      templatePlatforms: templateBrief.platforms,
+      templatePlatformSpecs: templateBrief.platformSpecs,
+      templateProduction: templateBrief.production,
+      templateCardPlan: templateBrief.cardPlan,
+      templateEditorControls: templateBrief.editorControls,
+      templateProductionFlow: templateBrief.productionFlow,
+      templateLayoutSlots: templateBrief.layoutSlots,
+      templateChannelStrategy: templateBrief.channelStrategy,
+      templateBlueprint: templateBrief.blueprint,
+      templateSettings: templateBrief.settings
+    } : plan.contentSetup,
+    templateProduction: templateBrief?.production ?? plan.templateProduction,
+    templateCardPlan: templateBrief?.cardPlan ?? plan.templateCardPlan,
+    templateEditorControls: templateBrief?.editorControls ?? plan.templateEditorControls,
+    templateProductionFlow: templateBrief?.productionFlow ?? plan.templateProductionFlow,
+    templateLayoutSlots: templateBrief?.layoutSlots ?? plan.templateLayoutSlots,
+    templateChannelStrategy: templateBrief?.channelStrategy ?? plan.templateChannelStrategy,
+    templateBlueprint: templateBrief?.blueprint ?? plan.templateBlueprint,
+    templatePlatformSpecs: templateBrief?.platformSpecs ?? plan.templatePlatformSpecs,
+    templateSettings: templateBrief?.settings ?? plan.templateSettings,
+    productionBrief,
+    generation: {
+      ...(plan.generation ?? {}),
+      productionBrief: productionBriefMeta(productionBrief, cards)
+    },
+    cards
+  };
+}
+
+function applyTemplateSlots(cards = [], templateBrief) {
+  if (!templateBrief?.cardPlan?.length) return cards;
+  return cards.map((card, index) => {
+    const slot = templateBrief.cardPlan[index];
+    if (!slot) return card;
+    const [templateSlot, templateMission] = slot;
+    return {
+      ...card,
+      role: roleForTemplateSlot(templateSlot, index, templateBrief.cardPlan.length) || card.role,
+      layout: layoutForTemplateSlot(templateBrief, templateSlot, index) || card.layout,
+      templateSlot,
+      templateMission,
+      productionSettings: templateBrief.settings
+    };
+  });
+}
+
+function productionBriefMeta(productionBrief = {}, cards = []) {
+  const pexelsCards = cards.filter((card) => card?.visualBrief?.pexelsQuery || card?.visualBrief?.referenceImage?.url).length;
+  return {
+    enabled: true,
+    contentCategory: productionBrief.contentCategory,
+    pexelsEnabled: Boolean(productionBrief.pexelsStrategy?.enabled),
+    pexelsCardCount: pexelsCards,
+    assetPolicy: productionBrief.assetStrategy
+  };
+}
+
+function normalizeProductionBrief(value, input = {}, plan = {}) {
+  const category = normalizeContentCategory(value?.contentCategory || inferContentCategory(input));
+  const preset = productionPreset(category, input);
+  const globalQueries = ensureList(value?.pexelsStrategy?.globalQueries, preset.pexelsQueries)
+    .map((item) => cleanEnglishQuery(item, 90))
+    .filter(Boolean)
+    .slice(0, 5);
+  return {
+    contentCategory: category,
+    designConcept: cleanManualText(value?.designConcept || preset.designConcept).slice(0, 180),
+    moodKeywords: normalizeStringList(value?.moodKeywords, preset.moodKeywords, 6, 40),
+    palette: normalizeStringList(value?.palette, preset.palette, 6, 40),
+    typographyTone: cleanManualText(value?.typographyTone || preset.typographyTone).slice(0, 120),
+    visualConsistency: cleanManualText(value?.visualConsistency || preset.visualConsistency).slice(0, 220),
+    assetStrategy: cleanManualText(value?.assetStrategy || preset.assetStrategy).slice(0, 260),
+    pexelsStrategy: {
+      enabled: value?.pexelsStrategy?.enabled !== false,
+      globalQueries,
+      orientation: cleanManualText(value?.pexelsStrategy?.orientation || 'portrait').slice(0, 20),
+      usePolicy: cleanManualText(value?.pexelsStrategy?.usePolicy || 'Pexels 이미지는 배경/레퍼런스용으로 사용하고, 브랜드 로고·제품 라벨·가짜 텍스트는 이미지에 넣지 않습니다.').slice(0, 260)
+    },
+    imageGenerationPolicy: cleanManualText(value?.imageGenerationPolicy || '이미지는 텍스트 없는 4:5 백플레이트만 만들고, 모든 한국어 문구·표·그래프·출처는 TrLab SVG 레이어로 얹습니다.').slice(0, 260),
+    deckUnity: cleanManualText(value?.deckUnity || plan.referenceStyle || preset.deckUnity).slice(0, 160)
+  };
+}
+
+function normalizeVisualBrief(value, input = {}, card = {}, productionBrief = normalizeProductionBrief({}, input)) {
+  const preset = visualBriefPreset(input, card, productionBrief);
+  const templateSettingLine = formatTemplateSettingsForPrompt(card.productionSettings);
+  const productCandidates = normalizeProductCandidates(value?.productCandidates, input, productionBrief).slice(0, 5);
+  const pexelsQuery = cleanEnglishQuery(value?.pexelsQuery || preset.pexelsQuery, 110);
+  const backgroundPrompt = cleanPromptSentence([
+    value?.backgroundPrompt || preset.backgroundPrompt,
+    templateSettingLine ? `Template production settings: ${templateSettingLine}.` : ''
+  ].filter(Boolean).join(' '), 620);
+  return {
+    scenario: cleanManualText(value?.scenario || preset.scenario).slice(0, 220),
+    scenarioType: cleanManualText(value?.scenarioType || preset.scenarioType).slice(0, 40),
+    backgroundPrompt,
+    pexelsQuery,
+    referenceImageIntent: cleanManualText(value?.referenceImageIntent || preset.referenceImageIntent).slice(0, 160),
+    productCandidates,
+    props: normalizeStringList(value?.props, preset.props, 6, 32),
+    composition: cleanManualText([
+      value?.composition || preset.composition,
+      card.templateSlot ? `Template slot: ${card.templateSlot}. ${card.templateMission || ''}` : ''
+    ].filter(Boolean).join(' ')).slice(0, 260),
+    overlaySafeArea: cleanManualText(value?.overlaySafeArea || preset.overlaySafeArea).slice(0, 120),
+    negativePrompt: cleanManualText(value?.negativePrompt || preset.negativePrompt).slice(0, 260),
+    pexels: {
+      enabled: productionBrief.pexelsStrategy?.enabled !== false,
+      query: pexelsQuery,
+      orientation: productionBrief.pexelsStrategy?.orientation || 'portrait',
+      usePolicy: productionBrief.pexelsStrategy?.usePolicy
+    }
+  };
+}
+
+function inferContentCategory(input = {}) {
+  const text = collectIntentText(input);
+  if (/립|메이크업|뷰티|화장품|스킨케어|세럼|선케어|향수|블러셔|틴트|립밤|lip|beauty/i.test(text)) return 'beauty';
+  if (/카시트|유모차|젖병|기저귀|욕조|아기|육아템|아이용품|baby|parent/i.test(text)) return 'parenting_product';
+  if (/자동차|전기차|하이브리드|SUV|차량|테슬라|현대차|기아|car|automotive|vehicle/i.test(text)) return 'automotive';
+  if (/식품|간식|음료|편의점|프로틴|커피|다이어트|food|snack|drink/i.test(text)) return 'food';
+  if (/앱|AI|기기|노트북|스마트폰|전자기기|가젯|tech|device/i.test(text)) return 'tech';
+  if (/반려|강아지|고양이|펫|pet/i.test(text)) return 'pet';
+  if (/부동산|아파트|집값|real estate/i.test(text)) return 'real_estate';
+  if (/주식|코스피|투자|금리|환율|finance|stock/i.test(text)) return 'finance';
+  return 'general';
+}
+
+function normalizeContentCategory(value) {
+  const allowed = ['beauty', 'parenting_product', 'automotive', 'food', 'tech', 'pet', 'finance', 'real_estate', 'general'];
+  return allowed.includes(value) ? value : 'general';
+}
+
+function productionPreset(category, input = {}) {
+  const topic = primaryTopic(input);
+  const common = {
+    typographyTone: '굵은 고딕 제목과 읽기 쉬운 본문, 카드마다 제목 위치와 여백을 반복합니다.',
+    imageGenerationPolicy: '텍스트 없는 백플레이트만 생성',
+    deckUnity: '같은 색상, 같은 여백, 같은 오브젝트 톤을 반복'
+  };
+  const presets = {
+    beauty: {
+      designConcept: `${topic}을 클린 뷰티 매거진 톤으로 보여주는 카드뉴스`,
+      moodKeywords: ['clean girl', 'glossy', 'beauty magazine', 'soft editorial'],
+      palette: ['milky pink', 'vanilla cream', 'cocoa brown', 'cherry red'],
+      visualConsistency: '크림 배경, 부드러운 제품 플랫레이, 글로시한 하이라이트를 반복합니다.',
+      assetStrategy: '브랜드 제품명은 정보로만 쓰고, 이미지는 직접 촬영 또는 로고 없는 비식별 립/스킨케어 오브젝트와 Pexels 뷰티 사진을 사용합니다.',
+      pexelsQueries: ['beauty products flat lay', 'lip gloss makeup pouch', 'skincare product flat lay'],
+      ...common
+    },
+    parenting_product: {
+      designConcept: `${topic}을 부모가 구매 전 확인하는 안전 점검 카드뉴스로 구성`,
+      moodKeywords: ['clean parenting', 'safe home', 'soft daylight', 'practical'],
+      palette: ['warm white', 'sage green', 'soft yellow', 'charcoal'],
+      visualConsistency: '집 안의 자연광, 아이 물건, 점검 메모 같은 소품을 반복합니다.',
+      assetStrategy: '아이 얼굴과 브랜드 라벨은 피하고, 제품군을 상징하는 비식별 소품과 Pexels 홈/육아 이미지를 사용합니다.',
+      pexelsQueries: ['baby products nursery flat lay', 'parenting product safety home', 'baby care items'],
+      ...common
+    },
+    automotive: {
+      designConcept: `${topic}을 차량 선택 기준과 사용 장면으로 보여주는 카드뉴스`,
+      moodKeywords: ['modern mobility', 'clean garage', 'road lifestyle', 'technical editorial'],
+      palette: ['graphite', 'steel blue', 'white', 'signal green'],
+      visualConsistency: '차량 디테일, 도로, 대시보드, 비교 패널의 차가운 톤을 반복합니다.',
+      assetStrategy: '실제 브랜드 로고와 번호판은 피하고, Pexels 차량/도로 사진 또는 로고 없는 차량 이미지를 사용합니다.',
+      pexelsQueries: ['modern car road lifestyle', 'electric car interior', 'car dashboard detail'],
+      ...common
+    },
+    food: {
+      designConcept: `${topic}을 편의점/주방/테이블 사용 장면으로 보여주는 카드뉴스`,
+      moodKeywords: ['fresh editorial', 'convenience store', 'tabletop', 'appetizing'],
+      palette: ['fresh white', 'leaf green', 'tomato red', 'soft beige'],
+      visualConsistency: '상단 제품/음식 장면과 하단 정보 여백을 반복합니다.',
+      assetStrategy: '브랜드 라벨 없는 식품 소품과 Pexels 음식 사진을 배경/참고로 사용합니다.',
+      pexelsQueries: ['healthy snack flat lay', 'convenience store snacks', 'drink product flat lay'],
+      ...common
+    },
+    tech: {
+      designConcept: `${topic}을 데스크 셋업과 사용 화면 없는 기기 장면으로 보여주는 카드뉴스`,
+      moodKeywords: ['clean desk', 'modern tech', 'productivity', 'minimal'],
+      palette: ['white', 'graphite', 'electric blue', 'lime'],
+      visualConsistency: '책상, 손, 기기 가장자리, 빈 화면 영역을 반복합니다.',
+      assetStrategy: '실제 UI/로고/스크린샷은 피하고, Pexels 데스크/기기 이미지를 사용합니다.',
+      pexelsQueries: ['modern desk setup technology', 'smartphone desk flat lay', 'productivity workspace'],
+      ...common
+    },
+    pet: {
+      designConcept: `${topic}을 반려인이 실제 사용하는 장면으로 보여주는 카드뉴스`,
+      moodKeywords: ['warm pet lifestyle', 'home care', 'playful practical'],
+      palette: ['warm white', 'grass green', 'soft coral', 'charcoal'],
+      visualConsistency: '집 안 자연광, 반려동물 소품, 빈 정보 패널을 반복합니다.',
+      assetStrategy: '브랜드 라벨 없는 펫 용품과 Pexels 반려동물 라이프스타일 이미지를 사용합니다.',
+      pexelsQueries: ['pet products home flat lay', 'dog toy lifestyle', 'cat care products'],
+      ...common
+    },
+    finance: {
+      designConcept: `${topic}을 리서치 노트와 데이터 패널 중심으로 보여주는 카드뉴스`,
+      moodKeywords: ['research note', 'data editorial', 'calm finance'],
+      palette: ['white', 'slate', 'blue', 'red accent'],
+      visualConsistency: '빈 종이, 펜, 차트가 들어갈 SVG 안전 패널을 반복합니다.',
+      assetStrategy: '가짜 차트와 숫자가 들어간 사진은 피하고 빈 리서치 데스크 이미지만 사용합니다.',
+      pexelsQueries: ['finance research desk blank paper', 'stock market desk no chart', 'business notebook desk'],
+      ...common
+    },
+    real_estate: {
+      designConcept: `${topic}을 도시 배경과 빈 데이터 패널로 보여주는 카드뉴스`,
+      moodKeywords: ['urban editorial', 'housing data', 'city texture'],
+      palette: ['midnight', 'concrete gray', 'warm window', 'white'],
+      visualConsistency: '도시 풍경과 중앙 빈 데이터 영역을 반복합니다.',
+      assetStrategy: '특정 매물/광고 문구 없이 Pexels 도시/주거 사진을 사용합니다.',
+      pexelsQueries: ['apartment building city night', 'urban housing skyline', 'real estate city building'],
+      ...common
+    },
+    general: {
+      designConcept: `${topic}을 정보형 매거진 톤으로 보여주는 카드뉴스`,
+      moodKeywords: ['editorial', 'clean information', 'practical'],
+      palette: ['white', 'slate', 'indigo', 'warm accent'],
+      visualConsistency: '같은 여백, 같은 강조색, 같은 정보 패널 리듬을 반복합니다.',
+      assetStrategy: '주제를 상징하는 Pexels 사진을 배경/참고로 쓰고 모든 문구는 SVG로 얹습니다.',
+      pexelsQueries: [cleanEnglishQuery(topic, 80) || 'editorial lifestyle detail'],
+      ...common
+    }
+  };
+  return presets[category] ?? presets.general;
+}
+
+function visualBriefPreset(input = {}, card = {}, productionBrief = {}) {
+  const category = productionBrief.contentCategory || inferContentCategory(input);
+  const topic = primaryTopic(input);
+  const role = card.role;
+  const scenarioType = scenarioTypeForCard(role, card.layout, category);
+  const baseQuery = pexelsQueryForScenario(category, scenarioType, topic);
+  const props = propsForCategory(category, scenarioType);
+  const overlaySafeArea = overlaySafeAreaForRole(role, card.layout);
+  const scenario = scenarioForCard(category, scenarioType, topic, card.title);
+  const backgroundPrompt = [
+    scenario,
+    `Use ${productionBrief.moodKeywords?.join(', ') || 'clean editorial'} mood.`,
+    `Props: ${props.join(', ')}.`,
+    `Composition: ${overlaySafeArea}; leave calm blank areas for SVG text overlays.`,
+    'No readable text, no logos, no labels, no watermarks, no fake charts or UI.'
+  ].join(' ');
+  return {
+    scenario,
+    scenarioType,
+    backgroundPrompt,
+    pexelsQuery: baseQuery,
+    referenceImageIntent: role === 'cover' || card.visualType === 'photo'
+      ? 'Pexels 사진을 직접 배경으로 쓰거나 같은 구도로 AI 백플레이트를 재생성합니다.'
+      : 'Pexels 사진은 질감과 소품 참고로 쓰고, 실제 데이터/문구는 SVG로 얹습니다.',
+    props,
+    composition: `${overlaySafeArea}. 피사체는 한쪽에 두고 제목/본문 영역은 비워둡니다.`,
+    overlaySafeArea,
+    negativePrompt: 'no readable text, no logo, no product label, no brand mark, no fake data, no UI screenshot, no watermark'
+  };
+}
+
+function scenarioTypeForCard(role, layout, category) {
+  if (role === 'cover') return 'cover_hook';
+  if (role === 'content_angle' && ['beauty', 'parenting_product', 'automotive', 'food', 'tech', 'pet'].includes(category)) return 'product_reveal';
+  if (role === 'why_now') return 'usage_scene';
+  if (role === 'community_signal') return 'shopping_signal';
+  if (role === 'comparison' || layout === 'comparison_board') return 'comparison';
+  if (role === 'data_scene' || layout === 'data_chart') return 'search_keywords';
+  if (role === 'misconception') return 'misconception';
+  if (role === 'checklist' || layout === 'checklist') return 'checklist';
+  return 'editorial_note';
+}
+
+function scenarioForCard(category, scenarioType, topic, title) {
+  const subject = cleanShort(topic || title || 'card news topic');
+  const map = {
+    beauty: {
+      cover_hook: `${subject}을 보여주는 뷰티 파우치 플랫레이`,
+      product_reveal: `로고 없는 립/스킨케어 제품 튜브와 거울을 배치한 제품 공개 컷`,
+      usage_scene: `손에 든 뷰티 제품과 촉촉한 텍스처 스와치가 보이는 사용 장면`,
+      shopping_signal: `Sephora 같은 뷰티 쇼핑 무드를 연상시키되 로고 없는 제품 선택 장면`,
+      comparison: `제품 질감, 사용감, 가격 기준을 얹을 수 있는 빈 비교 패널`,
+      search_keywords: `검색 키워드와 제품군을 얹을 빈 에디터 보드`,
+      misconception: `예쁜 패키지와 실제 사용감 사이를 대비하는 뷰티 리서치 장면`,
+      checklist: `파우치와 립 제품 소품 위 저장 체크 문구가 들어갈 배경`
+    },
+    parenting_product: {
+      cover_hook: `${subject}을 부모가 확인하는 깨끗한 집 안 제품 점검 장면`,
+      product_reveal: `로고 없는 육아용품과 안전 점검 메모가 놓인 플랫레이`,
+      usage_scene: `아이 얼굴 없이 부모 손과 제품 사용 조건이 암시되는 홈 장면`,
+      shopping_signal: `구매 전 소재와 사용 연령을 고민하는 제품 선택 장면`,
+      comparison: `소재, 인증, 사용 연령을 얹을 빈 비교 패널`,
+      search_keywords: `육아용품 검색 키워드와 기준을 얹을 빈 리서치 보드`,
+      misconception: `불안과 확인 기준을 분리하는 안전 점검 장면`,
+      checklist: `제품, 안내문처럼 보이는 빈 종이, 체크 문구 여백이 있는 저장 배경`
+    },
+    automotive: {
+      cover_hook: `${subject}을 보여주는 현대적인 차량 디테일 또는 도로 장면`,
+      product_reveal: `로고와 번호판 없는 차량 외관/실내 디테일 컷`,
+      usage_scene: `운전석, 충전, 트렁크, 도심 주행 중 하나를 보여주는 사용 장면`,
+      shopping_signal: `차량 선택 전 비교하는 쇼룸/차고 무드`,
+      comparison: `가격, 유지비, 사용 목적을 얹을 빈 비교 패널`,
+      search_keywords: `차량 검색 키워드와 선택 기준을 얹을 빈 에디터 보드`,
+      misconception: `광고 이미지와 실제 사용 조건을 대비하는 차량 점검 장면`,
+      checklist: `차량 디테일과 체크 문구 여백이 있는 저장 배경`
+    }
+  };
+  const fallback = {
+    cover_hook: `${subject}을 상징하는 실제적인 에디토리얼 장면`,
+    product_reveal: `${subject}의 제품군을 로고 없이 보여주는 플랫레이`,
+    usage_scene: `${subject}을 실제로 쓰는 생활 장면`,
+    shopping_signal: `${subject}을 고르기 전 망설이는 소비 장면`,
+    comparison: `${subject} 비교 기준을 얹을 빈 패널`,
+    search_keywords: `${subject} 검색 키워드와 대표 항목을 얹을 빈 보드`,
+    misconception: `${subject} 오해와 실제 기준을 나눌 에디토리얼 장면`,
+    checklist: `${subject} 저장 체크리스트가 들어갈 배경`,
+    editorial_note: `${subject} 리서치 노트 장면`
+  };
+  return (map[category]?.[scenarioType] || fallback[scenarioType] || fallback.editorial_note).slice(0, 220);
+}
+
+function pexelsQueryForScenario(category, scenarioType, topic) {
+  const queries = {
+    beauty: {
+      cover_hook: 'lip gloss makeup pouch flat lay',
+      product_reveal: 'beauty products flat lay no label',
+      usage_scene: 'lip gloss beauty routine',
+      shopping_signal: 'makeup products shopping flat lay',
+      comparison: 'cosmetics flat lay minimal',
+      search_keywords: 'beauty editor desk cosmetics',
+      misconception: 'makeup product texture swatch',
+      checklist: 'makeup pouch flat lay'
+    },
+    parenting_product: {
+      cover_hook: 'baby care products nursery flat lay',
+      product_reveal: 'baby products flat lay',
+      usage_scene: 'parent baby care home hands',
+      shopping_signal: 'baby product shopping',
+      comparison: 'baby care items flat lay',
+      search_keywords: 'parenting notebook baby products',
+      misconception: 'baby bath products clean bathroom',
+      checklist: 'baby care checklist flat lay'
+    },
+    automotive: {
+      cover_hook: 'modern car detail road',
+      product_reveal: 'car interior detail',
+      usage_scene: 'driving car interior road',
+      shopping_signal: 'car showroom detail',
+      comparison: 'car dashboard detail',
+      search_keywords: 'automotive research desk',
+      misconception: 'car maintenance garage',
+      checklist: 'car keys dashboard'
+    }
+  };
+  return queries[category]?.[scenarioType] || cleanEnglishQuery(topic, 80) || 'editorial lifestyle detail';
+}
+
+function propsForCategory(category, scenarioType) {
+  const base = {
+    beauty: ['unlabeled lip tube', 'makeup pouch', 'compact mirror', 'soft fabric', 'texture swatch'],
+    parenting_product: ['unlabeled baby item', 'soft towel', 'blank note card', 'thermometer', 'clean shelf'],
+    automotive: ['car key', 'dashboard detail', 'road light', 'blank note card', 'clean interior'],
+    food: ['unlabeled snack', 'drink cup', 'tabletop', 'napkin', 'fresh ingredient'],
+    tech: ['blank screen device', 'keyboard edge', 'notebook', 'desk light', 'cable'],
+    pet: ['pet toy', 'bowl', 'leash', 'soft rug', 'blank note card'],
+    finance: ['blank papers', 'pen', 'laptop edge', 'desk light'],
+    real_estate: ['city skyline', 'building detail', 'blank data panel'],
+    general: ['topic object', 'blank note card', 'editorial surface']
+  };
+  const items = base[category] ?? base.general;
+  return scenarioType === 'checklist' ? [...items.slice(0, 3), 'three blank rows'] : items;
+}
+
+function overlaySafeAreaForRole(role, layout) {
+  if (role === 'cover' || layout === 'cover_photo' || layout === 'cover_text') return 'lower 35% dark calm title-safe area';
+  if (role === 'comparison' || layout === 'comparison_board') return 'center blank split panel and top title-safe area';
+  if (role === 'data_scene' || layout === 'data_chart') return 'center blank SVG data panel and lower copy-safe area';
+  if (role === 'checklist' || layout === 'checklist') return 'three broad blank horizontal rows';
+  return 'left or lower calm negative space for title and body';
+}
+
+function normalizeProductCandidates(value, input = {}, productionBrief = {}) {
+  const items = Array.isArray(value) ? value : defaultProductCandidates(input, productionBrief.contentCategory);
+  return items
+    .map((item) => {
+      if (typeof item === 'string') return { name: cleanManualText(item).slice(0, 80), role: '대표 제품 예시', imageUsePolicy: '브랜드 이미지는 참고용. 실제 카드 배경은 직접 촬영/Pexels/비식별 생성 권장.' };
+      return {
+        name: cleanManualText(item?.name || item?.label).slice(0, 80),
+        role: cleanManualText(item?.role || item?.reason || '대표 제품 예시').slice(0, 120),
+        imageUsePolicy: cleanManualText(item?.imageUsePolicy || '브랜드 이미지는 참고용. 실제 카드 배경은 직접 촬영/Pexels/비식별 생성 권장.').slice(0, 180),
+        searchQuery: cleanEnglishQuery(item?.searchQuery || item?.name || '', 100)
+      };
+    })
+    .filter((item) => item.name);
+}
+
+function defaultProductCandidates(input = {}, category = inferContentCategory(input)) {
+  const text = collectIntentText(input);
+  if (category === 'beauty' && /립|lip|틴트|립밤|립오일/i.test(text)) {
+    return [
+      { name: 'rhode Peptide Lip Tint', role: '셀럽 브랜드 상징성', imageUsePolicy: '공식 이미지는 참고용. 실사용은 직접 촬영 또는 비식별 생성 권장.', searchQuery: 'rhode peptide lip tint product photo' },
+      { name: 'Summer Fridays Lip Butter Balm', role: '패키지 컬러가 카드 비주얼에 좋음', imageUsePolicy: '공식 이미지는 참고용. 로고 없는 튜브 이미지로 대체 권장.', searchQuery: 'Summer Fridays lip butter balm product photo' },
+      { name: 'e.l.f. Glow Reviver Lip Oil', role: '미국 드럭스토어 가성비 대표', imageUsePolicy: '공식 이미지는 참고용. 실제 카드는 비식별 립오일 오브젝트 사용.', searchQuery: 'elf glow reviver lip oil product photo' },
+      { name: 'NYX Fat Oil Lip Drip', role: '립오일 카테고리 대표 예시', imageUsePolicy: '공식 이미지는 참고용. 브랜드 로고 노출 없이 카테고리 이미지 사용.', searchQuery: 'NYX Fat Oil Lip Drip product photo' }
+    ];
+  }
+  if (category === 'automotive') {
+    return [{ name: primaryTopic(input), role: '차량/제품군 예시', imageUsePolicy: '브랜드 로고와 번호판은 피하고 로고 없는 차량 이미지 사용.' }];
+  }
+  if (['parenting_product', 'food', 'tech', 'pet'].includes(category)) {
+    return [{ name: primaryTopic(input), role: '대표 제품군 예시', imageUsePolicy: '상표/라벨 노출 없이 제품군을 상징하는 비식별 이미지 사용.' }];
+  }
+  return [];
+}
+
+function normalizeStringList(value, fallback = [], max = 5, itemLimit = 50) {
+  return ensureList(value, fallback)
+    .map((item) => cleanManualText(item).slice(0, itemLimit))
+    .filter(Boolean)
+    .slice(0, max);
+}
+
+function cleanEnglishQuery(value, max = 100) {
+  return `${value ?? ''}`
+    .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max);
+}
+
+function cleanPromptSentence(value, max = 560) {
+  return cleanManualText(value)
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .slice(0, max);
+}
+
 function isGenericChecklistTitle(value) {
   return /^(저장\s*기준|저장\s*전\s*체크|저장\s*체크|체크리스트|마지막\s*체크|이렇게\s*만들기)(\s*\d+개?)?$/.test(`${value ?? ''}`.trim());
 }
@@ -777,7 +1514,7 @@ function normalizeManualPlan(data, input, provider, manual) {
   const rawCards = ensureManualCarouselCards(cards, input, desiredCardCount).slice(0, desiredCardCount);
   const normalizedCards = rawCards.map((card, index) => normalizeManualCard(card, input, index, rawCards.length, referenceStyle));
   const cardsWithVisualData = enforceOmega3VisualDataCards(normalizedCards, input);
-  return {
+  return withProductionReadyPlan({
     provider,
     generation: {
       source: Array.isArray(data.cards) && data.cards.length ? 'ai' : 'fallback',
@@ -800,7 +1537,7 @@ function normalizeManualPlan(data, input, provider, manual) {
     riskNotes: ensureList(data.riskNotes, ['과장된 단정 표현은 피하세요.']),
     sourceNotes: ensureList(data.sourceNotes, ['사용자 입력 기반']),
     cards: cardsWithVisualData
-  };
+  }, input, data);
 }
 
 function ensureCarouselCards(cards, input, desiredCardCount = getDesiredCardCount(input)) {
@@ -868,6 +1605,7 @@ function normalizeTrendCard(card, input, index, total, referenceStyle) {
     action: card.action ?? '',
     visualPrompt: normalizeVisualPrompt(card.visualPrompt, input, role, layout, title, body, sourceLine, intent),
     visualItems: normalizeVisualItems(card.visualItems, input, role, card),
+    visualBrief: card.visualBrief,
     visualData: normalizeVisualData(card.visualData),
     sourceLine,
     emphasis: card.emphasis ?? card.dataPoint ?? primaryTopic(input)
@@ -891,6 +1629,7 @@ function normalizeManualCard(card, input, index, total, referenceStyle) {
     action: card.action ?? '',
     visualPrompt: normalizeVisualPrompt(card.visualPrompt, input, role, layout, title, body, card.sourceLine ?? '', null),
     visualItems: normalizeVisualItems(card.visualItems, input, role, card),
+    visualBrief: card.visualBrief,
     visualData: normalizeVisualData(card.visualData),
     sourceLine: cleanCardBody(card.sourceLine ?? ''),
     emphasis: card.emphasis ?? card.dataPoint ?? title
@@ -1673,7 +2412,7 @@ function hasFinalConsonant(value) {
 }
 
 function isProductTopic(value) {
-  return /쇼핑|추천템|생활|상품|제품|브랜드|아마존|틱톡|품절|구매|소비|템|장바구니|편의점|육아템|펫|용품|K뷰티|뷰티|화장품|스킨케어|세럼|선케어|사용감|재구매/.test(`${value ?? ''}`);
+  return /쇼핑|추천템|생활|상품|제품|브랜드|아마존|틱톡|품절|구매|소비|템|장바구니|편의점|육아템|펫|용품|K뷰티|뷰티|화장품|스킨케어|세럼|선케어|립|틴트|립밤|립오일|블러셔|향수|사용감|재구매/.test(`${value ?? ''}`);
 }
 
 function classifyContentIntent(input = {}) {
@@ -1682,7 +2421,7 @@ function classifyContentIntent(input = {}) {
   const parenting = /육아|부모|엄마|아빠|맘|워킹맘|아이|아기|신생아|유아|어린이|어린이집|유치원|등원|하원|돌봄|첫돌|소아|키즈/.test(text);
   const safety = /환경호르몬|유해|성분|안전|독성|검출|리콜|욕조|젖병|기저귀|카시트|유모차|아기용품/.test(text);
   const social = /등원|하원|어린이집|유치원|돌봄|지원|급여|제도|정부|기업|명단|워킹맘|일·가정|양립|감기|아픈|맘충|첫돌|출근|육아휴직/.test(text);
-  const product = isProductTopic(text) || /장난감|간식|자동|급식기|텀블러|브랜드|아마존|틱톡|라이브커머스|품절|매출|판매|구매|장바구니|화장품|스킨케어|세럼|선케어/.test(text);
+  const product = isProductTopic(text) || /장난감|간식|자동|급식기|텀블러|브랜드|아마존|틱톡|라이브커머스|품절|매출|판매|구매|장바구니|화장품|스킨케어|세럼|선케어|립|틴트|립밤|립오일|블러셔|향수/.test(text);
   const pet = /반려|강아지|고양이|펫|집사|산책|사료|간식|동물병원/.test(text);
   if (parenting && safety) {
     return {
@@ -1750,7 +2489,10 @@ function normalizeHookTitles(value, input, intent = classifyContentIntent(input)
   const fromAi = ensureList(value, fallback)
     .map((title) => compactTitle(title, input, 22))
     .filter((title) => title && !isInstructionalTitle(title) && !isGenericTitle(title));
-  return [...new Set([...fallback, ...fromAi])].slice(0, 5);
+  const titles = [...new Set([...fromAi, ...fallback])]
+    .filter((title) => !isTopicCopyTitle(title, input))
+    .slice(0, 5);
+  return ensureMinimumTitleTypes(titles, input);
 }
 
 function titleCandidatesForIntent(input, intent = classifyContentIntent(input)) {
@@ -1759,28 +2501,60 @@ function titleCandidatesForIntent(input, intent = classifyContentIntent(input)) 
     const title = parentQuestionTitle(input, '정말 괜찮을까');
     return [
       title,
-      inferParentSymptomQuestion(input),
-      '부모 탓으로 끝내면 안 돼요',
-      `${label} 기준부터 볼게요`
+      `${label}에서 확인할 사실`,
+      `${label} 판단 기준 3가지`,
+      inferParentSymptomQuestion(input)
     ].map((item) => compactTitle(item, input, 22)).filter(Boolean);
   }
   if (intent.id === 'parent_safety_issue') {
     const title = parentQuestionTitle(input, '정말 괜찮을까');
+    const subject = parentProductSubject(input);
     return [
       title,
-      `${parentProductSubject(input)} 유해성분 괜찮을까`,
-      `${parentProductSubject(input)} 사도 될까`,
+      `${subject} 성분 기준 정리`,
+      `${subject} 구매 전 체크 3가지`,
       '불안보다 기준부터 볼게요'
     ].map((item) => compactTitle(item, input, 22)).filter(Boolean);
   }
   if (intent.id === 'consumer_product_marketing' || intent.id === 'pet_consumer_product') {
-    return ['왜 이걸 사갈까', '예쁜 것보다 쓸모', '살 이유가 있을까', `${label} 살 이유`]
+    return ['왜 이걸 사갈까', `${label} 고를 때 볼 기준`, `${label} 추천 전 체크`]
       .map((item) => compactTitle(item, input, 22))
       .filter(Boolean);
   }
-  return ['이게 왜 떴을까', '혼자 보면 착시', '사람들이 멈춘 이유', `${label} 지금 볼 이유`]
+  if (/국시|의대생|해설|오답|학습|시험|수험/.test(label)) {
+    return ['왜 해설을 봐도 불안할까', '틀린 이유가 보여야 해요', '오답 정리 기준 3가지']
+      .map((item) => compactTitle(item, input, 22))
+      .filter(Boolean);
+  }
+  return ['이게 왜 떴을까', '사람들이 멈춘 이유', '저장 전 볼 기준 3가지']
     .map((item) => compactTitle(item, input, 22))
     .filter(Boolean);
+}
+
+function ensureMinimumTitleTypes(titles = [], input = {}) {
+  const fallback = titleCandidatesForIntent(input);
+  const merged = [...new Set([...titles, ...fallback])].filter((title) => !isTopicCopyTitle(title, input));
+  const slots = fallback.slice(0, 3);
+  const base = [...new Set(slots)];
+  const extras = merged.filter((title) => !base.includes(title));
+  return [...base, ...extras].slice(0, 5);
+}
+
+function isTopicCopyTitle(title, input = {}) {
+  const normalizedTitle = normalizeTitleForCompare(title);
+  const topic = normalizeTitleForCompare(primaryTopic(input));
+  if (!normalizedTitle || !topic) return false;
+  if (normalizedTitle === topic) return true;
+  if (normalizedTitle === `${topic}카드뉴스` || normalizedTitle === `${topic}기획`) return true;
+  if (normalizedTitle.startsWith(topic)) {
+    const suffix = normalizedTitle.slice(topic.length);
+    if (/^(왜|정말|이유|필요|추천|기준|정리|카드뉴스|기획|알아야|지금)/.test(suffix)) return true;
+  }
+  return normalizedTitle.length >= topic.length && normalizedTitle.includes(topic) && normalizedTitle.length <= topic.length + 6;
+}
+
+function normalizeTitleForCompare(value) {
+  return cleanManualText(value).replace(/[\s,./!?'"“”‘’()[\]{}:;·_-]+/g, '').toLowerCase();
 }
 
 function parentQuestionTitle(input, suffix) {
@@ -1966,7 +2740,7 @@ function fallbackPlan(input) {
   const label = manual?.topic ?? primaryTopic(input) ?? '사용자 입력 주제';
   const daycareShortage = isDaycareShortageTopic(`${label} ${manual?.prompt ?? input.summary ?? ''}`);
   const cards = fallbackCardsForCount(input, desiredCardCount);
-  return {
+  return withProductionReadyPlan({
     provider: 'fallback',
     generation: {
       source: 'fallback',
@@ -1991,7 +2765,7 @@ function fallbackPlan(input) {
     riskNotes: ['단일 근거 내용은 단정하지 마세요.'],
     sourceNotes: daycareShortage ? ['사용자 입력 기반 구조 설명'] : input.sampleTitles ?? [],
     cards
-  };
+  }, input, {});
 }
 
 function fallbackCardsForCount(input, desiredCardCount) {

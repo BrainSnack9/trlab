@@ -1,20 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Copy, Download, ImagePlus, Layers, Loader2, MousePointer2, PenLine, Plus, RotateCcw, Sparkles, Trash2, Type, X } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Copy, Download, ImagePlus, Layers, Loader2, MousePointer2, Package, PenLine, Plus, RotateCcw, Search, Sparkles, Trash2, Type, Upload, X } from 'lucide-react';
 import { Button } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Button/Button';
+import { generateContentProductAsset } from '@/core/TrLab/modules/clients/api';
 import { formatCardText } from '@/lib/card-text';
 
 const CANVAS_WIDTH = 1080;
 const CANVAS_HEIGHT = 1350;
 const FONT_FAMILY = 'Pretendard, Apple SD Gothic Neo, Noto Sans KR, sans-serif';
+const TEXT_SAFE_MARGIN = 36;
 const colorSwatches = ['#ffffff', '#0f172a', '#ef4444', '#2563eb', '#16a34a', '#f59e0b'];
 const boxSwatches = ['#000000', '#ffffff', '#0f172a', '#facc15', '#ef4444', '#2563eb'];
 const frameSwatches = ['#000000', '#ffffff', '#09090b', '#facc15', '#e5e7eb', '#2563eb'];
-const darkButtonClass = 'border-slate-700 bg-slate-900 text-slate-100 hover:border-slate-500 hover:bg-slate-800 hover:text-white';
-const lightButtonClass = 'border-slate-700 bg-slate-800 text-slate-100 hover:border-slate-500 hover:bg-slate-700 hover:text-white';
-const darkPanelClass = 'rounded-md border border-slate-700 bg-slate-900/85 p-2 text-slate-100 shadow-sm';
-const darkNestedPanelClass = 'rounded border border-slate-700 bg-slate-950/70 p-2';
-const darkInputClass = 'rounded border border-slate-700 bg-slate-950 px-2 font-bold text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-400';
-const darkTextareaClass = 'rounded border border-slate-700 bg-slate-950 p-2 font-bold text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-400';
+const editorBorderClass = 'border-zinc-700/80';
+const editorPanelBgClass = 'bg-zinc-900/90';
+const editorRailBgClass = 'bg-[#141414]';
+const darkButtonClass = 'border-zinc-700 bg-zinc-900 text-zinc-100 hover:border-zinc-500 hover:bg-zinc-800 hover:text-white';
+const lightButtonClass = 'border-zinc-700 bg-zinc-800 text-zinc-100 hover:border-zinc-500 hover:bg-zinc-700 hover:text-white';
+const darkPanelClass = `rounded-md border ${editorBorderClass} ${editorPanelBgClass} p-2 text-zinc-100 shadow-sm shadow-black/20`;
+const darkNestedPanelClass = 'rounded border border-zinc-700/70 bg-[#101010]/80 p-2';
+const darkInputClass = 'rounded border border-zinc-700 bg-[#101010] px-2 font-bold text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-indigo-400';
+const darkTextareaClass = 'rounded border border-zinc-700 bg-[#101010] p-2 font-bold text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-indigo-400';
 const darkLabelClass = 'grid gap-1 text-[11px] font-black text-slate-300';
 const darkSummaryClass = 'cursor-pointer text-xs font-black text-slate-100';
 const SEGMENT_COLORS = ['accent', 'sub', 'green'];
@@ -24,50 +29,67 @@ const segmentColorValue = {
   green: () => '#22c55e'
 };
 
-export function CardTextOverlayEditor({ image, card, style, studio, backgroundActions }) {
-  const draftKey = useMemo(() => `overlay:${image?.id || image?.url || ''}:${card?.page || 1}`, [image?.id, image?.url, card?.page]);
-  const dataDraftKey = useMemo(() => `data:${image?.id || image?.url || ''}:${card?.page || 1}`, [image?.id, image?.url, card?.page]);
-  const frameDraftKey = useMemo(() => `frame:${image?.id || image?.url || ''}:${card?.page || 1}`, [image?.id, image?.url, card?.page]);
-  const shapeDraftKey = useMemo(() => `shape:${image?.id || image?.url || ''}:${card?.page || 1}`, [image?.id, image?.url, card?.page]);
+export function CardTextOverlayEditor({ image, card, style, studio, backgroundActions, startOpen = false, draftScopeKey = '', cardNavigation }) {
+  const scopeKey = draftScopeKey || `${image?.id || image?.url || ''}:${card?.page || 1}`;
+  const draftKey = useMemo(() => `overlay:${scopeKey}`, [scopeKey]);
+  const dataDraftKey = useMemo(() => `data:${scopeKey}`, [scopeKey]);
+  const frameDraftKey = useMemo(() => `frame:${scopeKey}`, [scopeKey]);
+  const shapeDraftKey = useMemo(() => `shape:${scopeKey}`, [scopeKey]);
+  const productDraftKey = useMemo(() => `product:${scopeKey}`, [scopeKey]);
   const [layers, setLayers] = useState(() => initialTextLayers(draftKey, card, style, studio));
   const [dataOverlay, setDataOverlay] = useState(() => initialDataOverlay(dataDraftKey, card, style));
   const [frame, setFrame] = useState(() => initialFrameSettings(frameDraftKey, card));
   const [shapes, setShapes] = useState(() => initialShapeLayers(shapeDraftKey));
+  const [productAssets, setProductAssets] = useState(() => initialProductAssets(productDraftKey, card));
   const [selectedId, setSelectedId] = useState('');
   const [selectedShapeId, setSelectedShapeId] = useState('');
+  const [selectedProductId, setSelectedProductId] = useState('');
   const [editingId, setEditingId] = useState('');
   const [finalUrl, setFinalUrl] = useState('');
-  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(startOpen);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [productAssetBusyId, setProductAssetBusyId] = useState('');
+  const [productAssetError, setProductAssetError] = useState('');
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [commandText, setCommandText] = useState('');
+  const [commandResult, setCommandResult] = useState('');
   const svgRef = useRef(null);
   const dragRef = useRef(null);
   const editRef = useRef(null);
+  const commandInputRef = useRef(null);
 
   useEffect(() => {
     const nextLayers = initialTextLayers(draftKey, card, style, studio);
     const nextDataOverlay = initialDataOverlay(dataDraftKey, card, style);
     const nextFrame = initialFrameSettings(frameDraftKey, card);
     const nextShapes = initialShapeLayers(shapeDraftKey);
+    const nextProducts = initialProductAssets(productDraftKey, card);
     setLayers(nextLayers);
     setDataOverlay(nextDataOverlay);
     setFrame(nextFrame);
     setShapes(nextShapes);
+    setProductAssets(nextProducts);
     setSelectedId(nextLayers[0]?.id ?? '');
     setSelectedShapeId('');
+    setSelectedProductId('');
     setEditingId('');
     setFinalUrl('');
     setError('');
     let active = true;
     if (image?.url) {
       setBusy(true);
-      composeFinalImage(image.url, nextLayers, nextDataOverlay, nextFrame, nextShapes)
+      composeFinalImage(image.url, nextLayers, nextDataOverlay, nextFrame, nextShapes, nextProducts)
         .then((url) => active && setFinalUrl(url))
         .catch((err) => active && setError(err instanceof Error ? err.message : '자동 합성에 실패했습니다.'))
         .finally(() => active && setBusy(false));
     }
     return () => { active = false; };
-  }, [draftKey, dataDraftKey, frameDraftKey, shapeDraftKey, card, style, studio, image?.url]);
+  }, [draftKey, dataDraftKey, frameDraftKey, shapeDraftKey, productDraftKey, card, style, studio, image?.url]);
+
+  useEffect(() => {
+    if (startOpen) setEditorOpen(true);
+  }, [startOpen, scopeKey]);
 
   useEffect(() => {
     saveLayerDraft(draftKey, layers);
@@ -86,22 +108,98 @@ export function CardTextOverlayEditor({ image, card, style, studio, backgroundAc
   }, [shapeDraftKey, shapes]);
 
   useEffect(() => {
+    saveProductDraft(productDraftKey, productAssets);
+  }, [productDraftKey, productAssets]);
+
+  useEffect(() => {
     if (!editingId) return;
     window.requestAnimationFrame(() => editRef.current?.focus());
   }, [editingId]);
 
+  useEffect(() => {
+    if (!commandOpen) return;
+    window.requestAnimationFrame(() => commandInputRef.current?.focus());
+  }, [commandOpen]);
+
   const selectedLayer = selectedId ? layers.find((layer) => layer.id === selectedId) || null : null;
   const editingLayer = layers.find((layer) => layer.id === editingId) || selectedLayer;
   const selectedShape = shapes.find((shape) => shape.id === selectedShapeId) || null;
+  const selectedProduct = productAssets.find((product) => product.id === selectedProductId) || null;
 
   function selectTextLayer(id, edit = false) {
     setSelectedId(id);
     setSelectedShapeId('');
+    setSelectedProductId('');
     if (edit) setEditingId(id);
+  }
+
+  function openCommandPalette() {
+    setCommandOpen(true);
+    setCommandResult('');
+  }
+
+  function closeCommandPalette() {
+    setCommandOpen(false);
+    setCommandText('');
+    setCommandResult('');
+  }
+
+  function submitCommandPalette(event) {
+    event.preventDefault();
+    const command = commandText.trim();
+    if (!command) return;
+    const result = applyLocalEditCommand(command);
+    setCommandResult(result);
+  }
+
+  function applyLocalEditCommand(command) {
+    const lower = command.toLowerCase();
+    const explicitText = extractCommandText(command);
+    if (selectedLayer && (explicitText || /문구|텍스트|글|제목|본문|카피/.test(command))) {
+      if (explicitText) {
+        patchLayer(selectedLayer.id, { text: explicitText });
+        return '선택한 문구 레이어의 텍스트를 바꿨어요.';
+      }
+      return '문구를 실제로 새로 써주는 단계는 AI 명령 API가 필요해요. 지금은 따옴표나 "문구:" 뒤에 넣은 텍스트를 바로 적용할 수 있습니다.';
+    }
+
+    if (/배경|이미지/.test(command)) {
+      backgroundActions?.setEditInstruction?.(command);
+      return '배경 수정 요청에 넣어뒀어요. 오른쪽/왼쪽의 요청 반영 재생성을 누르면 이 카드 배경만 다시 만들 수 있어요.';
+    }
+
+    if (/프롬프트|prompt/i.test(command)) {
+      const nextPrompt = explicitText || command.replace(/프롬프트|prompt|수정|바꿔줘|변경/gi, '').trim();
+      if (nextPrompt) backgroundActions?.setCustomPrompt?.(nextPrompt);
+      return nextPrompt ? '배경 프롬프트 입력값을 바꿨어요.' : '프롬프트에 넣을 문장을 함께 적어주세요.';
+    }
+
+    if (selectedShape && /박스|도형|강조|원|선|디자인|크기|투명|불투명|오른쪽|왼쪽|위|아래|크게|작게|밝게|어둡게/.test(command)) {
+      const patch = shapeCommandPatch(selectedShape, command);
+      if (Object.keys(patch).length) {
+        patchShape(selectedShape.id, patch);
+        return '선택한 도형에 명령을 반영했어요.';
+      }
+    }
+
+    if (/확정|저장/.test(command)) {
+      confirmComposite();
+      return '현재 카드 합성을 확정하고 있어요.';
+    }
+
+    return '아직 이 명령은 자동 적용 규칙이 없어요. 다음 단계에서 AI 명령 API를 붙이면 문구 재작성, 레이아웃 수정까지 자연어로 처리할 수 있습니다.';
   }
 
   function selectShapeLayer(id) {
     setSelectedShapeId(id);
+    setSelectedId('');
+    setSelectedProductId('');
+    setEditingId('');
+  }
+
+  function selectProductAsset(id) {
+    setSelectedProductId(id);
+    setSelectedShapeId('');
     setSelectedId('');
     setEditingId('');
   }
@@ -126,6 +224,32 @@ export function CardTextOverlayEditor({ image, card, style, studio, backgroundAc
     selectShapeLayer(shape.id);
   }
 
+  function beginShapeResize(event, shape, handle) {
+    event.preventDefault();
+    event.stopPropagation();
+    const point = svgPoint(event, svgRef.current);
+    dragRef.current = {
+      type: 'shape-resize',
+      id: shape.id,
+      handle,
+      x: point.x,
+      y: point.y,
+      layerX: shape.x,
+      layerY: shape.y,
+      width: shape.width,
+      height: shape.height
+    };
+    selectShapeLayer(shape.id);
+  }
+
+  function beginProductDrag(event, product) {
+    event.preventDefault();
+    event.stopPropagation();
+    const point = svgPoint(event, svgRef.current);
+    dragRef.current = { type: 'product', id: product.id, x: point.x, y: point.y, layerX: product.x, layerY: product.y };
+    selectProductAsset(product.id);
+  }
+
   function beginDataDrag(event) {
     if (!dataOverlay) return;
     event.preventDefault();
@@ -147,6 +271,8 @@ export function CardTextOverlayEditor({ image, card, style, studio, backgroundAc
       y: clamp(drag.layerY + point.y - drag.y, 0, CANVAS_HEIGHT)
     };
     if (drag.type === 'data') patchDataOverlay(clampDataOverlayPosition(dataOverlay, patch.x, patch.y));
+    else if (drag.type === 'product') patchProductAsset(drag.id, patch);
+    else if (drag.type === 'shape-resize') patchShape(drag.id, resizeShapePatch(drag, point));
     else if (drag.type === 'shape') patchShape(drag.id, patch);
     else patchLayer(drag.id, patch);
   }
@@ -207,16 +333,23 @@ export function CardTextOverlayEditor({ image, card, style, studio, backgroundAc
   }
 
   function duplicateSelection() {
+    if (selectedProductId) return;
     if (selectedShapeId) duplicateSelectedShape();
     else duplicateSelected();
   }
 
   function deleteSelection() {
-    if (selectedShapeId) removeSelectedShape();
+    if (selectedProductId) removeSelectedProduct();
+    else if (selectedShapeId) removeSelectedShape();
     else removeSelected();
   }
 
   function nudgeSelection(dx, dy) {
+    if (selectedProductId) {
+      setProductAssets((value) => nudgeProductAsset(value, selectedProductId, dx, dy));
+      setFinalUrl('');
+      return;
+    }
     if (selectedShapeId) {
       setShapes((value) => nudgeShapeLayer(value, selectedShapeId, dx, dy));
       setFinalUrl('');
@@ -238,6 +371,7 @@ export function CardTextOverlayEditor({ image, card, style, studio, backgroundAc
     setLayers(nextLayers);
     setSelectedId(nextLayers[0]?.id ?? '');
     setSelectedShapeId('');
+    setSelectedProductId('');
     setEditingId('');
     setFinalUrl('');
   }
@@ -326,7 +460,68 @@ export function CardTextOverlayEditor({ image, card, style, studio, backgroundAc
     setShapes(nextShapes);
     setSelectedShapeId(nextShapes[0]?.id ?? '');
     setSelectedId('');
+    setSelectedProductId('');
     setEditingId('');
+    setFinalUrl('');
+  }
+
+  function patchProductAsset(id, patch) {
+    setProductAssets((value) => value.map((product) => product.id === id ? clampProductAsset({ ...product, ...patch }) : product));
+    setFinalUrl('');
+  }
+
+  async function fetchProductAsset(id, mode) {
+    const product = productAssets.find((item) => item.id === id);
+    if (!product) return;
+    setProductAssetBusyId(id);
+    setProductAssetError('');
+    try {
+      const data = await generateContentProductAsset({
+        mode,
+        query: product.searchQuery || product.name,
+        product,
+        card,
+        studio
+      });
+      const asset = data.asset ?? {};
+      patchProductAsset(id, {
+        imageUrl: asset.url || product.imageUrl,
+        searchQuery: asset.query || product.searchQuery || product.name,
+        sourceProvider: asset.provider || '',
+        sourceLabel: asset.sourceImage?.photographer || asset.model || asset.provider || '',
+        sourceUrl: asset.sourceImage?.url || '',
+        assetPrompt: asset.prompt || ''
+      });
+    } catch (err) {
+      setProductAssetError(err instanceof Error ? err.message : '제품 이미지 처리 실패');
+    } finally {
+      setProductAssetBusyId('');
+    }
+  }
+
+  function addProductAsset(candidate = {}) {
+    const product = defaultProductAsset(candidate, productAssets.length);
+    setProductAssets((value) => [...value, product]);
+    selectProductAsset(product.id);
+    setFinalUrl('');
+  }
+
+  function addBlankProductAsset() {
+    addProductAsset({ name: '추천 제품', role: '짧은 설명을 입력하세요.' });
+  }
+
+  function removeSelectedProduct() {
+    if (!selectedProduct) return;
+    const nextProducts = productAssets.filter((product) => product.id !== selectedProduct.id);
+    setProductAssets(nextProducts);
+    setSelectedProductId(nextProducts[0]?.id ?? '');
+    setFinalUrl('');
+  }
+
+  function resetProductAssets() {
+    const nextProducts = defaultProductAssets(card);
+    setProductAssets(nextProducts);
+    setSelectedProductId(nextProducts[0]?.id ?? '');
     setFinalUrl('');
   }
 
@@ -345,7 +540,7 @@ export function CardTextOverlayEditor({ image, card, style, studio, backgroundAc
     setBusy(true);
     setError('');
     try {
-      const url = await composeFinalImage(image.url, layers, dataOverlay, frame, shapes);
+      const url = await composeFinalImage(image.url, layers, dataOverlay, frame, shapes, productAssets);
       setFinalUrl(url);
       setEditorOpen(false);
       setEditingId('');
@@ -360,7 +555,7 @@ export function CardTextOverlayEditor({ image, card, style, studio, backgroundAc
     setBusy(true);
     setError('');
     try {
-      const url = finalUrl || await composeFinalImage(image.url, layers, dataOverlay, frame, shapes);
+      const url = finalUrl || await composeFinalImage(image.url, layers, dataOverlay, frame, shapes, productAssets);
       downloadUrl(url, filenameFromUrl(image.url, 'png'));
       if (!finalUrl) setFinalUrl(url);
     } catch (err) {
@@ -376,14 +571,23 @@ export function CardTextOverlayEditor({ image, card, style, studio, backgroundAc
       if (event.defaultPrevented) return;
       if (event.key === 'Escape') {
         event.preventDefault();
+        if (commandOpen) {
+          closeCommandPalette();
+          return;
+        }
         setEditorOpen(false);
         setEditingId('');
         return;
       }
-      if (isTypingTarget(event.target)) return;
 
       const key = event.key.toLowerCase();
       const command = event.metaKey || event.ctrlKey;
+      if (command && key === 'k') {
+        event.preventDefault();
+        openCommandPalette();
+        return;
+      }
+      if (isTypingTarget(event.target)) return;
       if (command && key === 's') {
         event.preventDefault();
         if (!busy) saveFinal();
@@ -445,9 +649,9 @@ export function CardTextOverlayEditor({ image, card, style, studio, backgroundAc
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [editorOpen, busy, selectedId, selectedShapeId, layers, shapes, dataOverlay, frame, finalUrl, image?.url]);
+  }, [editorOpen, busy, commandOpen, selectedId, selectedShapeId, selectedProductId, layers, shapes, productAssets, dataOverlay, frame, finalUrl, image?.url]);
 
-  const canDeleteSelection = Boolean(selectedShapeId || (selectedId && layers.length > 1));
+  const canDeleteSelection = Boolean(selectedProductId || selectedShapeId || (selectedId && layers.length > 1));
   const canDuplicateSelection = Boolean(selectedShapeId || selectedId);
 
   if (!editorOpen) {
@@ -473,16 +677,16 @@ export function CardTextOverlayEditor({ image, card, style, studio, backgroundAc
   }
 
   return (
-    <div className="fixed inset-0 z-[80] bg-black/80 p-3 backdrop-blur-sm">
-      <div role="dialog" aria-modal="true" aria-label="SVG 카드 편집 스튜디오" className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-2xl shadow-black/60">
-        <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-800 bg-slate-950 px-4 text-white">
+    <div className="fixed inset-0 z-[80] bg-[#090909]/88 p-3 backdrop-blur-sm">
+      <div role="dialog" aria-modal="true" aria-label="SVG 카드 편집 스튜디오" className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-zinc-700/80 bg-[#121212] shadow-2xl shadow-black/70">
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-zinc-800 bg-[#171717] px-4 text-white">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-md bg-indigo-500/15 text-indigo-300">
+            <div className="flex h-9 w-9 items-center justify-center rounded-md border border-zinc-700 bg-zinc-800 text-indigo-300 shadow-inner shadow-black/30">
               <MousePointer2 className="h-4 w-4" />
             </div>
             <div>
               <div className="text-sm font-black">카드 편집</div>
-              <div className="text-[11px] font-semibold text-slate-400">캔버스에서 선택하고, 오른쪽에서 필요한 속성만 조정합니다.</div>
+              <div className="text-[11px] font-semibold text-zinc-400">캔버스에서 선택하고, 오른쪽에서 필요한 속성만 조정합니다.</div>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -504,6 +708,7 @@ export function CardTextOverlayEditor({ image, card, style, studio, backgroundAc
         <QuickToolbar
           addTextLayer={addTextLayer}
           addShape={addShape}
+          addProductAsset={addBlankProductAsset}
           duplicateSelection={duplicateSelection}
           deleteSelection={deleteSelection}
           canDeleteSelection={canDeleteSelection}
@@ -511,8 +716,13 @@ export function CardTextOverlayEditor({ image, card, style, studio, backgroundAc
         />
 
         <div className="grid min-h-0 flex-1 grid-cols-[280px_minmax(0,1fr)_360px]">
-          <aside className="trlab-dark-scrollbar min-h-0 overflow-y-auto overflow-x-hidden border-r border-slate-800 bg-slate-950 p-3">
-            <div className="mb-3 flex items-center gap-2 text-xs font-black text-slate-200">
+          <aside className={`trlab-dark-scrollbar min-h-0 overflow-y-auto overflow-x-hidden border-r border-zinc-800 ${editorRailBgClass} p-3`}>
+            <ProductionPromptPanel
+              card={card}
+              actions={backgroundActions}
+              image={image}
+            />
+            <div className="mb-3 mt-3 flex items-center gap-2 text-xs font-black text-zinc-200">
               <Layers className="h-4 w-4 text-indigo-300" />
               레이어 목록
             </div>
@@ -525,6 +735,22 @@ export function CardTextOverlayEditor({ image, card, style, studio, backgroundAc
               moveSelected={moveSelected}
               resetLayers={resetLayers}
             />
+            <div className="mt-3">
+              <ProductAssetControls
+                card={card}
+                productAssets={productAssets}
+                selectedProduct={selectedProduct}
+                selectedProductId={selectedProductId}
+                selectProductAsset={selectProductAsset}
+                patchProductAsset={patchProductAsset}
+                addProductAsset={addProductAsset}
+                removeSelectedProduct={removeSelectedProduct}
+                resetProductAssets={resetProductAssets}
+                productAssetBusyId={productAssetBusyId}
+                productAssetError={productAssetError}
+                fetchProductAsset={fetchProductAsset}
+              />
+            </div>
             <div className="mt-3">
               <ShapeControls
                 shapes={shapes}
@@ -540,9 +766,9 @@ export function CardTextOverlayEditor({ image, card, style, studio, backgroundAc
             <ShortcutHelp />
           </aside>
 
-          <main className="trlab-dark-scrollbar min-h-0 overflow-auto bg-[radial-gradient(circle_at_top,#1e293b_0,#020617_46%,#000_100%)] p-5">
+          <main className="trlab-dark-scrollbar min-h-0 overflow-auto bg-[radial-gradient(circle_at_top,#3a3a3a_0,#1c1c1c_38%,#0b0b0b_100%)] p-5">
             <div className="mx-auto flex min-h-full max-w-[min(78vh,820px)] items-center justify-center">
-              <div className="relative aspect-[4/5] max-h-[calc(100vh-8rem)] w-full overflow-hidden rounded-md border border-slate-600 bg-slate-900 shadow-2xl shadow-black/50">
+              <div className="relative aspect-[4/5] max-h-[calc(100vh-8rem)] w-full overflow-hidden rounded-md border border-zinc-500/80 bg-zinc-900 shadow-2xl shadow-black/55 ring-1 ring-white/5">
                 <img src={image.url} alt="텍스트 없는 AI 배경" className="h-full w-full object-cover" draggable={false} />
                 <svg
                   ref={svgRef}
@@ -553,7 +779,8 @@ export function CardTextOverlayEditor({ image, card, style, studio, backgroundAc
                   onPointerLeave={endDrag}
                 >
                   <SvgFrameOverlay frame={frame} />
-                  <SvgShapeLayers shapes={shapes} selectedId={selectedShapeId} beginDrag={beginShapeDrag} />
+                  <SvgShapeLayers shapes={shapes} selectedId={selectedShapeId} beginDrag={beginShapeDrag} beginResize={beginShapeResize} />
+                  <SvgProductAssets products={productAssets} selectedId={selectedProductId} beginDrag={beginProductDrag} />
                   <SvgDataOverlay overlay={dataOverlay} beginDrag={beginDataDrag} />
                   {layers.map((layer) => (
                     <g
@@ -576,10 +803,11 @@ export function CardTextOverlayEditor({ image, card, style, studio, backgroundAc
             </div>
           </main>
 
-          <aside className="trlab-dark-scrollbar min-h-0 overflow-y-auto border-l border-slate-800 bg-slate-950 p-3 text-slate-100">
+          <aside className={`trlab-dark-scrollbar min-h-0 overflow-y-auto border-l border-zinc-800 ${editorRailBgClass} p-3 text-zinc-100`}>
+            <CardNavigationPanel navigation={cardNavigation} />
             <div className="mb-3">
-              <div className="text-xs font-black text-slate-100">속성</div>
-              <p className="mt-1 text-[11px] font-semibold leading-4 text-slate-400">선택한 요소와 카드 전체 레이어를 조정합니다.</p>
+              <div className="text-xs font-black text-zinc-100">속성</div>
+              <p className="mt-1 text-[11px] font-semibold leading-4 text-zinc-400">선택한 요소와 카드 전체 레이어를 조정합니다.</p>
             </div>
             <div className="space-y-3">
               {selectedLayer ? (
@@ -736,6 +964,16 @@ export function CardTextOverlayEditor({ image, card, style, studio, backgroundAc
             </div>
           </aside>
         </div>
+        <FloatingEditCommand
+          open={commandOpen}
+          value={commandText}
+          result={commandResult}
+          context={commandContextLabel({ card, selectedLayer, selectedShape, selectedProduct })}
+          inputRef={commandInputRef}
+          onChange={setCommandText}
+          onSubmit={submitCommandPalette}
+          onClose={closeCommandPalette}
+        />
         {error ? <p className="shrink-0 border-t border-red-900/40 bg-red-950 px-4 py-2 text-xs font-semibold text-red-200">{error}</p> : null}
       </div>
     </div>
@@ -768,43 +1006,242 @@ function SvgText({ layer }) {
   );
 }
 
-function QuickToolbar({ addTextLayer, addShape, duplicateSelection, deleteSelection, canDeleteSelection, canDuplicateSelection }) {
+function FloatingEditCommand({ open, value, result, context, inputRef, onChange, onSubmit, onClose }) {
+  if (!open) return null;
+  return (
+    <div className="absolute inset-x-0 bottom-6 z-20 flex justify-center px-6">
+      <form
+        className="w-full max-w-2xl rounded-lg border border-zinc-600/90 bg-[#151515]/95 p-2 shadow-2xl shadow-black/70 ring-1 ring-white/10 backdrop-blur"
+        onSubmit={onSubmit}
+      >
+        <div className="mb-1 flex items-center justify-between gap-3 px-1">
+          <div className="min-w-0 text-[11px] font-black text-zinc-300">
+            AI 편집 요청 <span className="font-semibold text-zinc-500">· {context}</span>
+          </div>
+          <button type="button" className="rounded px-2 py-1 text-[11px] font-black text-zinc-400 hover:bg-zinc-800 hover:text-white" onClick={onClose}>
+            Esc
+          </button>
+        </div>
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 shrink-0 text-indigo-300" />
+          <input
+            ref={inputRef}
+            className="h-10 min-w-0 flex-1 rounded border border-zinc-700 bg-[#0d0d0d] px-3 text-sm font-bold text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-indigo-400"
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            placeholder="예: 선택한 문구를 “피부 타입별 스킨부스터 가이드”로 바꿔줘"
+          />
+          <Button size="sm" className="h-10 bg-indigo-600 text-white hover:bg-indigo-500" disabled={!value.trim()}>
+            적용
+          </Button>
+        </div>
+        {result ? <p className="mt-2 rounded border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-[11px] font-semibold leading-4 text-zinc-300">{result}</p> : null}
+        <p className="mt-2 px-1 text-[10px] font-semibold text-zinc-500">
+          Cmd/Ctrl+K로 열기 · Enter 적용 · 배경 명령은 이 카드의 배경 수정 요청으로 연결됩니다.
+        </p>
+      </form>
+    </div>
+  );
+}
+
+function QuickToolbar({ addTextLayer, addShape, addProductAsset, duplicateSelection, deleteSelection, canDeleteSelection, canDuplicateSelection }) {
   const toolClass = `h-8 px-2 text-[11px] font-black ${darkButtonClass}`;
   return (
-    <div className="flex h-12 shrink-0 items-center justify-between gap-3 overflow-x-auto border-b border-slate-800 bg-slate-950 px-4 text-white">
-      <div className="flex items-center gap-1.5 rounded-md border border-slate-800 bg-slate-900/70 p-1">
-        <span className="px-1 text-[11px] font-black text-slate-400">추가</span>
+    <div className="flex h-12 shrink-0 items-center justify-between gap-3 overflow-x-auto border-b border-zinc-800 bg-[#111111] px-4 text-white">
+      <div className="flex items-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-900/80 p-1 shadow-inner shadow-black/20">
+        <span className="px-1 text-[11px] font-black text-zinc-400">추가</span>
         <Button size="sm" variant="outline" className={toolClass} onClick={addTextLayer}>
           <Type className="h-3.5 w-3.5" />
-          문구 <kbd className="rounded bg-slate-800 px-1 text-[10px]">T</kbd>
+          문구 <kbd className="rounded bg-zinc-800 px-1 text-[10px]">T</kbd>
+        </Button>
+        <Button size="sm" variant="outline" className={toolClass} onClick={addProductAsset}>
+          <Package className="h-3.5 w-3.5" />
+          제품
         </Button>
         <Button size="sm" variant="outline" className={toolClass} onClick={() => addShape('rect')}>
           <Plus className="h-3.5 w-3.5" />
-          박스 <kbd className="rounded bg-slate-800 px-1 text-[10px]">R</kbd>
+          박스 <kbd className="rounded bg-zinc-800 px-1 text-[10px]">R</kbd>
         </Button>
         <Button size="sm" variant="outline" className={toolClass} onClick={() => addShape('highlight')}>
           <Plus className="h-3.5 w-3.5" />
-          강조 <kbd className="rounded bg-slate-800 px-1 text-[10px]">H</kbd>
+          강조 <kbd className="rounded bg-zinc-800 px-1 text-[10px]">H</kbd>
         </Button>
         <Button size="sm" variant="outline" className={toolClass} onClick={() => addShape('circle')}>
           <Plus className="h-3.5 w-3.5" />
-          원 <kbd className="rounded bg-slate-800 px-1 text-[10px]">O</kbd>
+          원 <kbd className="rounded bg-zinc-800 px-1 text-[10px]">O</kbd>
         </Button>
         <Button size="sm" variant="outline" className={toolClass} onClick={() => addShape('line')}>
           <Plus className="h-3.5 w-3.5" />
-          선 <kbd className="rounded bg-slate-800 px-1 text-[10px]">L</kbd>
+          선 <kbd className="rounded bg-zinc-800 px-1 text-[10px]">L</kbd>
         </Button>
       </div>
-      <div className="flex items-center gap-1.5 rounded-md border border-slate-800 bg-slate-900/70 p-1">
-        <span className="px-1 text-[11px] font-black text-slate-400">선택</span>
+      <div className="flex items-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-900/80 p-1 shadow-inner shadow-black/20">
+        <span className="px-1 text-[11px] font-black text-zinc-400">선택</span>
         <Button size="sm" variant="outline" className={toolClass} onClick={duplicateSelection} disabled={!canDuplicateSelection}>
           <Copy className="h-3.5 w-3.5" />
-          복제 <kbd className="rounded bg-slate-800 px-1 text-[10px]">⌘D</kbd>
+          복제 <kbd className="rounded bg-zinc-800 px-1 text-[10px]">⌘D</kbd>
         </Button>
         <Button size="sm" variant="outline" className={toolClass} onClick={deleteSelection} disabled={!canDeleteSelection}>
           <Trash2 className="h-3.5 w-3.5" />
-          삭제 <kbd className="rounded bg-slate-800 px-1 text-[10px]">Del</kbd>
+          삭제 <kbd className="rounded bg-zinc-800 px-1 text-[10px]">Del</kbd>
         </Button>
+      </div>
+    </div>
+  );
+}
+
+function ProductionPromptPanel({ card, actions, image }) {
+  const brief = card?.visualBrief ?? {};
+  const prompt = actions?.customPrompt ?? actions?.prompt ?? brief.backgroundPrompt ?? card?.visualPrompt ?? '';
+  const pexelsQuery = brief.pexelsQuery || '';
+  async function uploadBackground(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const dataUrl = await fileToDataUrl(file);
+    actions?.setBackgroundImage?.({
+      id: `uploaded-bg-${Date.now()}`,
+      url: dataUrl,
+      prompt,
+      provider: 'uploaded',
+      model: file.name
+    });
+    event.target.value = '';
+  }
+  return (
+    <details className={`${darkPanelClass} border-indigo-500/40 bg-indigo-950/20`} open>
+      <summary className={darkSummaryClass}>
+        <span className="inline-flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5 text-indigo-300" />생성 패널</span>
+      </summary>
+      <div className="mt-2 space-y-2">
+        <div className={darkNestedPanelClass}>
+          <label className={darkLabelClass}>
+            배경 프롬프트
+            <textarea
+              className={`${darkTextareaClass} min-h-36 resize-y text-[11px] leading-4`}
+              value={actions?.promptLoading ? '프롬프트 구성 중...' : prompt}
+              onChange={(event) => actions?.setCustomPrompt?.(event.target.value)}
+              disabled={actions?.promptLoading}
+              placeholder="배경을 어떻게 만들지 직접 입력하세요."
+            />
+          </label>
+          <Button size="sm" variant="outline" className={`mt-2 w-full ${lightButtonClass}`} onClick={actions?.copyPrompt} disabled={!prompt || actions?.promptLoading}>
+            <Copy className="h-4 w-4" />
+            프롬프트 복사
+          </Button>
+        </div>
+        {brief.scenario ? (
+          <p className="rounded border border-slate-700 bg-slate-950/70 p-2 text-[11px] font-bold leading-4 text-slate-300">{brief.scenario}</p>
+        ) : null}
+        {pexelsQuery ? (
+          <div className="rounded border border-sky-500/20 bg-sky-950/25 p-2 text-[11px] font-bold leading-4 text-sky-200">
+            <div className="font-black">검색 키워드</div>
+            <p className="mt-1 break-words">{pexelsQuery}</p>
+          </div>
+        ) : null}
+        <div className="grid grid-cols-2 gap-1.5">
+          <Button size="sm" variant="outline" className={lightButtonClass} onClick={actions?.generateFresh} disabled={actions?.loading || actions?.promptLoading}>
+            {actions?.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+            Pexels
+          </Button>
+          <Button size="sm" variant="outline" className={lightButtonClass} onClick={actions?.generateAi} disabled={actions?.loading || actions?.promptLoading}>
+            {actions?.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            AI 생성
+          </Button>
+        </div>
+        <BackgroundHistoryPanel
+          history={actions?.backgroundHistory}
+          currentUrl={image?.url}
+          selectBackgroundImage={actions?.selectBackgroundImage}
+        />
+        <label className={`${darkLabelClass} rounded border border-slate-700 bg-slate-950/70 p-2`}>
+          직접 배경 업로드
+          <span className="inline-flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded border border-slate-700 bg-slate-800 text-[11px] font-black text-slate-100 hover:bg-slate-700">
+            <Upload className="h-3.5 w-3.5" />
+            파일 선택
+          </span>
+          <input className="sr-only" type="file" accept="image/*" onChange={uploadBackground} />
+        </label>
+        <label className={darkLabelClass}>
+          배경 수정 요청
+          <textarea
+            className={`${darkTextareaClass} min-h-16 resize-y text-xs leading-5`}
+            value={actions?.editInstruction ?? ''}
+            onChange={(event) => actions?.setEditInstruction?.(event.target.value)}
+            placeholder="예: 배경을 밝게, 여백을 더 많이"
+          />
+        </label>
+        <Button size="sm" className="w-full" onClick={actions?.generateRevision} disabled={actions?.loading || actions?.promptLoading || !actions?.editInstruction?.trim() || image?.provider === 'blank-canvas'}>
+          {actions?.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          수정 반영
+        </Button>
+        {actions?.error ? <p className="rounded border border-red-900/40 bg-red-950/60 p-2 text-[11px] font-semibold leading-4 text-red-200">{actions.error}</p> : null}
+      </div>
+    </details>
+  );
+}
+
+function BackgroundHistoryPanel({ history = [], currentUrl = '', selectBackgroundImage }) {
+  const items = Array.isArray(history) ? history.filter((item) => item?.url).slice(0, 12) : [];
+  if (!items.length) {
+    return (
+      <div className="rounded border border-dashed border-slate-700 bg-slate-950/50 p-2 text-[11px] font-bold leading-4 text-slate-400">
+        배경을 생성하거나 업로드하면 후보가 여기에 남습니다.
+      </div>
+    );
+  }
+  return (
+    <div className={darkNestedPanelClass}>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-[11px] font-black text-slate-300">배경 후보</span>
+        <span className="text-[10px] font-bold text-slate-500">{items.length}개</span>
+      </div>
+      <div className="grid grid-cols-3 gap-1.5">
+        {items.map((item, index) => (
+          <button
+            key={`${item.url}-${index}`}
+            type="button"
+            className={`group overflow-hidden rounded border bg-slate-900 text-left ${currentUrl === item.url ? 'border-indigo-400 ring-2 ring-indigo-500/30' : 'border-slate-700 hover:border-slate-500'}`}
+            onClick={() => selectBackgroundImage?.(item)}
+            title={item.prompt || item.provider || '배경 후보'}
+          >
+            <img src={item.url} alt={`배경 후보 ${index + 1}`} className="aspect-[4/5] w-full object-cover" draggable={false} />
+            <div className="truncate px-1 py-1 text-[9px] font-black text-slate-300">
+              {currentUrl === item.url ? '선택됨' : item.provider || `후보 ${index + 1}`}
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CardNavigationPanel({ navigation }) {
+  const cards = Array.isArray(navigation?.cards) ? navigation.cards : [];
+  if (!cards.length || !navigation?.onSelectCard) return null;
+  const selected = Number(navigation.selected ?? 0);
+  return (
+    <div className="mb-3 rounded-md border border-zinc-700/80 bg-[#121212] p-2 shadow-sm shadow-black/20">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <Button size="sm" variant="outline" className={lightButtonClass} onClick={() => navigation.onSelectCard(Math.max(0, selected - 1))} disabled={selected <= 0}>
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+        <span className="text-[11px] font-black text-zinc-300">{selected + 1}/{cards.length}</span>
+        <Button size="sm" variant="outline" className={lightButtonClass} onClick={() => navigation.onSelectCard(Math.min(cards.length - 1, selected + 1))} disabled={selected >= cards.length - 1}>
+          <ArrowRight className="h-4 w-4" />
+        </Button>
+      </div>
+      <div className="grid grid-cols-4 gap-1.5">
+        {cards.map((item, index) => (
+          <button
+            key={item.page ?? index}
+            type="button"
+            className={`aspect-[4/5] rounded border p-1 text-[10px] font-black ${selected === index ? 'border-indigo-400 bg-zinc-800 text-white shadow-inner shadow-indigo-500/20' : 'border-zinc-800 bg-[#181818] text-zinc-400 hover:border-zinc-600 hover:bg-zinc-800 hover:text-white'}`}
+            onClick={() => navigation.onSelectCard(index)}
+            title={item.title}
+          >
+            {String(item.page ?? index + 1).padStart(2, '0')}
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -819,18 +1256,19 @@ function ShortcutHelp() {
     ['삭제', 'Delete'],
     ['문구 추가', 'T'],
     ['박스/강조/원/선', 'R / H / O / L'],
+    ['AI 편집 요청', '⌘/Ctrl + K'],
     ['PNG 저장', '⌘/Ctrl + S'],
     ['확정', '⌘/Ctrl + Enter'],
     ['닫기', 'Esc']
   ];
   return (
-    <details className="mt-3 rounded-md border border-slate-700 bg-slate-950 p-2">
-      <summary className="cursor-pointer text-xs font-black text-slate-200">단축키</summary>
+    <details className="mt-3 rounded-md border border-zinc-700/80 bg-[#121212] p-2">
+      <summary className="cursor-pointer text-xs font-black text-zinc-200">단축키</summary>
       <div className="mt-2 grid gap-1">
         {rows.map(([label, key]) => (
-          <div key={label} className="flex items-center justify-between gap-2 rounded border border-slate-800 bg-slate-900 px-2 py-1.5 text-[11px] font-bold text-slate-300">
+          <div key={label} className="flex items-center justify-between gap-2 rounded border border-zinc-800 bg-[#181818] px-2 py-1.5 text-[11px] font-bold text-zinc-300">
             <span>{label}</span>
-            <kbd className="shrink-0 rounded bg-slate-950 px-1.5 py-0.5 text-[10px] font-black text-indigo-200">{key}</kbd>
+            <kbd className="shrink-0 rounded bg-zinc-950 px-1.5 py-0.5 text-[10px] font-black text-indigo-200">{key}</kbd>
           </div>
         ))}
       </div>
@@ -840,8 +1278,8 @@ function ShortcutHelp() {
 
 function LayerListControls({ layers, selectedId, selectTextLayer, setEditingId, duplicateSelected, moveSelected, resetLayers }) {
   return (
-    <details className="min-w-0 rounded-md border border-slate-700 bg-slate-950 p-2" open>
-      <summary className="cursor-pointer text-xs font-black text-slate-100">문구 레이어</summary>
+    <details className="min-w-0 rounded-md border border-zinc-700/80 bg-[#121212] p-2" open>
+      <summary className="cursor-pointer text-xs font-black text-zinc-100">문구 레이어</summary>
       <div className="mt-2 space-y-2">
         <div className="grid min-w-0 gap-1.5">
           {layers.map((layer, index) => (
@@ -880,6 +1318,136 @@ function LayerListControls({ layers, selectedId, selectTextLayer, setEditingId, 
       </div>
     </details>
   );
+}
+
+function ProductAssetControls({ card, productAssets, selectedProduct, selectedProductId, selectProductAsset, patchProductAsset, addProductAsset, removeSelectedProduct, resetProductAssets, productAssetBusyId, productAssetError, fetchProductAsset }) {
+  const candidates = Array.isArray(card?.visualBrief?.productCandidates) ? card.visualBrief.productCandidates.filter((item) => item?.name).slice(0, 6) : [];
+  async function uploadProductImage(event, product) {
+    const file = event.target.files?.[0];
+    if (!file || !product) return;
+    const dataUrl = await fileToDataUrl(file);
+    patchProductAsset(product.id, { imageUrl: dataUrl });
+    event.target.value = '';
+  }
+  return (
+    <details className={darkPanelClass} open>
+      <summary className={darkSummaryClass}>
+        <span className="inline-flex items-center gap-1.5"><Package className="h-3.5 w-3.5 text-indigo-300" />제품 추천 슬롯</span>
+      </summary>
+      <div className="mt-2 space-y-2">
+        <p className="rounded border border-indigo-500/20 bg-indigo-950/25 p-2 text-[11px] font-bold leading-4 text-indigo-100">
+          제품 이미지를 URL이나 파일로 넣으면 배경 위에 제품 카드와 설명이 합성됩니다. 투명 PNG를 쓰면 제품만 잘라 올린 느낌이 가장 좋아요.
+        </p>
+        <div className="grid gap-1.5">
+          {productAssets.map((product, index) => (
+            <button
+              key={product.id}
+              type="button"
+              className={`min-w-0 rounded-md border px-2 py-1.5 text-left text-[11px] font-black ${selectedProductId === product.id ? 'border-indigo-400 bg-indigo-500/20 text-indigo-100' : 'border-slate-800 bg-slate-900 text-slate-200 hover:border-slate-600'}`}
+              onClick={() => selectProductAsset(product.id)}
+            >
+              {index + 1}. {product.name || '제품명'}
+            </button>
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-1.5">
+          <Button size="sm" variant="outline" className={lightButtonClass} onClick={() => addProductAsset()}>
+            <Plus className="h-4 w-4" />
+            빈 슬롯
+          </Button>
+          <Button size="sm" variant="outline" className={lightButtonClass} onClick={resetProductAssets}>
+            <RotateCcw className="h-4 w-4" />
+            후보 복원
+          </Button>
+        </div>
+        {candidates.length ? (
+          <div className={darkNestedPanelClass}>
+            <div className="mb-1 text-[11px] font-black text-slate-300">기획 후보에서 추가</div>
+            <div className="grid gap-1">
+              {candidates.map((candidate) => (
+                <Button key={candidate.name} size="sm" variant="outline" className={`${lightButtonClass} justify-start`} onClick={() => addProductAsset(candidate)}>
+                  {candidate.name}
+                </Button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        {selectedProduct ? (
+          <div className={`${darkNestedPanelClass} space-y-2`}>
+            <label className={darkLabelClass}>
+              제품명
+              <input className={`${darkInputClass} h-8 text-xs`} value={selectedProduct.name ?? ''} onChange={(event) => patchProductAsset(selectedProduct.id, { name: event.target.value })} />
+            </label>
+            <label className={darkLabelClass}>
+              설명
+              <textarea className={`${darkTextareaClass} min-h-14 resize-y text-xs leading-5`} value={selectedProduct.description ?? ''} onChange={(event) => patchProductAsset(selectedProduct.id, { description: event.target.value })} />
+            </label>
+            <label className={darkLabelClass}>
+              제품 이미지 URL
+              <input className={`${darkInputClass} h-8 text-xs`} value={selectedProduct.imageUrl ?? ''} onChange={(event) => patchProductAsset(selectedProduct.id, { imageUrl: event.target.value })} placeholder="https://... 또는 data:image/png;base64,..." />
+            </label>
+            <label className={darkLabelClass}>
+              검색/생성 키워드
+              <input className={`${darkInputClass} h-8 text-xs`} value={selectedProduct.searchQuery ?? selectedProduct.name ?? ''} onChange={(event) => patchProductAsset(selectedProduct.id, { searchQuery: event.target.value })} placeholder="예: lip tint product cutout" />
+            </label>
+            <div className="grid grid-cols-2 gap-1.5">
+              <Button size="sm" variant="outline" className={lightButtonClass} onClick={() => fetchProductAsset?.(selectedProduct.id, 'search')} disabled={productAssetBusyId === selectedProduct.id}>
+                {productAssetBusyId === selectedProduct.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                검색 삽입
+              </Button>
+              <Button size="sm" variant="outline" className={lightButtonClass} onClick={() => fetchProductAsset?.(selectedProduct.id, 'generate')} disabled={productAssetBusyId === selectedProduct.id}>
+                {productAssetBusyId === selectedProduct.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                AI 제품컷
+              </Button>
+            </div>
+            {selectedProduct.sourceProvider ? (
+              <div className="rounded border border-slate-700 bg-slate-950/70 p-2 text-[11px] font-semibold leading-4 text-slate-300">
+                <b className="text-slate-100">소스</b> {selectedProduct.sourceProvider}
+                {selectedProduct.sourceLabel ? ` · ${selectedProduct.sourceLabel}` : ''}
+                {selectedProduct.sourceUrl ? <a className="ml-1 font-black text-indigo-300" href={selectedProduct.sourceUrl} target="_blank" rel="noreferrer">보기</a> : null}
+              </div>
+            ) : null}
+            {productAssetError ? <p className="rounded border border-red-900/40 bg-red-950/60 p-2 text-[11px] font-semibold leading-4 text-red-200">{productAssetError}</p> : null}
+            <label className={darkLabelClass}>
+              파일 업로드
+              <input className="text-[11px] font-bold text-slate-300 file:mr-2 file:rounded file:border-0 file:bg-indigo-600 file:px-2 file:py-1 file:text-xs file:font-black file:text-white" type="file" accept="image/*" onChange={(event) => uploadProductImage(event, selectedProduct)} />
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <label className={darkLabelClass}>
+                X {Math.round(selectedProduct.x)}
+                <input type="range" min="24" max="900" value={selectedProduct.x} onChange={(event) => patchProductAsset(selectedProduct.id, { x: Number(event.target.value) })} />
+              </label>
+              <label className={darkLabelClass}>
+                Y {Math.round(selectedProduct.y)}
+                <input type="range" min="120" max="1060" value={selectedProduct.y} onChange={(event) => patchProductAsset(selectedProduct.id, { y: Number(event.target.value) })} />
+              </label>
+              <label className={darkLabelClass}>
+                너비 {Math.round(selectedProduct.width)}
+                <input type="range" min="260" max="920" value={selectedProduct.width} onChange={(event) => patchProductAsset(selectedProduct.id, { width: Number(event.target.value) })} />
+              </label>
+              <label className={darkLabelClass}>
+                높이 {Math.round(selectedProduct.height)}
+                <input type="range" min="120" max="360" value={selectedProduct.height} onChange={(event) => patchProductAsset(selectedProduct.id, { height: Number(event.target.value) })} />
+              </label>
+            </div>
+            <Button size="sm" variant="outline" className={`w-full ${lightButtonClass}`} onClick={removeSelectedProduct}>
+              <Trash2 className="h-4 w-4" />
+              제품 슬롯 삭제
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    </details>
+  );
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(`${reader.result}`);
+    reader.onerror = () => reject(new Error('파일을 읽지 못했습니다.'));
+    reader.readAsDataURL(file);
+  });
 }
 
 function layerName(layer = {}) {
@@ -1160,6 +1728,43 @@ function shapeLabel(shape = {}) {
   return '박스';
 }
 
+function commandContextLabel({ card, selectedLayer, selectedShape, selectedProduct } = {}) {
+  const cardLabel = `카드 ${String(card?.page ?? 1).padStart(2, '0')}`;
+  if (selectedLayer) return `${cardLabel} · 문구 선택`;
+  if (selectedShape) return `${cardLabel} · ${shapeLabel(selectedShape)} 선택`;
+  if (selectedProduct) return `${cardLabel} · 제품 선택`;
+  return `${cardLabel} · 카드 전체`;
+}
+
+function extractCommandText(command = '') {
+  const quoted = command.match(/[“"']([^“"']{1,240})[”"']/);
+  if (quoted?.[1]) return quoted[1].trim();
+  const colon = command.match(/(?:문구|텍스트|글|제목|본문|카피)\s*[:：]\s*(.+)$/);
+  if (colon?.[1]) return colon[1].trim().slice(0, 240);
+  return '';
+}
+
+function shapeCommandPatch(shape = {}, command = '') {
+  const patch = {};
+  const step = /많이|크게/.test(command) ? 80 : 32;
+  if (/오른쪽/.test(command)) patch.x = clamp(Number(shape.x ?? 0) + step, 0, CANVAS_WIDTH - Number(shape.width ?? 0));
+  if (/왼쪽/.test(command)) patch.x = clamp(Number(shape.x ?? 0) - step, 0, CANVAS_WIDTH - Number(shape.width ?? 0));
+  if (/아래/.test(command)) patch.y = clamp(Number(shape.y ?? 0) + step, 0, CANVAS_HEIGHT - Number(shape.height ?? 0));
+  if (/위/.test(command)) patch.y = clamp(Number(shape.y ?? 0) - step, 0, CANVAS_HEIGHT - Number(shape.height ?? 0));
+  if (/크게|키워|넓게/.test(command)) {
+    patch.width = clamp(Number(shape.width ?? 0) + step, 20, CANVAS_WIDTH - Number(shape.x ?? 0));
+    patch.height = clamp(Number(shape.height ?? 0) + Math.round(step * 0.6), 8, CANVAS_HEIGHT - Number(shape.y ?? 0));
+  }
+  if (/작게|줄여/.test(command)) {
+    patch.width = Math.max(20, Number(shape.width ?? 0) - step);
+    patch.height = Math.max(8, Number(shape.height ?? 0) - Math.round(step * 0.6));
+  }
+  if (/투명|연하게/.test(command)) patch.opacity = clamp(Number(shape.opacity ?? 0.5) - 0.15, 0.05, 1);
+  if (/불투명|진하게|어둡게/.test(command)) patch.opacity = clamp(Number(shape.opacity ?? 0.5) + 0.15, 0.05, 1);
+  if (/밝게/.test(command)) patch.fill = '#ffffff';
+  return patch;
+}
+
 function DataOverlayControls({ overlay, patchOverlay, patchItem, patchRow, patchColumn, addItem, removeItem, addRow, removeRow, nudgeOverlay, reset }) {
   const [open, setOpen] = useState(false);
   return (
@@ -1333,7 +1938,7 @@ function SvgDataOverlay({ overlay, beginDrag }) {
   return null;
 }
 
-function SvgShapeLayers({ shapes, selectedId, beginDrag }) {
+function SvgShapeLayers({ shapes, selectedId, beginDrag, beginResize }) {
   if (!shapes?.length) return null;
   return (
     <g>
@@ -1345,7 +1950,7 @@ function SvgShapeLayers({ shapes, selectedId, beginDrag }) {
           onPointerDown={(event) => beginDrag(event, shape)}
         >
           <SvgShape shape={shape} />
-          {selectedId === shape.id ? <ShapeSelectionBox shape={shape} /> : null}
+          {selectedId === shape.id ? <ShapeSelectionBox shape={shape} beginResize={beginResize} /> : null}
         </g>
       ))}
     </g>
@@ -1396,21 +2001,39 @@ function SvgShape({ shape }) {
   );
 }
 
-function ShapeSelectionBox({ shape }) {
+function ShapeSelectionBox({ shape, beginResize }) {
   const pad = 10;
+  const handles = shape.type === 'line' ? [] : shapeResizeHandles(shape, pad);
   return (
-    <rect
-      x={shape.x - pad}
-      y={shape.y - pad}
-      width={shape.width + pad * 2}
-      height={shape.height + pad * 2}
-      rx="18"
-      fill="none"
-      stroke="#f59e0b"
-      strokeWidth="4"
-      strokeDasharray="12 10"
-      pointerEvents="none"
-    />
+    <g>
+      <rect
+        x={shape.x - pad}
+        y={shape.y - pad}
+        width={shape.width + pad * 2}
+        height={shape.height + pad * 2}
+        rx="18"
+        fill="none"
+        stroke="#f59e0b"
+        strokeWidth="4"
+        strokeDasharray="12 10"
+        pointerEvents="none"
+      />
+      {handles.map((handle) => (
+        <rect
+          key={handle.id}
+          x={handle.x - 12}
+          y={handle.y - 12}
+          width="24"
+          height="24"
+          rx="7"
+          fill="#f8fafc"
+          stroke="#f59e0b"
+          strokeWidth="4"
+          className="cursor-nwse-resize"
+          onPointerDown={(event) => beginResize?.(event, shape, handle.id)}
+        />
+      ))}
+    </g>
   );
 }
 
@@ -1579,6 +2202,33 @@ function DataDragHandle({ overlay }) {
   );
 }
 
+function SvgProductAssets({ products = [], selectedId, beginDrag }) {
+  return (
+    <g>
+      {products.map((product) => (
+        <g key={product.id} className="cursor-move" onPointerDown={(event) => beginDrag(event, product)}>
+          <rect x={product.x} y={product.y} width={product.width} height={product.height} rx="26" fill="#fffffff2" stroke={selectedId === product.id ? '#6366f1' : '#e2e8f0'} strokeWidth={selectedId === product.id ? 5 : 3} />
+          <rect x={product.x + 18} y={product.y + 18} width={product.imageBoxWidth} height={product.height - 36} rx="20" fill="#f8fafc" stroke="#e2e8f0" strokeWidth="2" />
+          {product.imageUrl ? (
+            <image href={product.imageUrl} x={product.x + 28} y={product.y + 28} width={product.imageBoxWidth - 20} height={product.height - 56} preserveAspectRatio="xMidYMid meet" />
+          ) : (
+            <g>
+              <rect x={product.x + 54} y={product.y + 54} width={product.imageBoxWidth - 108} height={product.height - 108} rx="18" fill="#e2e8f0" />
+              <text x={product.x + product.imageBoxWidth / 2 + 18} y={product.y + product.height / 2 + 8} fontFamily={FONT_FAMILY} fontSize="18" fontWeight="900" fill="#64748b" textAnchor="middle">제품 이미지</text>
+            </g>
+          )}
+          <text x={product.x + product.imageBoxWidth + 42} y={product.y + 52} fontFamily={FONT_FAMILY} fontSize="26" fontWeight="900" fill="#0f172a">
+            {wrapSvgLines(product.name, 18, 2).map((line, index) => <tspan key={`${product.id}-name-${index}`} x={product.x + product.imageBoxWidth + 42} dy={index === 0 ? 0 : 32}>{line}</tspan>)}
+          </text>
+          <text x={product.x + product.imageBoxWidth + 42} y={product.y + 124} fontFamily={FONT_FAMILY} fontSize="18" fontWeight="800" fill="#475569">
+            {wrapSvgLines(product.description, 26, 3).map((line, index) => <tspan key={`${product.id}-desc-${index}`} x={product.x + product.imageBoxWidth + 42} dy={index === 0 ? 0 : 25}>{line}</tspan>)}
+          </text>
+        </g>
+      ))}
+    </g>
+  );
+}
+
 function OverlayPanel({ overlay }) {
   return (
     <rect
@@ -1637,10 +2287,11 @@ function defaultTextLayers(card = {}, style = {}, studio = {}) {
   if (hasVerifiedData && !isCover) return verifiedDataTextLayers(card, style, studio);
   const titleColor = isCover ? '#ffffff' : style.ink || '#0f172a';
   const bodyColor = isCover ? '#ffffff' : style.ink || '#0f172a';
+  const emphasisText = cleanEmphasisText(card.emphasis);
   const base = [
     {
       id: 'title',
-      text: wrapForEditor(card.title || studio.label || '카드 제목', isCover ? 10 : 12),
+      text: wrapForEditor(card.title || studio.label || '카드 제목', isCover ? 9 : 10),
       x: isCover ? 78 : 76,
       y: isCover ? 900 : 150,
       fontSize: isCover ? 84 : 62,
@@ -1649,7 +2300,23 @@ function defaultTextLayers(card = {}, style = {}, studio = {}) {
       weight: 900,
       align: 'start',
       ...defaultBoxStyle(false)
-    },
+    }
+  ];
+  if (emphasisText) {
+    base.push({
+      id: 'emphasis',
+      text: emphasisText,
+      x: isCover ? 84 : 82,
+      y: isCover ? 780 : 255,
+      fontSize: isCover ? 34 : 30,
+      lineHeight: 1.16,
+      color: style.accent || '#ef4444',
+      weight: 900,
+      align: 'start',
+      ...defaultBoxStyle(false)
+    });
+  }
+  base.push(
     {
       id: 'body',
       text: formatCardText(card.body || '').trim() || '본문 문구를 입력하세요.',
@@ -1659,18 +2326,6 @@ function defaultTextLayers(card = {}, style = {}, studio = {}) {
       lineHeight: 1.28,
       color: bodyColor,
       weight: 800,
-      align: 'start',
-      ...defaultBoxStyle(isCover)
-    },
-    {
-      id: 'emphasis',
-      text: card.emphasis || '핵심 포인트',
-      x: isCover ? 84 : 82,
-      y: isCover ? 780 : 255,
-      fontSize: isCover ? 34 : 30,
-      lineHeight: 1.16,
-      color: style.accent || '#ef4444',
-      weight: 900,
       align: 'start',
       ...defaultBoxStyle(false)
     },
@@ -1686,7 +2341,7 @@ function defaultTextLayers(card = {}, style = {}, studio = {}) {
       align: 'middle',
       ...defaultBoxStyle(false)
     }
-  ];
+  );
 
   const labels = (Array.isArray(card.visualItems) ? card.visualItems : []).filter(Boolean).slice(0, 4);
   if (card.layout === 'comparison_board' || card.role === 'comparison') {
@@ -1734,6 +2389,66 @@ function defaultTextLayers(card = {}, style = {}, studio = {}) {
   return base;
 }
 
+function initialProductAssets(draftKey, card) {
+  const draft = loadProductDraft(draftKey);
+  if (Array.isArray(draft)) return draft.map(clampProductAsset).filter((product) => product.name).slice(0, 6);
+  return defaultProductAssets(card);
+}
+
+function defaultProductAssets(card = {}) {
+  const candidates = Array.isArray(card.visualBrief?.productCandidates) ? card.visualBrief.productCandidates : [];
+  const shouldShow = candidates.length || /대표\s*제품|제품\s*추천|브랜드|립오일|틴티드|검색\s*키워드|brand_map|product_reveal|search_keywords/i.test([
+    card.role,
+    card.layout,
+    card.title,
+    card.body,
+    card.visualPrompt,
+    card.visualBrief?.scenarioType,
+    card.visualBrief?.scenario
+  ].filter(Boolean).join(' '));
+  if (!shouldShow) return [];
+  const source = candidates.length ? candidates : [{ name: card.title || '추천 제품', role: card.emphasis || '대표 제품 예시' }];
+  return source.slice(0, 3).map((candidate, index) => defaultProductAsset(candidate, index));
+}
+
+function defaultProductAsset(candidate = {}, index = 0) {
+  const top = 360 + index * 190;
+  return clampProductAsset({
+    id: `product-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
+    name: `${candidate.name ?? candidate.label ?? '추천 제품'}`.trim(),
+    description: `${candidate.role ?? candidate.reason ?? candidate.imageUsePolicy ?? '왜 추천하는지 짧게 적어주세요.'}`.trim(),
+    imageUrl: `${candidate.imageUrl ?? candidate.url ?? ''}`.trim(),
+    x: 92,
+    y: top,
+    width: 896,
+    height: 160,
+    imageBoxWidth: 170
+  });
+}
+
+function clampProductAsset(product = {}) {
+  const width = clamp(Number(product.width ?? 896), 260, 980);
+  const height = clamp(Number(product.height ?? 160), 120, 380);
+  return {
+    ...product,
+    id: `${product.id ?? `product-${Date.now()}`}`,
+    name: `${product.name ?? '추천 제품'}`.slice(0, 80),
+    description: `${product.description ?? ''}`.slice(0, 180),
+    imageUrl: `${product.imageUrl ?? ''}`.trim(),
+    width,
+    height,
+    imageBoxWidth: clamp(Number(product.imageBoxWidth ?? Math.min(190, width * 0.32)), 110, Math.min(300, width - 140)),
+    x: clamp(Number(product.x ?? 92), 0, Math.max(0, CANVAS_WIDTH - width)),
+    y: clamp(Number(product.y ?? 360), 0, Math.max(0, CANVAS_HEIGHT - height))
+  };
+}
+
+function nudgeProductAsset(products = [], id, dx, dy) {
+  return products.map((product) => product.id === id
+    ? clampProductAsset({ ...product, x: Number(product.x ?? 0) + dx, y: Number(product.y ?? 0) + dy })
+    : product);
+}
+
 function verifiedDataTextLayers(card = {}, style = {}, studio = {}) {
   return [
     {
@@ -1776,7 +2491,48 @@ function initialTextLayers(draftKey, card, style, studio) {
   if (card?.visualData && Array.isArray(draft) && draft.some((layer) => ['title', 'emphasis'].includes(layer?.id))) {
     return clampTextLayers(defaultTextLayers(card, style, studio));
   }
-  return clampTextLayers(draft || defaultTextLayers(card, style, studio));
+  const normalizedDraft = normalizeDraftGenericTextLayers(normalizeDraftCaptionBoxes(normalizeDraftTitleWrap(draft, card, style, studio), card));
+  return clampTextLayers(normalizedDraft || defaultTextLayers(card, style, studio));
+}
+
+function cleanEmphasisText(value) {
+  const text = `${value ?? ''}`.replace(/\s+/g, ' ').trim();
+  if (!text || isGenericDataLabel(text)) return '';
+  return text;
+}
+
+function normalizeDraftGenericTextLayers(draft) {
+  if (!Array.isArray(draft) || !draft.length) return draft;
+  const filtered = draft.filter((layer) => !(layer?.id === 'emphasis' && !cleanEmphasisText(layer.text)));
+  return filtered.length ? filtered : null;
+}
+
+function normalizeDraftTitleWrap(draft, card, style, studio) {
+  if (!Array.isArray(draft) || !draft.length) return null;
+  const defaultLayers = defaultTextLayers(card, style, studio);
+  const defaultTitle = defaultLayers.find((layer) => layer.id === 'title');
+  if (!defaultTitle) return draft;
+  const titleText = `${card?.title || studio?.label || '카드 제목'}`.replace(/\s+/g, '');
+  return draft.map((layer) => {
+    if (layer?.id !== 'title') return layer;
+    const draftText = `${layer.text ?? ''}`.replace(/\s+/g, '');
+    return draftText && draftText === titleText ? { ...layer, text: defaultTitle.text } : layer;
+  });
+}
+
+function normalizeDraftCaptionBoxes(draft, card) {
+  if (!Array.isArray(draft) || !draft.length) return null;
+  const isCover = card?.layout === 'cover_text' || card?.layout === 'cover_photo' || card?.role === 'cover';
+  if (!isCover) return draft;
+  const bodyText = `${formatCardText(card?.body || '').trim()}`.replace(/\s+/g, '');
+  return draft.map((layer) => {
+    if (layer?.id !== 'body') return layer;
+    const draftText = `${layer.text ?? ''}`.replace(/\s+/g, '');
+    const legacyDefaultBox = draftText && draftText === bodyText
+      && `${layer.backgroundColor ?? ''}` === '#000000'
+      && Number(layer.backgroundOpacity ?? 0) === 0.55;
+    return legacyDefaultBox ? { ...layer, backgroundOpacity: 0 } : layer;
+  });
 }
 
 function initialDataOverlay(draftKey, card, style) {
@@ -1917,6 +2673,49 @@ function nudgeShapeLayer(shapes = [], id, dx, dy) {
     : shape);
 }
 
+function resizeShapePatch(drag = {}, point = {}) {
+  const minWidth = 24;
+  const minHeight = 16;
+  const dx = Number(point.x ?? 0) - Number(drag.x ?? 0);
+  const dy = Number(point.y ?? 0) - Number(drag.y ?? 0);
+  const fromLeft = `${drag.handle}`.includes('w');
+  const fromRight = `${drag.handle}`.includes('e');
+  const fromTop = `${drag.handle}`.includes('n');
+  const fromBottom = `${drag.handle}`.includes('s');
+  let x = Number(drag.layerX ?? 0);
+  let y = Number(drag.layerY ?? 0);
+  let width = Number(drag.width ?? minWidth);
+  let height = Number(drag.height ?? minHeight);
+
+  if (fromLeft) {
+    const nextWidth = clamp(width - dx, minWidth, x + width);
+    x += width - nextWidth;
+    width = nextWidth;
+  }
+  if (fromRight) width = clamp(width + dx, minWidth, CANVAS_WIDTH - x);
+  if (fromTop) {
+    const nextHeight = clamp(height - dy, minHeight, y + height);
+    y += height - nextHeight;
+    height = nextHeight;
+  }
+  if (fromBottom) height = clamp(height + dy, minHeight, CANVAS_HEIGHT - y);
+
+  return { x, y, width, height };
+}
+
+function shapeResizeHandles(shape = {}, pad = 0) {
+  const left = Number(shape.x ?? 0) - pad;
+  const top = Number(shape.y ?? 0) - pad;
+  const right = Number(shape.x ?? 0) + Number(shape.width ?? 0) + pad;
+  const bottom = Number(shape.y ?? 0) + Number(shape.height ?? 0) + pad;
+  return [
+    { id: 'nw', x: left, y: top },
+    { id: 'ne', x: right, y: top },
+    { id: 'sw', x: left, y: bottom },
+    { id: 'se', x: right, y: bottom }
+  ];
+}
+
 function clampShapeLayer(shape = {}) {
   const width = Math.max(shape.type === 'line' ? 0 : 8, Number(shape.width ?? 0));
   const height = Math.max(shape.type === 'line' ? 0 : 8, Number(shape.height ?? 0));
@@ -1932,15 +2731,15 @@ function clampShapeLayer(shape = {}) {
 function initialFrameSettings(draftKey, card) {
   const base = defaultFrameSettings(card);
   const draft = loadFrameDraft(draftKey);
-  return draft ? { ...base, ...draft } : base;
+  return draft ? normalizeFrameDraft({ ...base, ...draft }, card) : base;
 }
 
 function defaultFrameSettings(card = {}) {
   const hasVerifiedData = Boolean(card.visualData);
   const isCover = card.layout === 'cover_text' || card.layout === 'cover_photo' || card.role === 'cover';
   return {
-    shadeOpacity: hasVerifiedData ? 0.08 : isCover ? 0.14 : 0,
-    safeAreaEnabled: hasVerifiedData || isCover,
+    shadeOpacity: hasVerifiedData ? 0.08 : 0,
+    safeAreaEnabled: hasVerifiedData,
     safeAreaX: 64,
     safeAreaY: hasVerifiedData ? 1018 : isCover ? 874 : 980,
     safeAreaWidth: 952,
@@ -1954,6 +2753,23 @@ function defaultFrameSettings(card = {}) {
     frameStrokeColor: '#ffffff',
     frameStrokeWidth: 6,
     frameOpacity: 0.72
+  };
+}
+
+function normalizeFrameDraft(frame = {}, card = {}) {
+  const isCover = card.layout === 'cover_text' || card.layout === 'cover_photo' || card.role === 'cover';
+  if (!isCover || card.visualData) return frame;
+  const legacyCoverSafeArea = frame.safeAreaEnabled
+    && Number(frame.safeAreaX) === 64
+    && Number(frame.safeAreaY) === 874
+    && Number(frame.safeAreaWidth) === 952
+    && Number(frame.safeAreaHeight) === 330
+    && Number(frame.safeAreaOpacity) === 0.34;
+  const legacyCoverShade = Number(frame.shadeOpacity ?? 0) === 0.14;
+  return {
+    ...frame,
+    safeAreaEnabled: legacyCoverSafeArea ? false : frame.safeAreaEnabled,
+    shadeOpacity: legacyCoverShade ? 0 : frame.shadeOpacity
   };
 }
 
@@ -2051,11 +2867,14 @@ function hasTextBox(layer = {}) {
 
 function textBoxMetrics(layer = {}) {
   const lines = `${layer.text ?? ''}`.split('\n');
-  const longest = Math.max(...lines.map((line) => [...line].length), 1);
-  const textWidth = Math.min(980, Math.max(42, longest * Number(layer.fontSize ?? 36) * 0.64));
+  const fontSize = Number(layer.fontSize ?? 36);
+  const textWidth = Math.min(
+    CANVAS_WIDTH - TEXT_SAFE_MARGIN * 2,
+    Math.max(42, ...lines.map((line) => visualTextWidth(line, fontSize)))
+  );
   const textHeight = Math.max(
-    Number(layer.fontSize ?? 36),
-    (lines.length - 1) * Number(layer.fontSize ?? 36) * Number(layer.lineHeight ?? 1.16) + Number(layer.fontSize ?? 36) * 1.08
+    fontSize,
+    (lines.length - 1) * fontSize * Number(layer.lineHeight ?? 1.16) + fontSize * 1.08
   );
   const paddingX = Number(layer.paddingX ?? 26);
   const paddingY = Number(layer.paddingY ?? 16);
@@ -2064,7 +2883,7 @@ function textBoxMetrics(layer = {}) {
   const anchorX = layer.align === 'middle' ? -textWidth / 2 : layer.align === 'end' ? -textWidth : 0;
   return {
     x: anchorX - paddingX,
-    y: -Number(layer.fontSize ?? 36) * 0.94 - paddingY,
+    y: -fontSize * 0.94 - paddingY,
     width,
     height
   };
@@ -2072,8 +2891,8 @@ function textBoxMetrics(layer = {}) {
 
 function clampTextLayerPosition(layer = {}) {
   const box = textBoxMetrics(layer);
-  const minX = 12 - box.x;
-  const maxX = CANVAS_WIDTH - 12 - box.x - box.width;
+  const minX = TEXT_SAFE_MARGIN - box.x;
+  const maxX = CANVAS_WIDTH - TEXT_SAFE_MARGIN - box.x - box.width;
   const minY = 12 - box.y;
   const maxY = CANVAS_HEIGHT - 12 - box.y - box.height;
   return {
@@ -2096,10 +2915,39 @@ function nudgeTextLayer(layers = [], id, dx, dy) {
 function wrapForEditor(value, limit) {
   const text = `${value ?? ''}`.trim();
   if (!text || text.includes('\n')) return text;
-  const chars = [...text];
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length > 1) {
+    const lines = [];
+    let line = '';
+    for (const word of words) {
+      const candidate = line ? `${line} ${word}` : word;
+      if ([...candidate].length <= limit || !line) {
+        line = candidate;
+      } else {
+        lines.push(line);
+        line = word;
+      }
+    }
+    if (line) lines.push(line);
+    return lines.flatMap((line) => chunkLongWord(line, limit)).slice(0, 3).join('\n');
+  }
+  return chunkLongWord(text, limit).slice(0, 3).join('\n');
+}
+
+function chunkLongWord(value, limit) {
+  const chars = [...`${value ?? ''}`];
   const lines = [];
   for (let index = 0; index < chars.length; index += limit) lines.push(chars.slice(index, index + limit).join(''));
-  return lines.slice(0, 3).join('\n');
+  return lines;
+}
+
+function visualTextWidth(value, fontSize) {
+  return [...`${value ?? ''}`].reduce((sum, char) => {
+    if (/\s/.test(char)) return sum + fontSize * 0.34;
+    if (/[\u3131-\u318E\uAC00-\uD7A3]/.test(char)) return sum + fontSize * 0.92;
+    if (/[A-Z0-9]/.test(char)) return sum + fontSize * 0.66;
+    return sum + fontSize * 0.56;
+  }, 0);
 }
 
 function svgPoint(event, svg) {
@@ -2117,13 +2965,14 @@ function isTypingTarget(target) {
   return ['INPUT', 'TEXTAREA', 'SELECT'].includes(element.tagName);
 }
 
-async function composeFinalImage(url, layers, dataOverlay, frame, shapes = []) {
+async function composeFinalImage(url, layers, dataOverlay, frame, shapes = [], products = []) {
   const canvas = Object.assign(document.createElement('canvas'), { width: CANVAS_WIDTH, height: CANVAS_HEIGHT });
   const context = canvas.getContext('2d');
   context.fillStyle = '#ffffff';
   context.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   const baseImage = await loadImage(url);
   drawCover(context, baseImage, CANVAS_WIDTH, CANVAS_HEIGHT);
+  await drawProductAssets(context, products);
   const overlayUrl = URL.createObjectURL(new Blob([overlaySvg(layers, dataOverlay, frame, shapes)], { type: 'image/svg+xml;charset=utf-8' }));
   try {
     const overlayImage = await loadImage(overlayUrl);
@@ -2132,6 +2981,91 @@ async function composeFinalImage(url, layers, dataOverlay, frame, shapes = []) {
     URL.revokeObjectURL(overlayUrl);
   }
   return canvas.toDataURL('image/png');
+}
+
+async function drawProductAssets(context, products = []) {
+  for (const product of products) {
+    const item = clampProductAsset(product);
+    context.save();
+    drawRoundedRect(context, item.x, item.y, item.width, item.height, 26);
+    context.fillStyle = 'rgba(255,255,255,0.95)';
+    context.fill();
+    context.lineWidth = 3;
+    context.strokeStyle = '#e2e8f0';
+    context.stroke();
+
+    const imageX = item.x + 18;
+    const imageY = item.y + 18;
+    const imageW = item.imageBoxWidth;
+    const imageH = item.height - 36;
+    drawRoundedRect(context, imageX, imageY, imageW, imageH, 20);
+    context.fillStyle = '#f8fafc';
+    context.fill();
+    context.lineWidth = 2;
+    context.strokeStyle = '#e2e8f0';
+    context.stroke();
+
+    if (item.imageUrl) {
+      try {
+        const image = await loadImage(item.imageUrl);
+        drawContain(context, image, imageX + 10, imageY + 10, imageW - 20, imageH - 20);
+      } catch {
+        drawProductPlaceholder(context, imageX, imageY, imageW, imageH);
+      }
+    } else {
+      drawProductPlaceholder(context, imageX, imageY, imageW, imageH);
+    }
+
+    const textX = item.x + item.imageBoxWidth + 42;
+    const textW = Math.max(80, item.width - item.imageBoxWidth - 68);
+    context.fillStyle = '#0f172a';
+    context.font = `900 26px ${FONT_FAMILY}`;
+    drawWrappedCanvasText(context, item.name, textX, item.y + 52, textW, 32, 2);
+    context.fillStyle = '#475569';
+    context.font = `800 18px ${FONT_FAMILY}`;
+    drawWrappedCanvasText(context, item.description, textX, item.y + 124, textW, 25, 3);
+    context.restore();
+  }
+}
+
+function drawProductPlaceholder(context, x, y, width, height) {
+  drawRoundedRect(context, x + 36, y + 36, Math.max(20, width - 72), Math.max(20, height - 72), 18);
+  context.fillStyle = '#e2e8f0';
+  context.fill();
+  context.fillStyle = '#64748b';
+  context.font = `900 18px ${FONT_FAMILY}`;
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText('제품 이미지', x + width / 2, y + height / 2);
+  context.textAlign = 'start';
+  context.textBaseline = 'alphabetic';
+}
+
+function drawContain(context, image, x, y, width, height) {
+  const scale = Math.min(width / image.naturalWidth, height / image.naturalHeight);
+  const drawWidth = image.naturalWidth * scale;
+  const drawHeight = image.naturalHeight * scale;
+  context.drawImage(image, x + (width - drawWidth) / 2, y + (height - drawHeight) / 2, drawWidth, drawHeight);
+}
+
+function drawWrappedCanvasText(context, value, x, y, maxWidth, lineHeight, maxLines) {
+  const text = `${value ?? ''}`.trim() || ' ';
+  const chars = [...text];
+  const lines = [];
+  let line = '';
+  for (const char of chars) {
+    const next = `${line}${char}`;
+    if (line && context.measureText(next).width > maxWidth) {
+      lines.push(line);
+      line = char;
+      if (lines.length >= maxLines) break;
+    } else {
+      line = next;
+    }
+  }
+  if (line && lines.length < maxLines) lines.push(line);
+  if (chars.join('').length > lines.join('').length && lines.length) lines[lines.length - 1] = `${lines[lines.length - 1].slice(0, -1)}…`;
+  lines.slice(0, maxLines).forEach((lineText, index) => context.fillText(lineText, x, y + index * lineHeight));
 }
 
 function overlaySvg(layers, dataOverlay, frame, shapes = []) {
@@ -2368,6 +3302,21 @@ function drawCover(context, image, width, height) {
   context.drawImage(image, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
 }
 
+function drawRoundedRect(context, x, y, width, height, radius) {
+  const safeRadius = Math.min(Number(radius) || 0, width / 2, height / 2);
+  context.beginPath();
+  context.moveTo(x + safeRadius, y);
+  context.lineTo(x + width - safeRadius, y);
+  context.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
+  context.lineTo(x + width, y + height - safeRadius);
+  context.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height);
+  context.lineTo(x + safeRadius, y + height);
+  context.quadraticCurveTo(x, y + height, x, y + height - safeRadius);
+  context.lineTo(x, y + safeRadius);
+  context.quadraticCurveTo(x, y, x + safeRadius, y);
+  context.closePath();
+}
+
 function loadImage(src) {
   return new Promise((resolve, reject) => {
     const image = new Image();
@@ -2442,6 +3391,17 @@ function loadShapeDraft(key) {
   }
 }
 
+function loadProductDraft(key) {
+  const storage = localStorageSafe();
+  if (!storage || !key) return null;
+  try {
+    const parsed = JSON.parse(storage.getItem(`trlab.cardnews.${key}`) || 'null');
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 function saveLayerDraft(key, layers) {
   const storage = localStorageSafe();
   if (!storage || !key) return;
@@ -2477,6 +3437,16 @@ function saveShapeDraft(key, shapes) {
   if (!storage || !key) return;
   try {
     storage.setItem(`trlab.cardnews.${key}`, JSON.stringify(shapes));
+  } catch {
+    // Ignore localStorage limits.
+  }
+}
+
+function saveProductDraft(key, products) {
+  const storage = localStorageSafe();
+  if (!storage || !key) return;
+  try {
+    storage.setItem(`trlab.cardnews.${key}`, JSON.stringify(products));
   } catch {
     // Ignore localStorage limits.
   }
@@ -2526,6 +3496,8 @@ export const __cardTextOverlayEditorTestUtils = {
   defaultShapeLayer,
   duplicateShapeLayer,
   nudgeShapeLayer,
+  resizeShapePatch,
+  shapeResizeHandles,
   clampShapeLayer,
   initialShapeLayers,
   clampTextLayerPosition,
@@ -2535,5 +3507,11 @@ export const __cardTextOverlayEditorTestUtils = {
   frameOverlaySvg,
   initialTextLayers,
   initialDataOverlay,
-  initialFrameSettings
+  initialFrameSettings,
+  normalizeFrameDraft,
+  normalizeDraftTitleWrap,
+  normalizeDraftCaptionBoxes,
+  wrapForEditor,
+  visualTextWidth,
+  textBoxMetrics
 };

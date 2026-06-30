@@ -1,17 +1,43 @@
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Button/Button';
-import { Empty, StageHead } from '@/core/TrLab/Components/Desktop/Molecules/TrLab/Common';
 import { CardNewsMaker } from './CardNewsMaker';
+import { InstatoonWorkflowBoard } from './components/InstatoonWorkflowBoard';
 
-export function CardNewsView({ studio, setView, contentPlans }) {
+export function CardNewsView({ studio, work, setView, contentPlans }) {
   const plan = studio?.id ? contentPlans[studio.id] : null;
-  if (!studio) return <Empty title="카드뉴스로 만들 후보가 없습니다" onClick={() => setView('dashboard')} />;
+  if (!studio) {
+    const fallbackStudio = { label: 'Medical Decision', channelName: '@medical.decision' };
+    return (
+      <div className="space-y-5">
+        <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <h1 className="text-xl font-semibold tracking-normal text-slate-950">제작 보드</h1>
+              <p className="mt-2 text-sm font-medium leading-6 text-slate-500">레퍼런스와 스타일을 먼저 세팅합니다.</p>
+            </div>
+            <Button variant="outline" onClick={() => setView('planning')}><ArrowLeft className="h-4 w-4" />기획으로 이동</Button>
+          </div>
+        </section>
+        <InstatoonWorkflowBoard studio={fallbackStudio} plan={{ cards: [], referenceStyle: 'handdrawn_research' }} styleKey="note" />
+      </div>
+    );
+  }
   return (
     <div className="space-y-5">
-      <StageHead title={`${studio.label} 카드뉴스 제작`}>
-        <Button variant="outline" onClick={() => setView('plan')}><ArrowLeft className="h-4 w-4" />콘텐츠 설계로</Button>
-      </StageHead>
-      {plan ? <CardNewsMaker studio={studio} plan={plan} /> : <Empty title="먼저 콘텐츠 설계에서 기획안을 작성해주세요" onClick={() => setView('plan')} />}
+      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold tracking-normal text-slate-950">제작 보드</h1>
+            <p className="mt-2 text-sm font-medium leading-6 text-slate-500">레퍼런스와 카드 편집을 진행합니다.</p>
+          </div>
+          <Button variant="outline" onClick={() => setView('plan')}><ArrowLeft className="h-4 w-4" />콘텐츠 설계</Button>
+        </div>
+      </section>
+      {plan ? (
+        <CardNewsMaker studio={studio} plan={plan} work={work} />
+      ) : (
+        <InstatoonWorkflowBoard studio={studio} plan={{ cards: [], referenceStyle: 'handdrawn_research' }} styleKey="note" templateProduction={studio.contentSetup} />
+      )}
     </div>
   );
 }

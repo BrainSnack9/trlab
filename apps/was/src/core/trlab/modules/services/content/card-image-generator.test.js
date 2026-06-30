@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { generateCardNewsImage, generateLocalCard, makeImagePrompt } from './card-image-generator.js';
 
 const studio = {
@@ -81,6 +81,92 @@ describe('card image generator prompts and local fallback', () => {
     expect(prompt).not.toContain('9~11장 권장');
     expect(prompt).not.toContain('Respect template slots');
     expect(prompt).not.toMatch(/근거:|해석:|실행:/);
+  });
+
+  it('uses the manually edited image prompt before generated planner details', () => {
+    const prompt = makeImagePrompt({
+      studio,
+      plan,
+      card,
+      style,
+      customImagePrompt: 'Custom blank editorial background with a soft green shelf and large empty center.',
+      editInstruction: 'make the shelf brighter',
+      previousImagePrompt: 'previous backplate'
+    });
+
+    expect(prompt).toContain('Custom blank editorial background');
+    expect(prompt).toContain('Revision request: make the shelf brighter');
+    expect(prompt).toContain('Previous prompt context to keep continuity: previous backplate');
+    expect(prompt).not.toContain('반도체가 코스피에 미치는 영향');
+    expect(prompt).not.toContain('Overlay reservation');
+  });
+
+  it('uses Pexels as a card backplate source when a visual brief query is available', async () => {
+    const providerKeys = ['OPENAI_API_KEY', 'XAI_API_KEY', 'DEEPINFRA_API_KEY', 'GEMINI_API_KEY', 'PEXELS_API_KEY'];
+    const original = Object.fromEntries(providerKeys.map((key) => [key, process.env[key]]));
+    const originalFetch = globalThis.fetch;
+    for (const key of providerKeys) delete process.env[key];
+    process.env.PEXELS_API_KEY = 'pexels-test-key';
+    const jpgBytes = new Uint8Array([255, 216, 255, 217]);
+    globalThis.fetch = vi.fn(async (url) => {
+      const textUrl = `${url}`;
+      if (textUrl.includes('/v1/search')) {
+        return {
+          ok: true,
+          json: async () => ({
+            photos: [{
+              id: 123,
+              width: 1200,
+              height: 1800,
+              url: 'https://www.pexels.com/photo/test-123/',
+              photographer: 'Test Photographer',
+              photographer_url: 'https://www.pexels.com/@test',
+              avg_color: '#eeeeee',
+              alt: 'beauty flat lay',
+              src: { large2x: 'https://images.pexels.com/photos/test.jpg' }
+            }]
+          })
+        };
+      }
+      return {
+        ok: true,
+        arrayBuffer: async () => jpgBytes.buffer
+      };
+    });
+
+    try {
+      const image = await generateCardNewsImage({
+        studio: { label: '미국 Gen Z 립오일', keyword: 'lip oil' },
+        plan: {
+          ...plan,
+          productionBrief: {
+            designConcept: '클린 뷰티 카드뉴스',
+            pexelsStrategy: { enabled: true, globalQueries: ['lip gloss makeup pouch flat lay'], orientation: 'portrait' }
+          }
+        },
+        style,
+        index: 0,
+        card: {
+          ...card,
+          visualType: 'photo',
+          visualBrief: {
+            pexelsQuery: 'lip gloss makeup pouch flat lay',
+            pexels: { enabled: true, query: 'lip gloss makeup pouch flat lay', orientation: 'portrait' }
+          }
+        }
+      });
+
+      expect(image.provider).toBe('pexels');
+      expect(image.sourceImage.photographer).toBe('Test Photographer');
+      expect(image.warnings.join('\n')).toContain('Pexels photo used');
+      expect(globalThis.fetch).toHaveBeenCalledWith(expect.objectContaining({ href: expect.stringContaining('query=lip+gloss+makeup+pouch+flat+lay') }), expect.any(Object));
+    } finally {
+      globalThis.fetch = originalFetch;
+      for (const [key, value] of Object.entries(original)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 
   it('sanitizes reaction-card prompts so review/comment concepts do not become UI or text', () => {

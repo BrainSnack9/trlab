@@ -76,7 +76,7 @@ export function referenceVisualGuide(referenceStyle) {
     handdrawn_research: {
       account: '메모형 정보 카드',
       cover: '흰 여백 위 짧은 주제명과 편집자 관찰 한 줄',
-      body: '손으로 정리한 듯한 빈 자료 패널과 메모 여백',
+      body: '손으로 정리한 듯한 빈 자료 패널, 자료 칩, 메모 여백',
       proof: '근거는 내부 판단에만 사용하고 카드에는 노출하지 않음',
       typography: '굵은 제목 + 메모체 느낌의 짧은 본문',
       avoid: 'PPT식 도형 과다, 원문 제목 복붙, 긴 문단'

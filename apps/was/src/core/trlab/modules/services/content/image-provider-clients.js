@@ -1,8 +1,8 @@
 export const DEFAULT_CARD_IMAGE_SIZE = '1024x1536';
 
-export async function tryGenerateRemoteImage(prompt) {
+export async function tryGenerateRemoteImage(prompt, options = {}) {
   const errors = [];
-  const availableProviders = providers();
+  const availableProviders = providers(options.preferredProvider);
   if (!availableProviders.length) {
     errors.push('AI 이미지 provider가 설정되지 않았습니다. OPENAI_API_KEY, XAI_API_KEY, DEEPINFRA_API_KEY 또는 GEMINI_API_KEY를 설정하세요.');
     return { image: null, errors };
@@ -17,13 +17,18 @@ export async function tryGenerateRemoteImage(prompt) {
   return { image: null, errors };
 }
 
-function providers() {
-  return [
+function providers(preferredProvider = '') {
+  const list = [
     process.env.XAI_API_KEY && { name: 'xai', call: (prompt) => generateXAI(prompt, process.env.XAI_API_KEY) },
     process.env.DEEPINFRA_API_KEY && { name: 'deepinfra', call: (prompt) => generateDeepInfra(prompt, process.env.DEEPINFRA_API_KEY) },
     process.env.OPENAI_API_KEY && { name: 'openai', call: (prompt) => generateOpenAI(prompt, process.env.OPENAI_API_KEY) },
     process.env.GEMINI_API_KEY && process.env.GEMINI_IMAGE_FALLBACK === '1' && { name: 'gemini', call: (prompt) => generateGemini(prompt, process.env.GEMINI_API_KEY) }
   ].filter(Boolean);
+  if (!preferredProvider) return list;
+  return [
+    ...list.filter((provider) => provider.name === preferredProvider),
+    ...list.filter((provider) => provider.name !== preferredProvider)
+  ];
 }
 
 async function generateXAI(prompt, key) {

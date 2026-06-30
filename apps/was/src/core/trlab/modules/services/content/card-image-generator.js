@@ -2,28 +2,56 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { cardTextLines } from './card-text.js';
 import { tryGenerateRemoteImage } from './image-provider-clients.js';
+import { tryFetchPexelsCardImage } from './pexels-client.js';
 
 const outputDir = path.join(process.cwd(), 'public', 'generated', 'cardnews');
 const exactTextWarning = 'Backplate only: Korean copy must be added in the TrLab SVG text editor before final export.';
 const FONT_STACK = 'Pretendard, Apple SD Gothic Neo, Noto Sans CJK KR, Malgun Gothic, Arial, sans-serif';
 
-export async function generateCardNewsImage({ studio, plan, card, style, index, editInstruction, previousImagePrompt }) {
-  const prompt = makeImagePrompt({ studio, plan, card, style, editInstruction, previousImagePrompt });
-  const { image: remoteVisual, errors } = await tryGenerateRemoteImage(prompt);
+export async function generateCardNewsImage({ studio, plan, card, style, index, editInstruction, previousImagePrompt, customImagePrompt, preferredProvider }) {
+  const prompt = makeImagePrompt({ studio, plan, card, style, editInstruction, previousImagePrompt, customImagePrompt });
+  const pexelsQuery = pexelsQueryForCard({ studio, plan, card });
+  const usePexels = shouldUsePexelsBackplate({ card, style, pexelsQuery });
+  const pexelsResult = usePexels
+    ? await tryFetchPexelsCardImage(pexelsQuery, { orientation: card?.visualBrief?.pexels?.orientation || plan?.productionBrief?.pexelsStrategy?.orientation || 'portrait' })
+    : { image: null, errors: [] };
+  const remoteResult = pexelsResult.image
+    ? { image: pexelsResult.image, errors: pexelsResult.errors }
+    : await tryGenerateRemoteImage(prompt, { preferredProvider });
+  const { image: remoteVisual, errors } = remoteResult;
   if (!remoteVisual) {
-    throw new Error(`AI 이미지 생성이 필요합니다. ${errors.length ? errors.join(' | ') : '사용 가능한 이미지 provider가 없습니다.'}`);
+    throw new Error(`AI 이미지 또는 Pexels 이미지 생성이 필요합니다. ${errors.length ? errors.join(' | ') : '사용 가능한 이미지 provider가 없습니다.'}`);
   }
   const finalImage = generateLocalCard({ studio, card, style, remoteVisual }, errors);
   await mkdir(outputDir, { recursive: true });
   const filename = `${safeName(visualTopic({ studio, plan, card }))}-${String((index ?? 0) + 1).padStart(2, '0')}-${Date.now()}.${finalImage.ext}`;
   await writeFile(path.join(outputDir, filename), finalImage.buffer);
-  return { provider: finalImage.provider, model: finalImage.model, prompt, url: `/generated/cardnews/${filename}`, warnings: [exactTextWarning, ...errors] };
+  return {
+    provider: finalImage.provider,
+    model: finalImage.model,
+    prompt,
+    sourceImage: remoteVisual.source,
+    url: `/generated/cardnews/${filename}`,
+    warnings: [exactTextWarning, pexelsAttributionWarning(remoteVisual), ...errors].filter(Boolean)
+  };
 }
 
-export function makeImagePrompt({ studio, plan, card, style, editInstruction, previousImagePrompt }) {
+export function makeImagePrompt({ studio, plan, card, style, editInstruction, previousImagePrompt, customImagePrompt }) {
+  const custom = cleanPromptText(customImagePrompt, 5000);
+  if (custom) {
+    const revision = cleanPromptText(editInstruction, 800);
+    const previous = cleanPromptText(previousImagePrompt, 900);
+    return [
+      custom,
+      revision ? `Revision request: ${revision}. Preserve the 4:5 card aspect ratio and keep all visible text out of the generated image unless explicitly requested.` : '',
+      revision && previous ? `Previous prompt context to keep continuity: ${previous}.` : ''
+    ].filter(Boolean).join('\n');
+  }
   const styleName = style?.name ?? '정보형 카드뉴스';
   const topic = visualTopic({ studio, plan, card });
   const scene = backplateSceneDirection({ card, topic, style });
+  const visualBrief = card?.visualBrief ?? {};
+  const productionBrief = plan?.productionBrief ?? {};
   const revision = cleanPromptText(editInstruction, 800);
   const previous = cleanPromptText(previousImagePrompt, 900);
   return [
@@ -31,6 +59,15 @@ export function makeImagePrompt({ studio, plan, card, style, editInstruction, pr
     'Backplate only. Generate the background/photo/editorial scene only. TrLab adds every Korean word, badge, table, chart, label, source, and callout later as SVG.',
     'No visible text or pseudo-data: no readable Korean/English/numerals, logos, UI, captions, signs, document text, product labels, quote/review text, article thumbnails, watermarks, charts, tables, axes, bars, checkmarks, formulas, scorecards, percentages, or filled forms.',
     `Subject context: ${sceneContextSummary([topic, plan?.coreAngle, plan?.summary, card?.visualPrompt].filter(Boolean).join(' '))}.`,
+    productionBrief.designConcept ? `Production concept: ${cleanPromptText(productionBrief.designConcept, 220)}.` : '',
+    productionBrief.visualConsistency ? `Deck consistency: ${cleanPromptText(productionBrief.visualConsistency, 220)}.` : '',
+    productionBrief.palette?.length ? `Palette mood: ${productionBrief.palette.join(' / ')}.` : '',
+    visualBrief.scenario ? `Card scenario: ${cleanPromptText(visualBrief.scenario, 260)}.` : '',
+    visualBrief.backgroundPrompt ? `Detailed backplate prompt: ${cleanPromptText(visualBrief.backgroundPrompt, 520)}.` : '',
+    visualBrief.pexelsQuery ? `Pexels reference query: ${cleanPromptText(visualBrief.pexelsQuery, 120)}. ${cleanPromptText(visualBrief.referenceImageIntent, 180)}` : '',
+    visualBrief.props?.length ? `Scene props: ${visualBrief.props.join(', ')}.` : '',
+    visualBrief.composition ? `Card composition brief: ${cleanPromptText(visualBrief.composition, 220)}.` : '',
+    visualBrief.negativePrompt ? `Additional negatives: ${cleanPromptText(visualBrief.negativePrompt, 260)}.` : '',
     `Backplate style: ${safeStyleName(styleName)}. ${styleTemplateInstruction(style)}`,
     `Background scene: ${scene}`,
     `Overlay reservation: ${overlayReservation(card, style)}`,
@@ -42,6 +79,31 @@ export function makeImagePrompt({ studio, plan, card, style, editInstruction, pr
     revision && previous ? `Previous prompt context to keep continuity: ${previous}.` : '',
     'Avoid unrelated stock-photo mood, fake interface screenshots, copied article thumbnails, decorative abstract-only backgrounds, and anything that looks like unverified evidence.'
   ].filter(Boolean).join('\n');
+}
+
+function shouldUsePexelsBackplate({ card = {}, style = {}, pexelsQuery = '' } = {}) {
+  if (!process.env.PEXELS_API_KEY || !pexelsQuery) return false;
+  const mode = `${card.imageSourceMode ?? style.imageSourceMode ?? process.env.CONTENT_IMAGE_SOURCE_MODE ?? 'auto'}`;
+  if (mode === 'ai_only') return false;
+  if (mode === 'pexels' || mode === 'pexels_first') return true;
+  if (card?.visualBrief?.pexels?.enabled === false) return false;
+  return Boolean(card?.visualBrief?.pexels?.enabled || /실사|photo|사진|full-bleed/i.test(`${style.name ?? ''} ${style.desc ?? ''} ${card.visualType ?? ''} ${card.layout ?? ''}`));
+}
+
+function pexelsQueryForCard({ studio, plan, card } = {}) {
+  return cleanPromptText(
+    card?.visualBrief?.pexels?.query
+      || card?.visualBrief?.pexelsQuery
+      || plan?.productionBrief?.pexelsStrategy?.globalQueries?.[0]
+      || [visualTopic({ studio, plan, card }), card?.title].filter(Boolean).join(' '),
+    110
+  );
+}
+
+function pexelsAttributionWarning(remoteVisual = {}) {
+  if (remoteVisual.provider !== 'pexels' || !remoteVisual.source) return '';
+  const source = remoteVisual.source;
+  return `Pexels photo used: ${source.photographer || 'unknown photographer'}${source.url ? ` (${source.url})` : ''}`;
 }
 
 function verifiedOverlayDataInstruction(card = {}) {
@@ -663,10 +725,17 @@ ${children}
 }
 
 function headline(card, s, studio) {
+  const emphasis = cleanGenericEmphasis(card?.emphasis);
   return `<text x="80" y="122" font-family="${FONT_STACK}" font-size="24" font-weight="900" fill="${s.sub}">${esc(displayChannelName(studio))} · ${String(card?.page ?? 1).padStart(2, '0')}</text>
 ${svgTextLines(card?.title, 80, 235, 58, 70, 14, 2, { fill: s.ink })}
-<rect x="80" y="300" width="${pillWidth(card?.emphasis, 180, 620)}" height="52" rx="26" fill="${s.accent}"/>
-${svgTextLines(card?.emphasis || '핵심 포인트', 106, 334, 22, 28, 22, 1, { fill: '#fff', weight: 900 })}`;
+${emphasis ? `<rect x="80" y="300" width="${pillWidth(emphasis, 180, 620)}" height="52" rx="26" fill="${s.accent}"/>
+${svgTextLines(emphasis, 106, 334, 22, 28, 22, 1, { fill: '#fff', weight: 900 })}` : ''}`;
+}
+
+function cleanGenericEmphasis(value) {
+  const text = `${value ?? ''}`.replace(/\s+/g, ' ').trim();
+  if (!text || /^(핵심 포인트|확인할 포인트|비교 기준|확인 기준)$/i.test(text)) return '';
+  return text;
 }
 
 function structureInstruction(card) {

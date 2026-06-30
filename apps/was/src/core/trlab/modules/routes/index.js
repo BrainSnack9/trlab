@@ -25,6 +25,9 @@ export const routes = [
   ['GET', /^\/api\/search\/verify\/?$/, './api/search/verify/route.js', 'GET'],
   ['POST', /^\/api\/content\/plan\/?$/, './api/content/plan/route.js', 'POST'],
   ['GET', /^\/api\/content\/plan\/?$/, './api/content/plan/route.js', 'GET'],
+  ['POST', /^\/api\/content\/template-recommend\/?$/, './api/content/template-recommend/route.js', 'POST'],
+  ['POST', /^\/api\/content\/planning-assist\/?$/, './api/content/planning-assist/route.js', 'POST'],
   ['GET', /^\/api\/content\/image\/?$/, './api/content/image/route.js', 'GET'],
-  ['POST', /^\/api\/content\/image\/?$/, './api/content/image/route.js', 'POST']
+  ['POST', /^\/api\/content\/image\/?$/, './api/content/image/route.js', 'POST'],
+  ['POST', /^\/api\/content\/product-asset\/?$/, './api/content/product-asset/route.js', 'POST']
 ];

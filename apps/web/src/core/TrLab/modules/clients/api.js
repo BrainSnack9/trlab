@@ -154,6 +154,22 @@ export function createContentPlan(payload, { refresh = false } = {}) {
   }).json();
 }
 
+export function recommendContentTemplate(payload) {
+  return api.post(apiPath('/api/content/template-recommend'), {
+    json: {
+      topic: cleanText(payload?.topic),
+      audience: cleanText(payload?.audience),
+      goal: cleanText(payload?.goal)
+    }
+  }).json();
+}
+
+export function assistPlanningStage(payload) {
+  return api.post(apiPath('/api/content/planning-assist'), {
+    json: payload
+  }).json();
+}
+
 export function generateContentImage(payload) {
   return api.post(apiPath('/api/content/image'), { json: payload }).json();
 }
@@ -167,6 +183,10 @@ export function listContentImages({ planId, limit = 60 } = {}) {
 
 export function previewContentImagePrompt(payload) {
   return api.post(apiPath('/api/content/image'), { json: { ...payload, preview: true } }).json();
+}
+
+export function generateContentProductAsset(payload) {
+  return api.post(apiPath('/api/content/product-asset'), { json: payload }).json();
 }
 
 function sanitizeContentPlanPayload(payload = {}) {

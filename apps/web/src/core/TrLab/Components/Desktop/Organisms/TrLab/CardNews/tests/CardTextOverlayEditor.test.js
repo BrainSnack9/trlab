@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { __cardTextOverlayEditorTestUtils } from './CardTextOverlayEditor.jsx';
+import { __cardTextOverlayEditorTestUtils } from '../editor/CardTextOverlayEditor.jsx';
 
 if (!globalThis.localStorage) {
   const store = new Map();
@@ -245,6 +245,41 @@ describe('CardTextOverlayEditor data overlays', () => {
     globalThis.localStorage?.removeItem(`trlab.cardnews.${key}`);
   });
 
+  it('does not add the old cover caption safe-area box by default', () => {
+    const coverFrame = __cardTextOverlayEditorTestUtils.defaultFrameSettings({
+      role: 'cover',
+      layout: 'cover_text'
+    });
+    const dataFrame = __cardTextOverlayEditorTestUtils.defaultFrameSettings({
+      role: 'data_scene',
+      visualData: { type: 'bar_chart' }
+    });
+
+    expect(coverFrame.shadeOpacity).toBe(0);
+    expect(coverFrame.safeAreaEnabled).toBe(false);
+    expect(dataFrame.safeAreaEnabled).toBe(true);
+  });
+
+  it('turns off stale default cover safe-area frame drafts', () => {
+    const frame = __cardTextOverlayEditorTestUtils.normalizeFrameDraft({
+      shadeOpacity: 0.14,
+      safeAreaEnabled: true,
+      safeAreaX: 64,
+      safeAreaY: 874,
+      safeAreaWidth: 952,
+      safeAreaHeight: 330,
+      safeAreaColor: '#000000',
+      safeAreaOpacity: 0.34,
+      safeAreaRadius: 24
+    }, {
+      role: 'cover',
+      layout: 'cover_text'
+    });
+
+    expect(frame.shadeOpacity).toBe(0);
+    expect(frame.safeAreaEnabled).toBe(false);
+  });
+
   it('loads persisted freeform shape SVG layers', () => {
     const key = 'shape:test-edit:2';
     globalThis.localStorage?.setItem(`trlab.cardnews.${key}`, JSON.stringify([
@@ -290,6 +325,40 @@ describe('CardTextOverlayEditor data overlays', () => {
     expect(nudged[1].y + nudged[1].height).toBeLessThanOrEqual(1350);
   });
 
+  it('resizes freeform shape layers from canvas handles', () => {
+    const drag = {
+      type: 'shape-resize',
+      handle: 'nw',
+      x: 100,
+      y: 100,
+      layerX: 120,
+      layerY: 160,
+      width: 300,
+      height: 180
+    };
+
+    const patch = __cardTextOverlayEditorTestUtils.resizeShapePatch(drag, { x: 80, y: 130 });
+    const handles = __cardTextOverlayEditorTestUtils.shapeResizeHandles({ x: 120, y: 160, width: 300, height: 180 }, 10);
+
+    expect(patch).toEqual(expect.objectContaining({ x: 100, y: 190, width: 320, height: 150 }));
+    expect(handles.map((handle) => handle.id)).toEqual(['nw', 'ne', 'sw', 'se']);
+  });
+
+  it('keeps resized shape layers within canvas bounds', () => {
+    const patch = __cardTextOverlayEditorTestUtils.resizeShapePatch({
+      handle: 'se',
+      x: 100,
+      y: 100,
+      layerX: 900,
+      layerY: 1260,
+      width: 120,
+      height: 80
+    }, { x: 500, y: 500 });
+
+    expect(patch.x + patch.width).toBeLessThanOrEqual(1080);
+    expect(patch.y + patch.height).toBeLessThanOrEqual(1350);
+  });
+
   it('keeps oversized text boxes within the card canvas when nudged', () => {
     const layer = {
       id: 'long-copy',
@@ -315,6 +384,92 @@ describe('CardTextOverlayEditor data overlays', () => {
     const nudged = __cardTextOverlayEditorTestUtils.nudgeTextLayer([clamped], clamped.id, 999, 999);
     expect(nudged[0].x).toBe(clamped.x);
     expect(nudged[0].y).toBe(clamped.y);
+  });
+
+  it('wraps Korean card titles without splitting the last word awkwardly', () => {
+    const wrapped = __cardTextOverlayEditorTestUtils.wrapForEditor('스킨부스터 선택 시 체크리스트', 10);
+
+    expect(wrapped).toBe('스킨부스터 선택 시\n체크리스트');
+    expect(wrapped).not.toContain('체\n크리스트');
+  });
+
+  it('repairs stale saved title drafts that split Korean words', () => {
+    const layers = __cardTextOverlayEditorTestUtils.normalizeDraftTitleWrap([
+      { id: 'title', text: '스킨부스터 선택 시 체\n크리스트', x: 76, y: 150 },
+      { id: 'body', text: '본문' }
+    ], {
+      title: '스킨부스터 선택 시 체크리스트',
+      body: '본문'
+    }, style, { channelName: '@trlab.insight' });
+
+    expect(layers[0].text).toBe('스킨부스터 선택 시\n체크리스트');
+  });
+
+  it('does not add automatic caption boxes to cover body text', () => {
+    const layers = __cardTextOverlayEditorTestUtils.defaultTextLayers({
+      role: 'cover',
+      layout: 'cover_text',
+      title: '내 피부에 맞는 스킨부스터는?',
+      body: '피부에 활력을 주는 스킨부스터의 다양한 종류와 원리를 알아보아요.'
+    }, style, { channelName: '@trlab.insight' });
+    const body = layers.find((layer) => layer.id === 'body');
+
+    expect(body.backgroundOpacity).toBe(0);
+  });
+
+  it('does not create generic emphasis placeholder layers', () => {
+    const layers = __cardTextOverlayEditorTestUtils.defaultTextLayers({
+      role: 'cover',
+      layout: 'cover_text',
+      title: '내 피부에 맞는 스킨부스터는?',
+      body: '피부에 활력을 주는 스킨부스터의 다양한 종류와 원리를 알아보아요.',
+      emphasis: '핵심 포인트'
+    }, style, { channelName: '@trlab.insight' });
+
+    expect(layers.map((layer) => layer.id)).not.toContain('emphasis');
+    expect(layers.map((layer) => layer.text).join('\n')).not.toContain('핵심 포인트');
+  });
+
+  it('turns off stale default cover body caption box drafts', () => {
+    const layers = __cardTextOverlayEditorTestUtils.normalizeDraftCaptionBoxes([
+      {
+        id: 'body',
+        text: '피부에 활력을 주는 스킨부스터의 다양한 종류와 원리를 알아보아요.',
+        backgroundColor: '#000000',
+        backgroundOpacity: 0.55
+      }
+    ], {
+      role: 'cover',
+      layout: 'cover_text',
+      body: '피부에 활력을 주는 스킨부스터의 다양한 종류와 원리를 알아보아요.'
+    });
+
+    expect(layers[0].backgroundOpacity).toBe(0);
+  });
+
+  it('uses a conservative Korean text width for right edge clamping', () => {
+    const layer = {
+      id: 'title',
+      text: '스킨부스터 선택 시\n체크리스트',
+      x: 1040,
+      y: 150,
+      fontSize: 62,
+      lineHeight: 1.08,
+      color: '#201817',
+      weight: 900,
+      align: 'start',
+      backgroundColor: '#000000',
+      backgroundOpacity: 0,
+      paddingX: 26,
+      paddingY: 16,
+      radius: 16
+    };
+
+    const box = __cardTextOverlayEditorTestUtils.textBoxMetrics(layer);
+    const clamped = __cardTextOverlayEditorTestUtils.clampTextLayerPosition(layer);
+
+    expect(__cardTextOverlayEditorTestUtils.visualTextWidth('스킨부스터 선택 시', 62)).toBeGreaterThan(470);
+    expect(clamped.x + box.x + box.width).toBeLessThanOrEqual(1080 - 36);
   });
 
   it('renders background safe area and frame as SVG', () => {

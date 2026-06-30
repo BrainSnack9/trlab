@@ -34,6 +34,16 @@ export const contentImageBodySchema = z
   })
   .passthrough();
 
+export const contentProductAssetBodySchema = z
+  .object({
+    mode: z.enum(['search', 'generate']).default('search'),
+    query: z.string().trim().optional(),
+    product: z.record(z.string(), z.unknown()).optional(),
+    card: z.record(z.string(), z.unknown()).optional(),
+    studio: z.record(z.string(), z.unknown()).optional()
+  })
+  .passthrough();
+
 export const searchVerifyQuerySchema = z.object({
   q: z.string().trim().min(1, 'Missing query'),
   type: z.string().trim().default('검증형')

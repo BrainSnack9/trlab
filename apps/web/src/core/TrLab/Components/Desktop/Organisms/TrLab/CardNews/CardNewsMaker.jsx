@@ -1,252 +1,268 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Copy, Download, Images, Palette } from 'lucide-react';
-import { Button } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Button/Button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Card';
-import { formatCardText } from '@/lib/card-text';
-import { autoStyle, cardStyles, styleRecommendation } from './card-news-styles';
-import { downloadCard, makeCarouselScript, makePostCopy } from './card-news-export';
-import { CardImageGenerator } from './CardImageGenerator';
+import { useMemo } from 'react';
+import { useCardNewsMakerController } from '@/core/TrLab/modules/controller/card-news/useCardNewsMakerController';
+import { CardWorkspace } from './components/CardWorkspace';
+import { ControlPanel } from './components/ControlPanel';
+import { InstatoonWorkflowBoard } from './components/InstatoonWorkflowBoard';
+import { MakerHeader } from './components/MakerHeader';
 
-export function CardNewsMaker({ studio, plan }) {
-  const draftKey = useMemo(() => makeMakerDraftKey(studio, plan), [studio, plan]);
-  const [selected, setSelected] = useState(0);
-  const [styleKey, setStyleKey] = useState(() => autoStyle(studio, plan));
-  const [channelName, setChannelName] = useState(() => studio?.channelName || studio?.manualBrief?.channelName || '@trlab.insight');
-  const [generatedImages, setGeneratedImages] = useState({});
-  const [loadedDraftKey, setLoadedDraftKey] = useState('');
-  const cards = useMemo(() => (plan.cards ?? []).map((card, index) => ({ ...card, page: card.page ?? index + 1 })), [plan]);
-  const safeSelected = clampIndex(selected, cards.length);
-  const card = cards[safeSelected] ?? cards[0];
-  const resolvedStyleKey = cardStyles[styleKey] ? styleKey : autoStyle(studio, plan);
-  const style = cardStyles[resolvedStyleKey] ?? Object.values(cardStyles)[0];
-  const displayStudio = useMemo(() => ({ ...studio, channelName: normalizeChannelName(channelName) }), [studio, channelName]);
-
-  useEffect(() => {
-    const draft = loadMakerDraft(draftKey);
-    setSelected(clampIndex(draft.selected ?? 0, cards.length));
-    setStyleKey(cardStyles[draft.styleKey] ? draft.styleKey : autoStyle(studio, plan));
-    setChannelName(draft.channelName || studio?.channelName || studio?.manualBrief?.channelName || '@trlab.insight');
-    setGeneratedImages(sanitizeGeneratedImages(draft.generatedImages, cards));
-    setLoadedDraftKey(draftKey);
-  }, [draftKey]);
-
-  useEffect(() => {
-    setSelected((value) => clampIndex(value, cards.length));
-    setGeneratedImages((value) => sanitizeGeneratedImages(value, cards));
-  }, [cards.length]);
-
-  useEffect(() => {
-    if (loadedDraftKey !== draftKey) return;
-    saveMakerDraft(draftKey, {
-      selected: safeSelected,
-      styleKey: resolvedStyleKey,
-      channelName: normalizeChannelName(channelName),
-      generatedImages: sanitizeGeneratedImages(generatedImages, cards)
-    });
-  }, [draftKey, loadedDraftKey, safeSelected, resolvedStyleKey, channelName, generatedImages, cards]);
+export function CardNewsMaker({ studio, plan, work }) {
+  const templateProduction = useMemo(() => resolveTemplateProduction({ work, studio, plan }), [work, studio, plan]);
+  const maker = useCardNewsMakerController({ studio, plan, initialProductionSettings: templateProduction?.settings });
+  const {
+    cards,
+    selected,
+    setSelected,
+    card,
+    styleKey,
+    setStyleKey,
+    style,
+    channelName,
+    setChannelName,
+    productionSettings,
+    setProductionSettings,
+    generatedImage,
+    generatedImageHistory,
+    setGeneratedImage,
+    selectGeneratedImage,
+    actions
+  } = maker;
 
   if (!card) return null;
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
-      <CardWorkspace
-        cards={cards}
-        selected={safeSelected}
-        setSelected={setSelected}
-        card={card}
-        style={style}
-        studio={displayStudio}
-        plan={plan}
-        generatedImage={generatedImages[cardImageKey(card, safeSelected)]}
-        setGeneratedImage={(image) => setGeneratedImages((value) => ({ ...value, [cardImageKey(card, safeSelected)]: image }))}
-      />
-      <ControlPanel cards={cards} card={card} selected={safeSelected} styleKey={resolvedStyleKey} setStyleKey={setStyleKey} style={style} studio={displayStudio} plan={plan} channelName={channelName} setChannelName={setChannelName} />
-    </div>
-  );
-}
-
-function CardWorkspace({ cards, selected, setSelected, card, style, studio, plan, generatedImage, setGeneratedImage }) {
-  return (
-    <div className="space-y-4">
-      <CarouselStrip cards={cards} selected={selected} setSelected={setSelected} />
-      <CardImageGenerator card={card} selected={selected} style={style} studio={studio} plan={plan} generatedImage={generatedImage} onGenerated={setGeneratedImage} />
-    </div>
-  );
-}
-
-function CarouselStrip({ cards, selected, setSelected }) {
-  return (
-    <div className="rounded-lg border bg-white p-4 shadow-sm">
-      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <strong className="block text-base font-black">전체 흐름 미리보기</strong>
-          <span className="mt-1 block text-xs font-bold text-muted-foreground">카드를 눌러 아래 제작 영역에서 바로 편집합니다.</span>
-        </div>
-        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-black text-slate-600">{selected + 1}/{cards.length} 선택</span>
+    <div className="space-y-5">
+      <InstatoonWorkflowBoard studio={maker.studio} plan={plan} styleKey={styleKey} templateProduction={templateProduction} />
+      <TemplateProductionGuide data={templateProduction} />
+      <MakerHeader studio={maker.studio} plan={plan} cards={cards} selected={selected} />
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+        <CardWorkspace
+          cards={cards}
+          selected={selected}
+          setSelected={setSelected}
+          card={card}
+          style={style}
+          studio={maker.studio}
+          plan={plan}
+          generatedImage={generatedImage}
+          generatedImageHistory={generatedImageHistory}
+          setGeneratedImage={setGeneratedImage}
+          selectGeneratedImage={selectGeneratedImage}
+        />
+        <ControlPanel
+          card={card}
+          styleKey={styleKey}
+          setStyleKey={setStyleKey}
+          studio={maker.studio}
+          plan={plan}
+          templateProduction={templateProduction}
+          productionSettings={productionSettings}
+          setProductionSettings={setProductionSettings}
+          channelName={channelName}
+          setChannelName={setChannelName}
+          actions={actions}
+        />
       </div>
-      <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(190px,1fr))]">
-        {cards.map((card, index) => (
-          <button
-            key={card.page}
-            type="button"
-            onClick={() => setSelected(index)}
-            className={`group min-w-0 rounded-lg border p-2 text-left transition ${selected === index ? 'border-indigo-500 bg-indigo-50 shadow-md ring-2 ring-indigo-100' : 'border-slate-200 bg-slate-50 hover:border-indigo-200 hover:bg-white'}`}
-          >
-            <div className="flex min-h-[260px] flex-col rounded-md border bg-white p-3 text-slate-950 shadow-sm">
-              <div className="mb-3 flex items-center justify-between gap-2 text-[10px] font-black text-slate-600">
-                <span>{String(card.page).padStart(2, '0')}</span>
-                <span className="min-w-0 truncate">{roleLabel(card.role)}</span>
-              </div>
-              <strong className={`${flowTitleClass(card.title)} block whitespace-normal break-keep font-black leading-tight [overflow-wrap:anywhere]`}>{card.title}</strong>
-              {card.emphasis ? <span className="mt-3 inline-block max-w-full truncate rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-[11px] font-black text-slate-950">{card.emphasis}</span> : null}
-              <p className="mt-3 line-clamp-5 whitespace-pre-line text-[12px] font-bold leading-5 text-slate-600">{formatCardText(card.body)}</p>
-              <div className={`mt-auto pt-3 text-[11px] font-black text-indigo-600 transition ${selected === index ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                {selected === index ? '편집 중' : '선택해서 편집'}
+    </div>
+  );
+}
+
+function TemplateProductionGuide({ data }) {
+  const controlGroups = data?.editorControls?.length ? data.editorControls : data?.production?.groups ?? [];
+  const productionFlow = data?.productionFlow ?? [];
+  const layoutSlots = data?.layoutSlots ?? [];
+  const channelStrategy = data?.channelStrategy ?? [];
+  const blueprint = data?.templateBlueprint ?? null;
+  if (!controlGroups.length && !productionFlow.length && !data?.cardPlan?.length && !layoutSlots.length && !channelStrategy.length && !blueprint) return null;
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="text-xs font-semibold text-slate-500">템플릿 제작 기준</div>
+          <h2 className="mt-1 text-lg font-semibold text-slate-950">{data.label || '선택 템플릿'}</h2>
+          <p className="mt-1 text-sm font-medium leading-6 text-slate-500">{data.production?.nextStep || data.description || '템플릿 기준으로 카드별 배경, 이미지, 텍스트 배치를 맞춥니다.'}</p>
+        </div>
+        <div className="grid shrink-0 grid-cols-2 gap-2 text-xs font-medium text-slate-600">
+          {data.canvas ? <GuideMeta label="캔버스" value={data.canvas} /> : null}
+          {data.formatSignal ? <GuideMeta label="유형" value={data.formatSignal} /> : null}
+        </div>
+      </div>
+
+      {blueprint ? (
+        <div className="mt-4 rounded-lg bg-slate-50 p-3">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="text-xs font-semibold text-slate-800">{blueprint.format}</div>
+              <p className="mt-1 text-[11px] font-medium leading-4 text-slate-500">{blueprint.planningRule}</p>
+            </div>
+            {blueprint.idealCards ? <BadgeText>{blueprint.idealCards}</BadgeText> : null}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {(blueprint.productionChecklist ?? []).map((item) => <BadgeText key={item}>{item}</BadgeText>)}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="mt-4 grid gap-3 xl:grid-cols-3">
+        {controlGroups.length ? (
+          <div>
+            <div className="mb-2 text-xs font-semibold text-slate-500">편집 컨트롤</div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {controlGroups.map(([title, items]) => (
+                <div key={title} className="rounded-lg bg-slate-50 p-3">
+                  <div className="text-xs font-semibold text-slate-800">{title}</div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {items.map((item) => (
+                      <span key={item} className="rounded-full bg-white px-2 py-1 text-[11px] font-medium text-slate-600 ring-1 ring-slate-100">
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {productionFlow.length ? (
+          <div>
+            <div className="mb-2 text-xs font-semibold text-slate-500">다음 작업 순서</div>
+            <div className="grid max-h-56 gap-1.5 overflow-y-auto pr-1">
+              {productionFlow.map(([title, note], index) => (
+                <div key={`${title}-${index}`} className="grid grid-cols-[32px_minmax(0,1fr)] gap-2 rounded-lg bg-slate-50 px-3 py-2">
+                  <div className="text-[11px] font-semibold text-slate-400">{index + 1}</div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold text-slate-800">{title}</div>
+                    <div className="mt-0.5 text-[11px] font-medium leading-4 text-slate-500">{note}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {data.cardPlan?.length ? (
+          <div>
+            <div className="mb-2 text-xs font-semibold text-slate-500">컷별 배치 기준</div>
+            <div className="grid max-h-56 gap-1.5 overflow-y-auto pr-1">
+              {data.cardPlan.map(([title, note], index) => (
+                <div key={`${title}-${index}`} className="grid grid-cols-[32px_minmax(0,1fr)] gap-2 rounded-lg bg-slate-50 px-3 py-2">
+                  <div className="text-[11px] font-semibold text-slate-400">{index + 1}</div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold text-slate-800">{title}</div>
+                    <div className="mt-0.5 text-[11px] font-medium leading-4 text-slate-500">{note}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {layoutSlots.length || channelStrategy.length ? (
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          {layoutSlots.length ? (
+            <GuideList title="배치 슬롯" items={layoutSlots} />
+          ) : null}
+          {channelStrategy.length ? (
+            <div>
+              <div className="mb-2 text-xs font-semibold text-slate-500">채널 전략</div>
+              <div className="grid gap-1.5">
+                {channelStrategy.map(([platform, items]) => (
+                  <div key={platform} className="rounded-lg bg-slate-50 px-3 py-2">
+                    <div className="text-xs font-semibold text-slate-800">{platform}</div>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {(items ?? []).map((item) => (
+                        <span key={item} className="rounded-full bg-white px-2 py-1 text-[11px] font-medium text-slate-500 ring-1 ring-slate-100">{item}</span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-          </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {blueprint?.cardBlueprints?.length || blueprint?.platformExport?.length ? (
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          {blueprint.cardBlueprints?.length ? <GuideList title="카드 유형" items={blueprint.cardBlueprints.map(([title, note, items]) => [title, `${note}${Array.isArray(items) && items.length ? ` / ${items.join(', ')}` : ''}`])} /> : null}
+          {blueprint.platformExport?.length ? (
+            <div>
+              <div className="mb-2 text-xs font-semibold text-slate-500">출력 체크</div>
+              <div className="grid gap-1.5">
+                {blueprint.platformExport.map((item) => (
+                  <div key={item.platform} className="rounded-lg bg-slate-50 px-3 py-2">
+                    <div className="text-xs font-semibold text-slate-800">{item.platform}</div>
+                    <div className="mt-1 text-[11px] font-medium leading-4 text-slate-500">{(item.ratios ?? []).join(' / ')}</div>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {(item.exportCheck ?? []).slice(0, 4).map((check) => <BadgeText key={check}>{check}</BadgeText>)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function BadgeText({ children }) {
+  return <span className="rounded-full bg-white px-2 py-1 text-[11px] font-medium text-slate-500 ring-1 ring-slate-100">{children}</span>;
+}
+
+function GuideList({ title, items }) {
+  return (
+    <div>
+      <div className="mb-2 text-xs font-semibold text-slate-500">{title}</div>
+      <div className="grid gap-1.5">
+        {items.map(([itemTitle, note]) => (
+          <div key={itemTitle} className="rounded-lg bg-slate-50 px-3 py-2">
+            <div className="text-xs font-semibold text-slate-800">{itemTitle}</div>
+            <div className="mt-0.5 text-[11px] font-medium leading-4 text-slate-500">{note}</div>
+          </div>
         ))}
       </div>
     </div>
   );
 }
 
-
-function ControlPanel({ cards, card, selected, styleKey, setStyleKey, style, studio, plan, channelName, setChannelName }) {
-  const recommendation = styleRecommendation(studio, plan);
-  const recommendedKey = recommendation.key;
+function GuideMeta({ label, value }) {
   return (
-    <Card className="h-fit">
-      <CardHeader><CardTitle className="flex items-center gap-2"><Images className="h-5 w-5 text-indigo-600" />카드 출력</CardTitle></CardHeader>
-      <CardContent className="space-y-4">
-        <label className="grid gap-1.5 rounded-lg border bg-white p-3">
-          <span className="text-xs font-black text-slate-500">채널명</span>
-          <input
-            className="h-10 rounded-md border border-slate-200 px-3 text-sm font-black outline-none focus:border-indigo-400"
-            value={channelName}
-            onChange={(event) => setChannelName(event.target.value)}
-            placeholder="@my_channel"
-          />
-          <span className="text-[11px] font-semibold text-muted-foreground">AI 이미지 하단 브랜드 표기에 사용됩니다.</span>
-        </label>
-        <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-3">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-xs font-black text-indigo-700">추천 템플릿</div>
-              <strong className="mt-1 block text-sm">{recommendation.style?.name}</strong>
-              <p className="mt-1 text-xs font-semibold leading-5 text-indigo-700/80">{recommendation.reason}</p>
-            </div>
-            <Button size="sm" variant={styleKey === recommendedKey ? 'secondary' : 'default'} onClick={() => setStyleKey(recommendedKey)} disabled={styleKey === recommendedKey}>
-              {styleKey === recommendedKey ? '적용됨' : '추천 적용'}
-            </Button>
-          </div>
-        </div>
-        <div><div className="mb-2 flex items-center gap-2 text-sm font-black"><Palette className="h-4 w-4" />캔버스 템플릿</div><div className="grid gap-2">{Object.entries(cardStyles).map(([key, item]) => <Button key={key} variant={styleKey === key ? 'default' : 'outline'} className="h-auto justify-start p-3 text-left" onClick={() => setStyleKey(key)}><span><b className="block">{item.name}{key === recommendedKey ? ' · 추천' : ''}</b><small className="text-xs opacity-75">{item.desc}</small></span></Button>)}</div></div>
-        <Button className="w-full" onClick={() => downloadCard(card, selected, studio, style, 'png')}><Download className="h-4 w-4" />현재 카드 PNG 다운로드</Button>
-        <Button className="w-full" variant="outline" onClick={() => navigator.clipboard?.writeText(makeCarouselScript({ ...plan, cards }))}><Copy className="h-4 w-4" />전체 원고 복사</Button>
-        <PublishCopyPanel plan={plan} />
-      </CardContent>
-    </Card>
-  );
-}
-
-function PublishCopyPanel({ plan }) {
-  const copy = makePostCopy(plan);
-  if (!copy) return null;
-  return (
-    <div className="rounded-lg border bg-white p-3">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <strong className="text-sm">게시 원고</strong>
-        <Button size="sm" variant="outline" onClick={() => navigator.clipboard?.writeText(copy)}>
-          <Copy className="h-3.5 w-3.5" />
-          복사
-        </Button>
-      </div>
-      {plan.captionFirstLine ? <strong className="block text-sm leading-5">{plan.captionFirstLine}</strong> : null}
-      {plan.captionBody ? <p className="mt-2 whitespace-pre-line text-xs font-semibold leading-5 text-slate-600">{plan.captionBody}</p> : null}
-      {plan.captionCTA ? <p className="mt-2 rounded-md bg-indigo-50 p-2 text-xs font-black leading-5 text-indigo-700">{plan.captionCTA}</p> : null}
-      {Array.isArray(plan.hashtags) && plan.hashtags.length ? (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {plan.hashtags.map((tag) => <span key={tag} className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-black text-slate-600">{tag}</span>)}
-        </div>
-      ) : null}
+    <div className="rounded-lg bg-slate-50 px-3 py-2">
+      <div className="text-[11px] text-slate-400">{label}</div>
+      <div className="mt-1 max-w-36 truncate text-sm font-semibold text-slate-800">{value}</div>
     </div>
   );
 }
 
-function roleLabel(value) {
+function resolveTemplateProduction({ work, studio, plan }) {
+  const template = work?.equippedItems?.template || studio?.contentSetup?.template || null;
+  const planning = work?.planningDraft || studio?.planningDraft || plan?.contentSetup?.planningDraft || {};
+  const production = planning.templateProduction || plan?.contentSetup?.templateProduction || studio?.contentSetup?.templateProduction || template?.production || null;
+  const cardPlan = planning.templateCardPlan || plan?.contentSetup?.templateCardPlan || studio?.contentSetup?.templateCardPlan || template?.cardPlan || [];
+  const editorControls = planning.templateEditorControls || plan?.contentSetup?.templateEditorControls || studio?.contentSetup?.templateEditorControls || template?.editorControls || [];
+  const platformSpecs = planning.templatePlatformSpecs || plan?.contentSetup?.templatePlatformSpecs || studio?.contentSetup?.templatePlatformSpecs || template?.platformSpecs || [];
+  const productionFlow = planning.templateProductionFlow || plan?.contentSetup?.templateProductionFlow || studio?.contentSetup?.templateProductionFlow || template?.productionFlow || [];
+  const layoutSlots = planning.templateLayoutSlots || plan?.contentSetup?.templateLayoutSlots || studio?.contentSetup?.templateLayoutSlots || template?.layoutSlots || [];
+  const channelStrategy = planning.templateChannelStrategy || plan?.contentSetup?.templateChannelStrategy || studio?.contentSetup?.templateChannelStrategy || template?.channelStrategy || [];
+  const templateBlueprint = planning.templateBlueprint || plan?.contentSetup?.templateBlueprint || studio?.contentSetup?.templateBlueprint || template?.templateBlueprint || null;
+  const settings = planning.templateSettings || plan?.contentSetup?.templateSettings || {};
+  if (!template && !production && !cardPlan?.length && !editorControls?.length && !productionFlow?.length && !layoutSlots?.length && !channelStrategy?.length && !templateBlueprint) return null;
   return {
-    cover: '표지',
-    why_now: '왜 지금',
-    community_signal: '반응',
-    comparison: '비교',
-    data_scene: '데이터',
-    misconception: '오해',
-    content_angle: '각도',
-    checklist: '체크',
-    closing: '마무리'
-  }[value] ?? '카드';
-}
-
-function flowTitleClass(value) {
-  const length = `${value ?? ''}`.replace(/\s/g, '').length;
-  if (length > 34) return 'text-[14px]';
-  if (length > 24) return 'text-[15px]';
-  return 'text-[17px]';
-}
-
-const MAKER_DRAFT_PREFIX = 'trlab.cardnews.maker.v1';
-
-function makeMakerDraftKey(studio, plan) {
-  const id = studio?.id || studio?.label || plan?.topic || 'draft';
-  return `${MAKER_DRAFT_PREFIX}:${encodeURIComponent(`${id}`)}`;
-}
-
-function loadMakerDraft(key) {
-  if (typeof window === 'undefined') return {};
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(key) || '{}');
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveMakerDraft(key, draft) {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(key, JSON.stringify({
-      savedAt: new Date().toISOString(),
-      selected: Number.isFinite(draft.selected) ? draft.selected : 0,
-      styleKey: draft.styleKey,
-      channelName: normalizeChannelName(draft.channelName),
-      generatedImages: draft.generatedImages ?? {}
-    }));
-  } catch {
-    // Ignore localStorage quota/private mode failures.
-  }
-}
-
-function cardImageKey(card, index) {
-  return `${card?.page ?? index + 1}`;
-}
-
-function sanitizeGeneratedImages(value, cards = []) {
-  if (!value || typeof value !== 'object') return {};
-  const allowed = new Set(cards.map((card, index) => cardImageKey(card, index)));
-  const entries = Object.entries(value).filter(([key, image]) => {
-    return (!allowed.size || allowed.has(key)) && image && typeof image === 'object' && typeof image.url === 'string';
-  });
-  return Object.fromEntries(entries);
-}
-
-function clampIndex(value, length) {
-  if (!length) return 0;
-  const number = Number.isFinite(value) ? value : 0;
-  return Math.max(0, Math.min(length - 1, number));
-}
-
-function normalizeChannelName(value) {
-  const text = `${value ?? ''}`.trim();
-  if (!text) return '@trlab.insight';
-  return text.startsWith('@') ? text : `@${text}`;
+    id: template?.id || planning.templateId || '',
+    label: template?.label || planning.templateLabel || '',
+    description: template?.description || planning.goal || '',
+    formatSignal: template?.formatSignal || planning.templateFormatSignal || '',
+    canvas: template?.canvas || planning.templateCanvas || '',
+    platformSpecs,
+    production,
+    cardPlan,
+    editorControls,
+    productionFlow,
+    layoutSlots,
+    channelStrategy,
+    templateBlueprint,
+    settings
+  };
 }

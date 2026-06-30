@@ -20,6 +20,9 @@ export async function POST(request) {
       return Response.json({ prompt: makeImagePrompt(payload) });
     }
     const image = await generateCardNewsImage(payload);
+    if (payload.persist === false) {
+      return Response.json({ image, generatedAt: new Date().toISOString() });
+    }
     const savedImage = await saveContentImageResult(payload, image);
     return Response.json({ image: savedImage.image, record: savedImage, generatedAt: savedImage.createdAt });
   } catch (error) {

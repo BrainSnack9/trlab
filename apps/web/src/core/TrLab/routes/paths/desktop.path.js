@@ -1,4 +1,8 @@
 export const ROUTER_TRLAB_DASHBOARD = 'dashboard';
+export const ROUTER_TRLAB_METADATA = 'metadata';
+export const ROUTER_TRLAB_TEMPLATES = 'templates';
+export const ROUTER_TRLAB_WORKS = 'works';
+export const ROUTER_TRLAB_PLANNING = 'planning';
 export const ROUTER_TRLAB_COLLECTION = 'collection';
 export const ROUTER_TRLAB_PROFILES = 'profiles';
 export const ROUTER_TRLAB_SETTINGS = 'settings';

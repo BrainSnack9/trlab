@@ -105,6 +105,150 @@ describe('createContentPlan fallback carousel', () => {
     expect(plan.cards.at(-1).role).toBe('checklist');
   });
 
+  it('carries template production settings into generated cards and visual briefs', async () => {
+    const originalKey = process.env.OPENAI_API_KEY;
+    const originalProvider = process.env.AI_PROVIDER;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.AI_PROVIDER;
+
+    let plan;
+    try {
+      plan = await createContentPlan({
+        id: 'manual-instatoon-template',
+        label: '직장인 점심값 절약 루틴',
+        sourceMode: 'manual',
+        manualBrief: {
+          topic: '직장인 점심값 절약 루틴',
+          prompt: '인스타툰처럼 공감 상황과 반전으로 구성',
+          cardCount: 6,
+          audience: '점심값 부담이 큰 20~30대 직장인',
+          tone: '공감형'
+        },
+        contentSetup: {
+          template: {
+            id: 'instatoon-empathy',
+            label: '인스타툰 공감형',
+            formatSignal: '컷툰 / 대화형',
+            canvas: '4:5 1080x1350',
+            platformSpecs: [
+              { platform: 'Instagram', canvas: '4:5 1080x1350', safeArea: '상하 96px, 좌우 72px', behavior: '첫 컷 훅과 저장 가치가 중요' }
+            ],
+            editorControls: [
+              ['배경', ['장소', '시간대', '소품', '명도']],
+              ['캐릭터', ['주인공', '표정', '포즈', '위치']],
+              ['말풍선', ['대사량', '꼬리 방향', '속마음', '간격']],
+              ['컷 연출', ['그리드', '반전 컷', 'CTA 컷', '장면 연결']]
+            ],
+            productionFlow: [
+              ['레퍼런스', '비슷한 톤의 컷툰, 캐릭터 시트, 말풍선 예시를 모읍니다.'],
+              ['배경 선택', '주요 장소, 시간대, 소품 밀도, 명도를 먼저 고정합니다.'],
+              ['캐릭터 만들기', '주인공 생김새, 표정 세트, 포즈, 컷별 위치를 정합니다.']
+            ],
+            layoutSlots: [
+              ['배경 영역', '카드 전체를 채우되 문구 안전 여백을 남깁니다.'],
+              ['캐릭터 영역', '주인공은 중앙 또는 우측에 배치합니다.'],
+              ['말풍선 영역', '말풍선은 상단 또는 측면에 1~2개만 둡니다.']
+            ],
+            channelStrategy: [
+              ['Instagram', ['첫 컷 훅을 가장 크게', '4:5 세로형 우선']],
+              ['Threads', ['이미지 안 문구는 짧게', '댓글로 이어지는 문장']]
+            ],
+            templateBlueprint: {
+              format: '컷툰 캐러셀',
+              idealCards: '5~7컷',
+              planningRule: '상황-감정-반전-정리-저장-CTA 흐름을 기본으로 잡습니다.',
+              bestFor: ['공감 상황', '짧은 대화'],
+              productionChecklist: ['캐릭터 표정 세트 고정', '말풍선 1~2개 제한'],
+              cardBlueprints: [
+                ['표지/상황 컷', '큰 표정과 짧은 질문으로 멈추게 만듭니다.', ['인물 1명', '짧은 훅']],
+                ['감정 컷', '속마음과 표정 변화로 공감을 만듭니다.', ['말풍선', '표정 확대']]
+              ],
+              platformExport: [
+                { platform: 'Instagram', ratios: ['4:5', '1:1'], exportCheck: ['모든 컷 비율 통일', '첫 컷 중앙 크롭 확인'] }
+              ]
+            },
+            production: {
+              nextStep: '배경 선택과 캐릭터 설정부터 시작',
+              groups: [
+                ['배경', ['일상 장소', '시간대']],
+                ['캐릭터', ['주인공 1명', '표정 세트']],
+                ['말풍선', ['대사량', '위치']],
+                ['컷 연출', ['2x2 장면', '반전 컷 강조']]
+              ]
+            },
+            cardPlan: [
+              ['상황', '공감 가능한 문제 장면을 1컷으로 제시'],
+              ['감정', '주인공 표정과 속마음으로 체류 시간 확보'],
+              ['반전', '예상과 다른 깨달음이나 웃음 포인트'],
+              ['정리', '핵심 메시지를 짧은 문장으로 고정'],
+              ['저장', '다시 볼 이유를 체크리스트로 전환'],
+              ['CTA', '댓글/저장/공유 행동 유도']
+            ]
+          },
+          templateSettings: {
+            배경: ['일상 장소'],
+            캐릭터: ['주인공 1명'],
+            말풍선: ['대사량'],
+            '컷 연출': ['2x2 장면']
+          }
+        }
+      });
+    } finally {
+      if (originalKey) process.env.OPENAI_API_KEY = originalKey;
+      if (originalProvider) process.env.AI_PROVIDER = originalProvider;
+    }
+
+    expect(plan.cards).toHaveLength(6);
+    expect(plan.contentSetup.templateId).toBe('instatoon-empathy');
+    expect(plan.contentSetup.templateEditorControls[0]).toEqual(['배경', ['장소', '시간대', '소품', '명도']]);
+    expect(plan.contentSetup.templatePlatformSpecs[0].platform).toBe('Instagram');
+    expect(plan.contentSetup.templateProductionFlow[1][0]).toBe('배경 선택');
+    expect(plan.contentSetup.templateLayoutSlots[0][0]).toBe('배경 영역');
+    expect(plan.contentSetup.templateChannelStrategy[0][0]).toBe('Instagram');
+    expect(plan.contentSetup.templateBlueprint.format).toBe('컷툰 캐러셀');
+    expect(plan.contentSetup.templateBlueprint.cardBlueprints[0][0]).toBe('표지/상황 컷');
+    expect(plan.contentSetup.templateBlueprint.platformExport[0].exportCheck).toContain('첫 컷 중앙 크롭 확인');
+    expect(plan.templateEditorControls[1][0]).toBe('캐릭터');
+    expect(plan.templateProductionFlow[2][0]).toBe('캐릭터 만들기');
+    expect(plan.templateLayoutSlots[1][0]).toBe('캐릭터 영역');
+    expect(plan.templateChannelStrategy[1][1]).toContain('댓글로 이어지는 문장');
+    expect(plan.templateBlueprint.productionChecklist).toContain('말풍선 1~2개 제한');
+    expect(plan.contentSetup.templateSettings.배경).toContain('일상 장소');
+    expect(plan.cards.map((card) => card.templateSlot)).toEqual(['상황', '감정', '반전', '정리', '저장', 'CTA']);
+    expect(plan.cards[1].layout).toBe('toon_panel');
+    expect(plan.cards[0].visualBrief.backgroundPrompt).toContain('Template production settings');
+    expect(plan.cards[0].visualBrief.composition).toContain('Template slot: 상황');
+  });
+
+  it('adds production-ready visual briefs for product cardnews planning', () => {
+    const plan = normalizeContentPlanForTest({
+      referenceStyle: 'photo_hook',
+      productionBrief: {
+        contentCategory: 'beauty',
+        designConcept: '미국 Gen Z 립오일 카드뉴스',
+        pexelsStrategy: { globalQueries: ['lip gloss makeup pouch flat lay'] }
+      },
+      cards: [
+        { title: '미국 Gen Z 파우치템', body: '립스틱보다 립오일을 더 자주 꺼내요.', visualItems: ['립오일', '파우치'] },
+        { title: '정답은 립오일', body: '색은 살짝, 광은 촉촉하게 남기는 제품이에요.', visualItems: ['립오일', '틴티드 립밤'] },
+        { title: '왜 손이 갈까', body: '꾸민 티는 덜 나지만 얼굴은 생기 있어 보여요.', visualItems: ['사용감', '광택'] },
+        { title: '검색어로 보면', body: 'lip oil, tinted balm 같은 키워드로 찾아요.', visualItems: ['lip oil', 'tinted balm'] },
+        { title: '구매 전 체크', body: '보습감\n발색 정도\n덧바르기 쉬운가', visualItems: ['보습감', '발색'] }
+      ]
+    }, {
+      label: '미국 Gen Z 파우치에 립스틱보다 많이 들어있는 것',
+      selectedHookTitle: '미국 Gen Z 파우치에 립스틱보다 많이 들어있는 것',
+      evidence: [{ title: 'lip oil tinted balm beauty trend' }]
+    });
+
+    expect(plan.productionBrief.contentCategory).toBe('beauty');
+    expect(plan.productionBrief.designConcept).toContain('미국 Gen Z 립오일');
+    expect(plan.productionBrief.pexelsStrategy.globalQueries[0]).toContain('lip gloss');
+    expect(plan.cards.every((card) => card.visualBrief?.backgroundPrompt && card.visualBrief?.pexelsQuery)).toBe(true);
+    expect(plan.cards[1].visualBrief.productCandidates.some((item) => item.name.includes('rhode'))).toBe(true);
+    expect(plan.cards[1].visualBrief.negativePrompt).toContain('no logo');
+  });
+
   it('keeps longer reference-like AI responses up to 12 cards and inserts a why-now beat', () => {
     const longAiPlan = {
       referenceStyle: 'photo_hook',
@@ -238,6 +382,34 @@ describe('createContentPlan fallback carousel', () => {
     expect(plan.cards.slice(1).every((card) => card.title.length <= 18)).toBe(true);
     expect(plan.cards[0].title).not.toMatch(/콘텐츠 설계|카드뉴스|영향 분석|전망 정리/);
     expect(plan.cards.every((card) => card.body.split('\n').length <= (card.role === 'cover' ? 2 : 3))).toBe(true);
+  });
+
+  it('keeps at least three non-topic hook titles in the required title slots', () => {
+    const input = {
+      id: 'manual-medical-study',
+      label: '국시 해설 학습 서비스',
+      keyword: '국시 해설 학습 서비스',
+      category: 'education',
+      contentSetup: { cardCount: 5 }
+    };
+    const plan = normalizeContentPlanForTest({
+      referenceStyle: 'handdrawn_research',
+      hookTitles: ['국시 해설 학습 서비스'],
+      cards: Array.from({ length: 5 }, (_, index) => ({
+        title: index === 0 ? '국시 해설 학습 서비스' : `학습 기준 ${index + 1}`,
+        body: '틀린 이유와 다시 풀 기준을 분리해서 보면 오답 정리가 훨씬 선명해져요.',
+        visualItems: ['오답', '해설', '복습 기준']
+      }))
+    }, input);
+
+    expect(plan.hookTitles.length).toBeGreaterThanOrEqual(3);
+    expect(plan.hookTitles).toEqual(expect.arrayContaining([
+      '왜 해설을 봐도 불안할까',
+      '틀린 이유가 보여야 해요',
+      '오답 정리 기준 3가지'
+    ]));
+    expect(plan.hookTitles).not.toContain('국시 해설 학습 서비스');
+    expect(plan.cards[0].title).not.toBe('국시 해설 학습 서비스');
   });
 
   it('rewrites flat report-like cover titles into short hook titles', () => {

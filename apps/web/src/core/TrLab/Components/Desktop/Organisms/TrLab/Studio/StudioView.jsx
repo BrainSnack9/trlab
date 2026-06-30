@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Loader2, PencilLine, Send, Trash2, X } from 'lucide-react';
+import { ArrowLeft, ClipboardList, Copy, Image, Loader2, PencilLine, Search, Send, Trash2, X } from 'lucide-react';
 import { Badge } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Badge/Badge';
 import { Button } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Button/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/core/TrLab/Components/Desktop/Atoms/TrLab/Common/Card';
 import { formatCardText } from '@/lib/card-text';
+import { GenerationOverlay, NoticeToast } from '@/core/TrLab/Components/Desktop/Molecules/TrLab/GenerationFeedback';
 import { StageHead } from '@/core/TrLab/Components/Desktop/Molecules/TrLab/Common';
-import { createContentPlan } from '@/core/TrLab/modules/clients/api';
+import { useContentPlanController } from '@/core/TrLab/modules/controller/content-plan/useContentPlanController';
 
 const DEFAULT_CARD_COUNT = 5;
 
@@ -39,96 +40,105 @@ export function StudioView({ studio, setView, setQueue }) {
 
   if (!studio) {
     return (
-      <div className="space-y-5">
-        <StageHead title="제목 후보 선택">
-          <Button variant="outline" onClick={() => setView('dashboard')}><ArrowLeft className="h-4 w-4" />트렌드 감지로</Button>
+      <div className="space-y-5 rounded-lg border bg-white p-5 shadow-sm">
+        <WorkflowHeader
+          eyebrow="Studio"
+          title="콘텐츠 제작실"
+          description="직접 브리프를 입력해 카드뉴스 기획을 시작합니다."
+        >
+          <Button variant="outline" onClick={() => setView('planning')}><ArrowLeft className="h-4 w-4" />기획</Button>
           <Button onClick={() => setView('plan')}><PencilLine className="h-4 w-4" />직접 기획</Button>
-        </StageHead>
-        <Card>
-          <CardContent className="p-6">
-            <div className="rounded-lg border border-dashed p-6 text-sm font-semibold text-muted-foreground">검색 검증을 통과한 키워드를 먼저 선택하면 제목 후보를 고를 수 있습니다.</div>
-          </CardContent>
-        </Card>
+        </WorkflowHeader>
+        <div className="rounded-lg border border-dashed bg-slate-50 p-8 text-sm font-semibold leading-6 text-slate-500">
+          직접 기획을 시작하면 제목 후보와 제작 플로우가 열립니다.
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-5">
-      <StageHead title={`${studio.label} 제목 선택`}>
-        <Button variant="outline" onClick={() => setView('search')}><ArrowLeft className="h-4 w-4" />검증 근거로</Button>
-        <Button onClick={chooseTitle} disabled={!selected.trim()}><Send className="h-4 w-4" />이 제목으로 기획</Button>
-      </StageHead>
+      <WorkflowHeader
+        eyebrow="Title Lab"
+        title={`${studio.label} 제작 방향 선택`}
+        description="후크 제목을 먼저 확정하면 다음 단계에서 카드 구성, 이미지 지시, 게시 원고를 한 번에 생성합니다."
+      >
+        <Button variant="outline" onClick={() => setView('planning')}><ArrowLeft className="h-4 w-4" />기획</Button>
+        <Button onClick={chooseTitle} disabled={!selected.trim()}><Send className="h-4 w-4" />기획으로 이동</Button>
+      </WorkflowHeader>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <Card className="border-indigo-200 bg-indigo-50/40">
-          <CardHeader>
-            <CardTitle>콘텐츠 제목 후보</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-3">
-              {titleCandidates.map((title, index) => (
-                <button
-                  key={`${index}-${title}`}
-                  type="button"
-                  className={[
-                    'w-full rounded-lg border bg-white p-4 text-left transition',
-                    selected === title ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-slate-200 hover:border-indigo-200'
-                  ].join(' ')}
-                  onClick={() => setSelectedTitle(title)}
-                >
-                  <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <Badge variant={index === 0 ? 'default' : 'secondary'}>후보 {index + 1}</Badge>
-                    <Badge variant="outline">{inferFormat(title)}</Badge>
-                  </div>
-                  <strong className="block break-words text-lg font-black leading-snug text-slate-950">{title}</strong>
-                  <p className="mt-2 text-xs font-semibold leading-5 text-muted-foreground">{scoreTitle(title, studio)}</p>
-                </button>
-              ))}
-            </div>
-            <label className="grid gap-1.5">
-              <span className="text-xs font-black text-slate-500">직접 수정</span>
-              <input className="h-11 rounded-md border border-slate-200 bg-white px-3 text-sm font-black outline-none focus:border-indigo-400" value={selected} onChange={(event) => setSelectedTitle(event.target.value)} placeholder="선택할 콘텐츠 제목" />
-            </label>
-          </CardContent>
-        </Card>
+      <WorkflowSteps current="title" />
 
-        <Card>
-          <CardHeader>
-            <CardTitle>선택 기준</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm font-semibold leading-6 text-slate-600">
-            <InfoLine label="원본 키워드" value={studio.keyword ?? studio.label} />
-            <InfoLine label="검색 검증" value={studio.searchVerification?.verification?.grade ?? studio.searchVerification?.grade ?? '검증 완료'} />
-            <InfoLine label="제작 점수" value={`${studio.production?.score ?? studio.score ?? '-'}점`} />
-            <InfoLine label="추천 포맷" value={inferFormat(selected)} />
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs font-semibold leading-5 text-slate-500">
-              이 단계에서는 카드 본문을 만들지 않습니다. 검증된 키워드를 인스타 콘텐츠로 확장할 제목 하나만 고릅니다.
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <section className="rounded-lg border bg-white p-4 shadow-sm">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Hook candidates</span>
+              <h2 className="mt-1 text-xl font-semibold tracking-normal text-slate-950">제목 후보</h2>
             </div>
-          </CardContent>
-        </Card>
+            <Badge variant="secondary">{titleCandidates.length}개 후보</Badge>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {titleCandidates.map((title, index) => (
+              <button
+                key={`${index}-${title}`}
+                type="button"
+                className={[
+                  'min-h-[168px] rounded-lg border p-4 text-left transition',
+                  selected === title ? 'border-slate-300 bg-slate-50 shadow-sm ring-2 ring-slate-100' : 'border-slate-200 bg-slate-50 hover:border-slate-200 hover:bg-white'
+                ].join(' ')}
+                onClick={() => setSelectedTitle(title)}
+              >
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <Badge variant={index === 0 ? 'default' : 'secondary'}>{titleTypeLabel(index)}</Badge>
+                  <Badge variant="outline">{inferFormat(title)}</Badge>
+                </div>
+                <strong className="block break-keep text-lg font-semibold leading-snug text-slate-950 [overflow-wrap:anywhere]">{title}</strong>
+                <p className="mt-3 text-xs font-semibold leading-5 text-slate-500">{scoreTitle(title, studio)}</p>
+              </button>
+            ))}
+          </div>
+          <label className="mt-4 grid gap-1.5">
+            <span className="text-xs font-semibold text-slate-500">직접 수정</span>
+            <input className="h-12 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-slate-400" value={selected} onChange={(event) => setSelectedTitle(event.target.value)} placeholder="선택할 콘텐츠 제목" />
+          </label>
+        </section>
+
+        <aside className="space-y-3">
+          <StudioSnapshot studio={studio} selected={selected} />
+          <div className="rounded-lg border bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-900"><ClipboardList className="h-4 w-4 text-slate-500" />선택 후 생성되는 것</div>
+            <div className="mt-3 grid gap-2 text-xs font-bold leading-5 text-slate-600">
+              <div className="rounded-md bg-slate-50 p-2">카드별 제목, 본문, 강조 문구</div>
+              <div className="rounded-md bg-slate-50 p-2">배경/제품/데이터 시각화 제작 지시</div>
+              <div className="rounded-md bg-slate-50 p-2">게시 원고와 해시태그 패키지</div>
+            </div>
+          </div>
+        </aside>
       </div>
     </div>
   );
 }
 
 export function PlanView({ queue, studio, setView, setQueue, contentPlans, setContentPlans }) {
-  const [manualState, setManualState] = useState({ loading: false, error: '' });
-  const [manualOpen, setManualOpen] = useState(false);
-  const [generationState, setGenerationState] = useState({ loading: false, error: '', cached: false });
-  const [setup, setSetup] = useState(() => ({ cardCount: DEFAULT_CARD_COUNT, title: '' }));
   const titleCandidates = useMemo(() => makeTitleCandidates(studio), [studio]);
   const plan = studio?.id ? contentPlans[studio.id] : null;
-  const loading = generationState.loading;
-  const error = generationState.error;
-  const cached = generationState.cached;
-  useEffect(() => {
-    setSetup({
-      cardCount: studio?.contentSetup?.cardCount ?? studio?.cardCount ?? DEFAULT_CARD_COUNT,
-      title: studio?.selectedHookTitle ?? studio?.contentSetup?.title ?? makeTitleCandidates(studio)[0] ?? ''
-    });
-    setGenerationState({ loading: false, error: '', cached: false });
-  }, [studio?.id]);
+  const {
+    setup,
+    setSetup,
+    loading,
+    error,
+    cached,
+    dismissGenerationError,
+    createTrendPlan
+  } = useContentPlanController({
+    studio,
+    titleCandidates,
+    setQueue,
+    setView,
+    setContentPlans,
+    defaultCardCount: DEFAULT_CARD_COUNT
+  });
   const updateCurrentPlan = useCallback((updater) => {
     if (!studio?.id) return;
     setContentPlans((plans) => {
@@ -137,55 +147,296 @@ export function PlanView({ queue, studio, setView, setQueue, contentPlans, setCo
       return { ...plans, [studio.id]: updater(current) };
     });
   }, [studio?.id, setContentPlans]);
-  const createTrendPlan = async () => {
-    if (!studio) return;
-    const selectedHookTitle = (setup.title || titleCandidates[0] || studio.label || '').trim();
-    setGenerationState({ loading: true, error: '', cached: false });
-    try {
-      const data = await createContentPlan({ ...studio, cardCount: Number(setup.cardCount) || DEFAULT_CARD_COUNT, selectedHookTitle }, { refresh: true });
-      setContentPlans((plans) => ({ ...plans, [studio.id]: data.plan }));
-      setGenerationState({ loading: false, error: '', cached: Boolean(data.cached) });
-    } catch (error) {
-      setGenerationState({ loading: false, error: error.message, cached: false });
-    }
-  };
-  const createManualPlan = async (values) => {
-    const manualStudio = makeManualStudio(values);
-    setManualState({ loading: true, error: '' });
-    try {
-      const data = await createContentPlan(manualStudio, { refresh: true });
-      setQueue((items = []) => [manualStudio, ...items.filter((item) => item?.id !== manualStudio.id)]);
-      setContentPlans((plans) => ({ ...plans, [manualStudio.id]: data.plan }));
-      setView('plan');
-    } catch (error) {
-      setManualState({ loading: false, error: error.message });
-      return;
-    }
-    setManualState({ loading: false, error: '' });
-  };
   if (!studio) {
     return (
       <div className="space-y-5">
-        <StageHead title="직접 콘텐츠 설계">
-          <Button variant="outline" onClick={() => setView('dashboard')}><ArrowLeft className="h-4 w-4" />트렌드 감지로</Button>
+        <StageHead title="AI 추천 결과">
+          <Button variant="outline" onClick={() => setView('planning')}><ArrowLeft className="h-4 w-4" />기획으로</Button>
         </StageHead>
-        <ManualBriefPanel onSubmit={createManualPlan} loading={manualState.loading} error={manualState.error} />
+        <div className="rounded-lg border bg-white p-8 text-sm font-semibold leading-6 text-slate-500 shadow-sm">
+          먼저 기획 화면에서 주제와 독자를 입력하고 AI 추천을 생성해 주세요.
+        </div>
       </div>
     );
   }
   return (
     <div className="space-y-5">
-      <StageHead title={`${studio.label} 콘텐츠 설계`}>
-        <Button variant="outline" onClick={() => setView('studio')}><ArrowLeft className="h-4 w-4" />제목 선택으로</Button>
-        <Button variant="outline" onClick={() => setManualOpen((value) => !value)}>{manualOpen ? <X className="h-4 w-4" /> : <PencilLine className="h-4 w-4" />}{manualOpen ? '직접 설계 닫기' : '직접 설계'}</Button>
-        <Button onClick={() => setView('cardnews')} disabled={!plan}><Send className="h-4 w-4" />이미지 제작으로</Button>
-      </StageHead>
-      {manualOpen ? <ManualBriefPanel onSubmit={createManualPlan} loading={manualState.loading} error={manualState.error} compact /> : null}
+      <GenerationOverlay
+        open={loading}
+        title="추천 결과를 다시 만들고 있어요"
+        description="선택 가능한 제목과 카드 흐름을 새로 구성합니다."
+      />
+      <NoticeToast
+        title="AI 추천 생성 실패"
+        message={error}
+        onClose={dismissGenerationError}
+      />
+      <WorkflowHeader
+        eyebrow="설계"
+        title="카드 초안"
+        description="제목 후보와 컷별 흐름을 확인합니다."
+      >
+        <Button variant="outline" onClick={() => setView('planning')}><ArrowLeft className="h-4 w-4" />기획 수정</Button>
+        <Button variant="outline" onClick={createTrendPlan} disabled={loading}>
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          다시 추천
+        </Button>
+      </WorkflowHeader>
       {loading && <LoadingBox />}
       {error && <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
-      <PlanSetupPanel studio={studio} setup={setup} setSetup={setSetup} titleCandidates={titleCandidates} loading={loading} hasPlan={Boolean(plan)} onGenerate={createTrendPlan} />
-      {plan && <PlanGrid plan={plan} queue={queue} cached={cached} updatePlan={updateCurrentPlan} removeFromQueue={(id) => setQueue((items = []) => items.filter((item) => item?.id !== id))} />}
+      {!plan && !loading ? <PlanSetupPanel studio={studio} setup={setup} setSetup={setSetup} titleCandidates={titleCandidates} loading={loading} hasPlan={false} onGenerate={createTrendPlan} /> : null}
+      {plan ? <PlanRecommendationReview plan={plan} studio={studio} cached={cached} updatePlan={updateCurrentPlan} onConfirm={() => setView('cardnews')} /> : null}
     </div>
+  );
+}
+
+function PlanRecommendationReview({ plan, studio, cached, updatePlan, onConfirm }) {
+  const cards = plan.cards ?? [];
+  const coverTitle = cards[0]?.title ?? plan.hookTitles?.[0] ?? '';
+  const recommendationTitle = recommendationDisplayTitle(plan, studio);
+  const scenarioOptions = useMemo(() => makeScenarioFlowOptions(plan), [plan]);
+  const initialScenarioId = plan.selectedScenarioFlowId || scenarioOptions[0]?.id || '';
+  const initialScenario = scenarioOptions.find((option) => option.id === initialScenarioId) || scenarioOptions[0];
+  const [titleChosen, setTitleChosen] = useState(Boolean(plan.selectedHookTitle));
+  const [scenarioFinalized, setScenarioFinalized] = useState(Boolean(plan.scenarioFinalized));
+  const [selectedScenarioId, setSelectedScenarioId] = useState(initialScenarioId);
+  const [scenarioDraft, setScenarioDraft] = useState(initialScenario?.items ?? []);
+  const applyTitle = (title) => {
+    updatePlan((current) => {
+      const nextCards = current.cards?.length ? [...current.cards] : [];
+      if (nextCards[0]) nextCards[0] = { ...nextCards[0], title };
+      return { ...current, selectedHookTitle: title, scenarioFinalized: false, cards: nextCards };
+    });
+    setTitleChosen(true);
+    setScenarioFinalized(false);
+  };
+  const applyScenarioFlow = (option) => {
+    setSelectedScenarioId(option.id);
+    setScenarioDraft(option.items);
+    setScenarioFinalized(false);
+  };
+  const updateScenarioDraft = (index, value) => {
+    setScenarioDraft((items) => items.map((item, itemIndex) => (itemIndex === index ? value : item)));
+    setScenarioFinalized(false);
+  };
+  const finalizeScenario = () => {
+    const selectedOption = scenarioOptions.find((option) => option.id === selectedScenarioId) || scenarioOptions[0];
+    const items = scenarioDraft.map((item) => item.trim()).filter(Boolean);
+    if (!items.length) return;
+    updatePlan((current) => ({
+      ...current,
+      selectedScenarioFlowId: selectedOption?.id,
+      selectedScenarioFlowLabel: selectedOption?.label,
+      scenarioFinalized: true,
+      carouselBlueprint: items
+    }));
+    setScenarioFinalized(true);
+  };
+
+  return (
+    <div className="grid gap-5">
+      {titleChosen ? (
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <CardTitle>{recommendationTitle}</CardTitle>
+              <div className="flex flex-wrap gap-1.5">
+                {plan.generation?.provider ? <Badge variant="outline">{plan.generation.provider}</Badge> : null}
+                {cached ? <Badge variant="secondary">저장본</Badge> : null}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {plan.generation?.source === 'fallback' ? (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold leading-6 text-red-700">
+                {plan.generation.message || 'AI 생성에 실패해 임시 기획안이 표시 중입니다. 다시 추천을 눌러 주세요.'}
+              </div>
+            ) : null}
+            {plan.summary ? <p className="text-sm font-semibold leading-6 text-slate-600">{plan.summary}</p> : null}
+            <div className="flex flex-wrap gap-1.5">
+              {plan.targetAudience ? <Badge variant="secondary">대상 {plan.targetAudience}</Badge> : null}
+              {plan.referenceStyle ? <Badge variant="outline">{referenceLabel(plan.referenceStyle)}</Badge> : null}
+              {cards.length ? <Badge variant="outline">{cards.length}장</Badge> : null}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {titleChosen ? <TemplatePlanSummary plan={plan} /> : null}
+
+      {plan.hookTitles?.length ? (
+        <Card>
+          <CardHeader><CardTitle>1. 제목 선택</CardTitle></CardHeader>
+          <CardContent className="grid gap-3 md:grid-cols-3">
+            {plan.hookTitles.slice(0, 6).map((title, index) => (
+              <button
+                key={`${index}-${title}`}
+                type="button"
+                onClick={() => applyTitle(title)}
+                className={[
+                  'min-h-28 rounded-lg border p-4 text-left transition',
+                  coverTitle === title ? 'border-slate-300 bg-slate-50 ring-2 ring-slate-100' : 'border-slate-200 bg-slate-50 hover:border-slate-200 hover:bg-white'
+                ].join(' ')}
+              >
+                <Badge variant={index === 0 ? 'default' : 'outline'}>{titleTypeLabel(index)}</Badge>
+                <strong className="mt-3 block break-keep text-base font-semibold leading-snug text-slate-950 [overflow-wrap:anywhere]">{title}</strong>
+              </button>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {titleChosen && scenarioOptions.length ? (
+        <Card>
+          <CardHeader><CardTitle>2. 시나리오 추천/수정</CardTitle></CardHeader>
+          <CardContent className="grid gap-3 lg:grid-cols-2">
+            {scenarioOptions.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => applyScenarioFlow(option)}
+                className={[
+                  'rounded-lg border p-4 text-left transition',
+                  selectedScenarioId === option.id ? 'border-slate-300 bg-slate-50 ring-2 ring-slate-100' : 'border-slate-200 bg-slate-50 hover:border-slate-200 hover:bg-white'
+                ].join(' ')}
+              >
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <Badge variant={selectedScenarioId === option.id ? 'default' : 'outline'}>{option.label}</Badge>
+                  <span className="text-xs font-semibold text-slate-400">{option.items.length}단계</span>
+                </div>
+                <p className="text-sm font-bold leading-6 text-slate-700">{option.summary}</p>
+                <div className="mt-3 grid gap-1.5">
+                  {option.items.slice(0, 4).map((item, index) => (
+                    <div key={`${option.id}-${index}-${item}`} className="flex gap-2 rounded-md bg-white/75 px-2 py-1.5 text-xs font-semibold leading-5 text-slate-600">
+                      <span className="shrink-0 font-semibold text-indigo-500">{String(index + 1).padStart(2, '0')}</span>
+                      <span>{item}</span>
+                    </div>
+                  ))}
+                  {option.items.length > 4 ? <div className="text-xs font-semibold text-slate-400">+ {option.items.length - 4}단계 더 보기</div> : null}
+                </div>
+              </button>
+            ))}
+            <div className="rounded-lg border border-dashed bg-white p-4 lg:col-span-2">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="text-xs font-semibold text-slate-500">선택한 시나리오 직접 수정</div>
+                  <p className="mt-1 text-xs font-semibold text-slate-400">카드 흐름 문장을 일부 바꾼 뒤 최종 생성하세요.</p>
+                </div>
+                <Badge variant="secondary">{scenarioDraft.length}단계</Badge>
+              </div>
+              <div className="grid gap-2">
+                {scenarioDraft.map((item, index) => (
+                  <label key={`${selectedScenarioId}-${index}`} className="grid gap-1.5 rounded-lg border bg-slate-50 p-3">
+                    <span className="text-xs font-semibold text-slate-500">{String(index + 1).padStart(2, '0')}</span>
+                    <textarea
+                      className="min-h-16 resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-bold leading-6 text-slate-700 outline-none focus:border-slate-400"
+                      value={item}
+                      onChange={(event) => updateScenarioDraft(index, event.target.value)}
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {scenarioFinalized ? (
+        <Card>
+          <CardHeader><CardTitle>3. 최종 생성 결과</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div className="mb-2 text-xs font-semibold text-slate-600">확정된 시나리오</div>
+              <div className="grid gap-2 md:grid-cols-2">
+                {scenarioDraft.map((item, index) => (
+                  <div key={`final-scenario-${index}-${item}`} className="rounded-lg bg-white/80 p-3">
+                    <span className="text-xs font-semibold text-slate-500">{String(index + 1).padStart(2, '0')}</span>
+                    <p className="mt-1 text-sm font-bold leading-6 text-slate-700">{item}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {cards.map((card, index) => (
+                <div key={`${card.page}-${index}`} className="rounded-lg border bg-white p-4 shadow-sm">
+                  <div className="mb-3 flex flex-wrap items-center gap-1.5">
+                    <Badge variant="outline">카드 {index + 1}</Badge>
+                    {card.role ? <Badge variant="secondary">{roleLabel(card.role)}</Badge> : null}
+                  </div>
+                  <strong className="block break-keep text-lg font-semibold leading-snug text-slate-950 [overflow-wrap:anywhere]">{card.title}</strong>
+                  <p className="mt-3 whitespace-pre-line text-sm font-semibold leading-6 text-slate-600">{formatCardText(card.body)}</p>
+                  {card.visualPrompt ? <p className="mt-3 rounded-md bg-slate-50 p-2 text-xs font-bold leading-5 text-slate-500">{card.visualPrompt}</p> : null}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+      <div className="sticky bottom-4 z-10 rounded-lg border bg-white/95 p-4 shadow-lg backdrop-blur">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <strong className="text-sm font-semibold text-slate-950">{scenarioFinalized ? '최종 결과를 확정할까요?' : titleChosen ? '시나리오를 최종 생성할까요?' : '먼저 제목을 선택해 주세요.'}</strong>
+            <p className="mt-1 text-xs font-semibold text-slate-500">{scenarioFinalized ? '다음 단계에서 레퍼런스, 캐릭터, 배경 에셋을 만듭니다.' : '제목을 선택한 뒤 시나리오를 고치고 최종 생성하세요.'}</p>
+          </div>
+          {scenarioFinalized ? (
+            <Button onClick={onConfirm}><Image className="h-4 w-4" />이 결과로 제작 단계 이동</Button>
+          ) : (
+            <Button onClick={finalizeScenario} disabled={!titleChosen || !scenarioDraft.some((item) => item.trim())}>
+              <Send className="h-4 w-4" />최종 생성
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TemplatePlanSummary({ plan }) {
+  const setup = plan?.contentSetup ?? {};
+  const production = setup.templateProduction ?? plan?.templateProduction;
+  const cardPlan = setup.templateCardPlan ?? plan?.templateCardPlan ?? [];
+  const settings = setup.templateSettings ?? plan?.templateSettings ?? {};
+  if (!production?.groups?.length && !cardPlan.length && !Object.keys(settings).length) return null;
+  return (
+    <Card>
+      <CardHeader><CardTitle>템플릿 제작 기준</CardTitle></CardHeader>
+      <CardContent className="grid gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+        <div>
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {setup.templateLabel ? <Badge variant="secondary">{setup.templateLabel}</Badge> : null}
+            {setup.templateCanvas ? <Badge variant="outline">{setup.templateCanvas}</Badge> : null}
+            {setup.templateFormatSignal ? <Badge variant="outline">{setup.templateFormatSignal}</Badge> : null}
+          </div>
+          <div className="grid gap-2">
+            {(production?.groups ?? []).map(([title, items]) => (
+              <div key={title} className="rounded-lg bg-slate-50 p-3">
+                <div className="text-xs font-semibold text-slate-700">{title}</div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {items.map((item) => {
+                    const active = Array.isArray(settings?.[title]) && settings[title].includes(item);
+                    return <span key={item} className={active ? 'rounded-full bg-slate-950 px-2 py-1 text-[11px] font-bold text-white' : 'rounded-full bg-white px-2 py-1 text-[11px] font-bold text-slate-600 ring-1 ring-slate-100'}>{item}</span>;
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div className="mb-2 text-xs font-semibold text-slate-500">컷별 역할</div>
+          <div className="grid gap-1.5">
+            {cardPlan.slice(0, 8).map(([title, note], index) => (
+              <div key={`${title}-${index}`} className="grid grid-cols-[32px_minmax(0,1fr)] gap-2 rounded-lg bg-slate-50 px-3 py-2">
+                <div className="text-[11px] font-semibold text-slate-400">{index + 1}</div>
+                <div>
+                  <div className="text-xs font-semibold text-slate-800">{title}</div>
+                  <div className="mt-0.5 text-[11px] font-semibold leading-4 text-slate-500">{note}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -215,31 +466,31 @@ function ManualBriefPanel({ onSubmit, loading, error, compact = false }) {
         <form className="grid gap-3" onSubmit={submit}>
           <div className={compact ? 'grid gap-3 lg:grid-cols-[minmax(0,1fr)_120px]' : 'grid gap-3 md:grid-cols-[minmax(0,1fr)_140px]'}>
             <label className="grid gap-1.5">
-              <span className="text-xs font-black text-slate-500">주제</span>
-              <input className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-indigo-400" value={values.topic} onChange={update('topic')} placeholder="예: 30대 직장인을 위한 저속노화 식단" />
+              <span className="text-xs font-semibold text-slate-500">주제</span>
+              <input className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-slate-400" value={values.topic} onChange={update('topic')} placeholder="예: 30대 직장인을 위한 저속노화 식단" />
             </label>
             <label className="grid gap-1.5">
-              <span className="text-xs font-black text-slate-500">컷 수</span>
-              <input className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-indigo-400" type="number" min="3" max="12" value={values.cardCount} onChange={update('cardCount')} />
+              <span className="text-xs font-semibold text-slate-500">컷 수</span>
+              <input className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-slate-400" type="number" min="3" max="12" value={values.cardCount} onChange={update('cardCount')} />
             </label>
           </div>
           <label className="grid gap-1.5">
-            <span className="text-xs font-black text-slate-500">만들고 싶은 내용</span>
-            <textarea className="min-h-28 resize-y rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold leading-6 outline-none focus:border-indigo-400" value={values.prompt} onChange={update('prompt')} placeholder="어떤 관점으로, 어떤 독자에게, 어떤 페이지 흐름으로 만들고 싶은지 자연어로 적어주세요." />
+            <span className="text-xs font-semibold text-slate-500">만들고 싶은 내용</span>
+            <textarea className="min-h-28 resize-y rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold leading-6 outline-none focus:border-slate-400" value={values.prompt} onChange={update('prompt')} placeholder="어떤 관점으로, 어떤 독자에게, 어떤 페이지 흐름으로 만들고 싶은지 자연어로 적어주세요." />
           </label>
           <label className="grid gap-1.5">
-            <span className="text-xs font-black text-slate-500">채널명</span>
-            <input className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-indigo-400" value={values.channelName} onChange={update('channelName')} placeholder="@my_channel" />
+            <span className="text-xs font-semibold text-slate-500">채널명</span>
+            <input className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-slate-400" value={values.channelName} onChange={update('channelName')} placeholder="@my_channel" />
           </label>
           {!compact ? (
             <div className="grid gap-3 md:grid-cols-2">
               <label className="grid gap-1.5">
-                <span className="text-xs font-black text-slate-500">대상 독자</span>
-                <input className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-indigo-400" value={values.audience} onChange={update('audience')} placeholder="예: 인스타 저장형 정보를 좋아하는 20대 후반" />
+                <span className="text-xs font-semibold text-slate-500">대상 독자</span>
+                <input className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-slate-400" value={values.audience} onChange={update('audience')} placeholder="예: 인스타 저장형 정보를 좋아하는 20대 후반" />
               </label>
               <label className="grid gap-1.5">
-                <span className="text-xs font-black text-slate-500">톤</span>
-                <input className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-indigo-400" value={values.tone} onChange={update('tone')} placeholder="예: 친근하지만 근거 있는 말투" />
+                <span className="text-xs font-semibold text-slate-500">톤</span>
+                <input className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-slate-400" value={values.tone} onChange={update('tone')} placeholder="예: 친근하지만 근거 있는 말투" />
               </label>
             </div>
           ) : null}
@@ -259,8 +510,64 @@ function ManualBriefPanel({ onSubmit, loading, error, compact = false }) {
 function InfoLine({ label, value }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-3">
-      <span className="text-xs font-black text-slate-400">{label}</span>
-      <strong className="mt-1 block break-words text-sm font-black text-slate-800">{value || '-'}</strong>
+      <span className="text-xs font-semibold text-slate-400">{label}</span>
+      <strong className="mt-1 block break-words text-sm font-semibold text-slate-800">{value || '-'}</strong>
+    </div>
+  );
+}
+
+function WorkflowHeader({ eyebrow, title, description, children }) {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <span className="text-xs font-medium uppercase tracking-[0.12em] text-slate-400">{eyebrow}</span>
+          <h1 className="mt-2 break-keep text-xl font-semibold leading-tight tracking-normal text-slate-950 [overflow-wrap:anywhere]">{title}</h1>
+          {description ? <p className="mt-2 max-w-3xl text-sm font-medium leading-6 text-slate-500">{description}</p> : null}
+        </div>
+        <div className="flex flex-wrap gap-2">{children}</div>
+      </div>
+    </section>
+  );
+}
+
+function WorkflowSteps({ current }) {
+  const steps = [
+    { id: 'title', label: '제목 선택' },
+    { id: 'plan', label: '구성 생성' },
+    { id: 'make', label: '이미지 편집' }
+  ];
+  const currentIndex = Math.max(0, steps.findIndex((step) => step.id === current));
+  return (
+    <div className="grid gap-2 rounded-lg border bg-white p-3 shadow-sm md:grid-cols-3">
+      {steps.map((step, index) => (
+        <div
+          key={step.id}
+          className={[
+            'flex min-h-12 items-center gap-3 rounded-lg border px-3 py-2',
+            index <= currentIndex ? 'border-slate-200 bg-slate-50 text-slate-700' : 'border-slate-200 bg-slate-50 text-slate-500'
+          ].join(' ')}
+        >
+          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-white text-xs font-semibold shadow-sm">{index + 1}</span>
+          <strong className="text-sm font-semibold">{step.label}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function StudioSnapshot({ studio, selected }) {
+  return (
+    <div className="rounded-lg border bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900">
+        <Search className="h-4 w-4 text-slate-500" />
+        선택 기준
+      </div>
+      <div className="grid gap-3 text-sm font-semibold leading-6 text-slate-600">
+        <InfoLine label="원본 키워드" value={studio.keyword ?? studio.label} />
+        <InfoLine label="제작 점수" value={`${studio.production?.score ?? studio.score ?? '-'}점`} />
+        <InfoLine label="추천 포맷" value={inferFormat(selected)} />
+      </div>
     </div>
   );
 }
@@ -273,6 +580,102 @@ function inferFormat(title = '') {
   if (/비용|가격|계산|얼마/.test(text)) return '비용계산형';
   if (/왜|이유|뜰까|뜨는/.test(text)) return '해설형';
   return '저장형';
+}
+
+function titleTypeLabel(index) {
+  return ['어그로형', '팩트형', '추천형'][index] ?? `추가 후보 ${index - 2}`;
+}
+
+function recommendationDisplayTitle(plan = {}, studio = {}) {
+  const sourceLabel = studio.label || studio.keyword || plan.primaryTopic || '';
+  const candidates = [
+    plan.hookTitles?.[0],
+    plan.cards?.[0]?.title,
+    plan.coreAngle,
+    plan.summary
+  ].map((item) => `${item ?? ''}`.trim()).filter(Boolean);
+  return candidates.find((item) => !isInputEchoTitle(item, sourceLabel)) || 'AI가 제안한 제작 방향';
+}
+
+function makeScenarioFlowOptions(plan = {}) {
+  const cards = plan.cards ?? [];
+  const baseItems = normalizeScenarioItems(plan.carouselBlueprint, cards);
+  if (!baseItems.length) return [];
+  const count = baseItems.length;
+  const title = plan.hookTitles?.[0] || cards[0]?.title || '표지';
+  return [
+    {
+      id: 'ai-recommended',
+      label: 'AI 추천 흐름',
+      summary: 'AI가 처음 구성한 카드 순서를 유지합니다.',
+      items: baseItems
+    },
+    {
+      id: 'empathy-first',
+      label: '공감형 흐름',
+      summary: '독자의 불안이나 상황을 먼저 건드린 뒤 기준으로 정리합니다.',
+      items: fitScenarioItems([
+        `${title}로 공감 후킹`,
+        '독자가 겪는 막막함이나 반복 상황 제시',
+        '왜 같은 문제가 반복되는지 원인 분리',
+        '바로 적용할 판단 기준 제시',
+        '저장할 체크리스트로 마무리'
+      ], count, cards)
+    },
+    {
+      id: 'fact-first',
+      label: '정보형 흐름',
+      summary: '감정보다 핵심 사실, 비교 기준, 적용 순서를 먼저 보여줍니다.',
+      items: fitScenarioItems([
+        `${title}로 핵심 정보 약속`,
+        '먼저 알아야 할 사실 정리',
+        '비교해야 보이는 기준 제시',
+        '오해하기 쉬운 지점 분리',
+        '실행 순서와 확인 포인트 정리'
+      ], count, cards)
+    },
+    {
+      id: 'recommendation-first',
+      label: '추천형 흐름',
+      summary: '독자가 바로 따라 할 수 있는 방법과 선택 기준을 앞세웁니다.',
+      items: fitScenarioItems([
+        `${title}로 결과 약속`,
+        '가장 먼저 해볼 방법 제안',
+        '상황별 선택 기준 분리',
+        '실패를 줄이는 체크 포인트',
+        '다음 행동으로 이어지는 마무리'
+      ], count, cards)
+    }
+  ];
+}
+
+function normalizeScenarioItems(items = [], cards = []) {
+  const fromBlueprint = (items ?? []).map((item) => `${item ?? ''}`.trim()).filter(Boolean);
+  if (fromBlueprint.length) return fromBlueprint;
+  return cards.map((card, index) => `${index + 1}. ${card.title || roleLabel(card.role)}`).filter(Boolean);
+}
+
+function fitScenarioItems(items, count, cards = []) {
+  const desired = Math.max(1, count || items.length);
+  const next = items.slice(0, desired);
+  while (next.length < desired) {
+    const card = cards[next.length];
+    next.push(card?.title ? `${next.length + 1}. ${card.title}` : `${next.length + 1}. 추가 관점 정리`);
+  }
+  return next.map((item, index) => item.match(/^\d+[.)]/) ? item : `${index + 1}. ${item}`);
+}
+
+function isInputEchoTitle(value = '', source = '') {
+  const normalizedValue = normalizeDisplayCompare(value);
+  const normalizedSource = normalizeDisplayCompare(source);
+  if (!normalizedValue || !normalizedSource) return false;
+  if (normalizedValue === normalizedSource) return true;
+  if (normalizedValue === `${normalizedSource}카드뉴스기획`) return true;
+  return normalizedValue.startsWith(normalizedSource) && normalizedValue.length <= normalizedSource.length + 10;
+}
+
+function normalizeDisplayCompare(value = '') {
+  return `${value}`.replace(/[\s,./!?'"“”‘’()[\]{}:;·_-]+/g, '').toLowerCase();
 }
 
 function scoreTitle(title, studio = {}) {
@@ -290,21 +693,21 @@ function PlanSetupPanel({ studio, setup, setSetup, titleCandidates, loading, has
   const selectedTitle = setup.title || titleCandidates[0] || studio.label;
   const update = (patch) => setSetup((current) => ({ ...current, ...patch }));
   return (
-    <Card className={hasPlan ? 'border-slate-200 bg-white' : 'border-indigo-200 bg-indigo-50/40'}>
+    <Card className={hasPlan ? 'border-slate-200 bg-white' : 'border-slate-200 bg-slate-50/40'}>
       <CardHeader><CardTitle>기획 요청</CardTitle></CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-3 md:grid-cols-[140px_minmax(0,1fr)]">
           <label className="grid gap-1.5">
-            <span className="text-xs font-black text-slate-500">컷 수</span>
-            <input className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm font-black outline-none focus:border-indigo-400" type="number" min="3" max="12" value={setup.cardCount} onChange={(event) => update({ cardCount: event.target.value })} />
+            <span className="text-xs font-semibold text-slate-500">컷 수</span>
+            <input id="plan-setup-card-count" name="planSetupCardCount" className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-slate-400" type="number" min="3" max="12" value={setup.cardCount} onChange={(event) => update({ cardCount: event.target.value })} />
           </label>
           <label className="grid gap-1.5">
-            <span className="text-xs font-black text-slate-500">표지 제목</span>
-            <input className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm font-black outline-none focus:border-indigo-400" value={selectedTitle} onChange={(event) => update({ title: event.target.value })} placeholder="표지 제목을 입력하세요" />
+            <span className="text-xs font-semibold text-slate-500">표지 제목</span>
+            <input id="plan-setup-title" name="planSetupTitle" className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-slate-400" value={selectedTitle} onChange={(event) => update({ title: event.target.value })} placeholder="표지 제목을 입력하세요" />
           </label>
         </div>
         <div>
-          <div className="mb-2 text-xs font-black text-slate-500">제목 후보</div>
+          <div className="mb-2 text-xs font-semibold text-slate-500">제목 후보</div>
           <div className="flex flex-wrap gap-2">
             {titleCandidates.map((title, index) => (
               <Button key={`${index}-${title}`} size="sm" variant={selectedTitle === title ? 'default' : 'outline'} onClick={() => update({ title })}>
@@ -325,56 +728,12 @@ function PlanSetupPanel({ studio, setup, setSetup, titleCandidates, loading, has
   );
 }
 
-function makeManualStudio(values) {
-  const topic = values.topic.trim();
-  const prompt = values.prompt.trim();
-  const cardCount = Math.min(12, Math.max(3, Number(values.cardCount) || 8));
-  const channelName = normalizeChannelName(values.channelName);
-  const idSeed = `${topic}-${prompt}-${cardCount}-${Date.now()}`;
-  return {
-    id: `manual-${hashString(idSeed)}`,
-    label: topic,
-    keyword: topic,
-    category: 'manual',
-    sourceMode: 'manual',
-    channelName,
-    score: 100,
-    rank: 1,
-    summary: prompt,
-    production: {
-      tier: 'Manual',
-      score: 100,
-      suggestedAngle: prompt
-    },
-    validation: {
-      contentType: '사용자 입력'
-    },
-    manualBrief: {
-      topic,
-      prompt,
-      channelName,
-      audience: values.audience?.trim(),
-      tone: values.tone?.trim(),
-      cardCount
-    },
-    cardCount,
-    evidence: [],
-    sampleTitles: [],
-    sources: ['manual']
-  };
-}
-
-function hashString(value) {
-  let result = 0;
-  for (let index = 0; index < value.length; index += 1) result = (result * 31 + value.charCodeAt(index)) >>> 0;
-  return result.toString(36);
-}
-
 function PlanGrid({ plan, queue, cached, updatePlan, removeFromQueue }) {
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
       <div className="space-y-4">
         <PlanSummary plan={plan} cached={cached} />
+        <ProductionPackagePanel plan={plan} />
         <DesignControls plan={plan} updatePlan={updatePlan} />
         <PublishPackage plan={plan} />
         <CardPreview cards={plan.cards} />
@@ -383,6 +742,115 @@ function PlanGrid({ plan, queue, cached, updatePlan, removeFromQueue }) {
       <QueuePanel queue={queue} removeFromQueue={removeFromQueue} />
     </div>
   );
+}
+
+function ProductionPackagePanel({ plan }) {
+  const brief = effectiveProductionBrief(plan);
+  if (!brief) return null;
+  const cards = plan.cards ?? [];
+  const productCandidates = uniqueProductCandidates(cards);
+  const pexelsQueries = uniqueQueries(plan);
+  const packageText = makeProductionPackageText(plan, productCandidates, pexelsQueries);
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <CardTitle className="flex items-center gap-2"><ClipboardList className="h-5 w-5 text-slate-500" />제작 결과 패키지</CardTitle>
+          <Button size="sm" variant="outline" onClick={() => navigator.clipboard?.writeText(packageText)}>
+            <Copy className="h-3.5 w-3.5" />
+            전체 복사
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 xl:grid-cols-[1.1fr_0.9fr]">
+          <div className="rounded-lg border bg-white p-4">
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {brief.contentCategory ? <Badge variant="secondary">{categoryLabel(brief.contentCategory)}</Badge> : null}
+              {(brief.moodKeywords ?? []).slice(0, 4).map((item) => <Badge key={`mood-${item}`} variant="outline">{item}</Badge>)}
+            </div>
+            <span className="text-xs font-semibold text-slate-500">디자인 방향</span>
+            <strong className="mt-1 block text-base leading-7 text-slate-950">{brief.designConcept}</strong>
+            {brief.visualConsistency ? <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{brief.visualConsistency}</p> : null}
+          </div>
+          <div className="rounded-lg border bg-slate-50 p-4">
+            <span className="text-xs font-semibold text-slate-500">이미지/저작권 전략</span>
+            <p className="mt-1 text-sm font-semibold leading-6 text-slate-700">{brief.assetStrategy}</p>
+            {brief.imageGenerationPolicy ? <p className="mt-2 rounded-md bg-white p-2 text-xs font-bold leading-5 text-slate-500">{brief.imageGenerationPolicy}</p> : null}
+          </div>
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-3">
+          <ProductionMiniSection icon={<Image className="h-4 w-4" />} title="컬러/톤" items={[...(brief.palette ?? []), brief.typographyTone].filter(Boolean)} />
+          <ProductionMiniSection icon={<Search className="h-4 w-4" />} title="Pexels 검색" items={pexelsQueries} copy />
+          <ProductionMiniSection icon={<ClipboardList className="h-4 w-4" />} title="제품/이미지 후보" items={productCandidates.map((item) => `${item.name}${item.role ? ` · ${item.role}` : ''}`)} />
+        </div>
+
+        <div>
+          <div className="mb-2 text-xs font-semibold text-slate-500">카드별 제작 지시</div>
+          <div className="grid gap-2">
+            {cards.map((card, index) => <CardProductionRow key={`${card.page}-${index}`} card={card} index={index} />)}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ProductionMiniSection({ icon, title, items = [], copy = false }) {
+  const visible = items.filter(Boolean).slice(0, 6);
+  if (!visible.length) return null;
+  return (
+    <div className="rounded-lg border bg-white p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">{icon}{title}</div>
+        {copy ? <Button size="sm" variant="outline" onClick={() => navigator.clipboard?.writeText(visible.join('\n'))}><Copy className="h-3.5 w-3.5" /></Button> : null}
+      </div>
+      <div className="grid gap-1.5">
+        {visible.map((item, index) => <div key={`${title}-${index}-${item}`} className="rounded-md bg-slate-50 px-2 py-1.5 text-xs font-bold leading-5 text-slate-600">{item}</div>)}
+      </div>
+    </div>
+  );
+}
+
+function CardProductionRow({ card, index }) {
+  const brief = card.visualBrief ?? {};
+  return (
+    <div className="grid gap-2 rounded-lg border bg-white p-3 lg:grid-cols-[72px_minmax(0,0.9fr)_minmax(0,1.1fr)]">
+      <div>
+        <Badge variant="outline">카드 {index + 1}</Badge>
+        <div className="mt-2 text-[11px] font-semibold text-slate-400">{roleLabel(card.role)}</div>
+      </div>
+      <div className="min-w-0">
+        <strong className="block break-words text-sm font-semibold leading-5 text-slate-900">{card.title}</strong>
+        <p className="mt-1 line-clamp-2 whitespace-pre-line text-xs font-semibold leading-5 text-slate-600">{formatCardText(card.body)}</p>
+      </div>
+      <div className="min-w-0 rounded-md bg-slate-50 p-2">
+        {brief.scenario || card.visualPrompt ? <p className="text-xs font-semibold leading-5 text-slate-700">{brief.scenario || card.visualPrompt}</p> : null}
+        <div className="mt-1 flex flex-wrap gap-1.5">
+          {brief.scenarioType ? <Badge variant="secondary">{brief.scenarioType}</Badge> : null}
+          {brief.pexelsQuery ? <Badge variant="outline">Pexels: {brief.pexelsQuery}</Badge> : null}
+          {brief.overlaySafeArea ? <Badge variant="outline">{brief.overlaySafeArea}</Badge> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function effectiveProductionBrief(plan = {}) {
+  if (plan.productionBrief) return plan.productionBrief;
+  const reference = referenceLabel(plan.referenceStyle);
+  return {
+    contentCategory: 'general',
+    designConcept: plan.coreAngle || plan.summary || '카드뉴스 제작용 정보 패키지',
+    moodKeywords: [reference, 'editorial', 'practical'].filter(Boolean),
+    palette: ['white', 'slate', 'indigo accent'],
+    typographyTone: '굵은 제목과 짧은 본문 중심',
+    visualConsistency: '카드마다 제목, 본문, 이미지 여백을 같은 리듬으로 반복합니다.',
+    assetStrategy: '기존 제작 연출과 카드별 시각 요소를 바탕으로 Pexels/AI 백플레이트를 선택합니다.',
+    imageGenerationPolicy: '이미지는 텍스트 없는 배경으로 만들고 문구는 SVG 편집기에서 얹습니다.',
+    pexelsStrategy: { enabled: true, globalQueries: [], orientation: 'portrait', usePolicy: '카드별 제작 연출을 기준으로 검색어를 보강하세요.' }
+  };
 }
 
 function QueuePanel({ queue, removeFromQueue }) {
@@ -501,28 +969,28 @@ function DesignControls({ plan, updatePlan }) {
       <CardContent className="space-y-4">
         <div className="grid gap-3 md:grid-cols-[140px_minmax(0,1fr)]">
           <label className="grid gap-1.5">
-            <span className="text-xs font-black text-slate-500">컷 수</span>
-            <input className="h-10 rounded-md border border-slate-200 px-3 text-sm font-black outline-none focus:border-indigo-400" type="number" min="3" max="12" value={cards.length} onChange={setCardCount} />
+            <span className="text-xs font-semibold text-slate-500">컷 수</span>
+            <input className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-slate-400" type="number" min="3" max="12" value={cards.length} onChange={setCardCount} />
           </label>
           <div className="grid gap-1.5">
-            <span className="text-xs font-black text-slate-500">표지 제목</span>
-            <input className="h-10 rounded-md border border-slate-200 px-3 text-sm font-black outline-none focus:border-indigo-400" value={coverTitle} onChange={(event) => applyTitle(event.target.value)} placeholder="표지 제목을 입력하세요" />
+            <span className="text-xs font-semibold text-slate-500">표지 제목</span>
+            <input className="h-10 rounded-md border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-slate-400" value={coverTitle} onChange={(event) => applyTitle(event.target.value)} placeholder="표지 제목을 입력하세요" />
           </div>
         </div>
         {plan.hookTitles?.length ? (
           <div>
-            <div className="mb-2 text-xs font-black text-slate-500">제목 후보</div>
+            <div className="mb-2 text-xs font-semibold text-slate-500">제목 후보</div>
             <div className="flex flex-wrap gap-2">
               {plan.hookTitles.map((title, index) => (
                 <Button key={`${index}-${title}`} size="sm" variant={coverTitle === title ? 'default' : 'outline'} onClick={() => applyTitle(title)}>
-                  후보 {index + 1}
+                  {titleTypeLabel(index)}
                 </Button>
               ))}
             </div>
           </div>
         ) : null}
         <div className="space-y-2">
-          <div className="text-xs font-black text-slate-500">카드별 문구와 제작 연출</div>
+          <div className="text-xs font-semibold text-slate-500">카드별 문구와 제작 연출</div>
           {cards.map((card, index) => (
             <div key={`${card.page}-${index}`} className="rounded-lg border bg-slate-50 p-3">
               <div className="mb-2 flex flex-wrap items-center gap-1.5">
@@ -530,14 +998,15 @@ function DesignControls({ plan, updatePlan }) {
               </div>
               <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                 <div className="rounded-md border border-slate-200 bg-white p-3">
-                  <div className="mb-2 text-xs font-black text-slate-500">카드 문구</div>
-                  <input className="h-9 w-full rounded-md border border-slate-200 px-3 text-sm font-black outline-none focus:border-indigo-400" value={card.title ?? ''} onChange={(event) => updateCard(index, { title: event.target.value })} placeholder="카드 제목" />
-                  <textarea className="mt-2 min-h-24 w-full resize-y rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold leading-6 outline-none focus:border-indigo-400" value={formatCardText(card.body)} onChange={(event) => updateCard(index, { body: event.target.value })} placeholder="카드 본문" />
+                  <div className="mb-2 text-xs font-semibold text-slate-500">카드 문구</div>
+                  <input className="h-9 w-full rounded-md border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-slate-400" value={card.title ?? ''} onChange={(event) => updateCard(index, { title: event.target.value })} placeholder="카드 제목" />
+                  <textarea className="mt-2 min-h-24 w-full resize-y rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold leading-6 outline-none focus:border-slate-400" value={formatCardText(card.body)} onChange={(event) => updateCard(index, { body: event.target.value })} placeholder="카드 본문" />
                 </div>
                 <div className="rounded-md border border-slate-200 bg-white p-3">
-                  <div className="mb-2 text-xs font-black text-slate-500">제작 연출</div>
-                  <textarea className="min-h-24 w-full resize-y rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold leading-6 outline-none focus:border-indigo-400" value={card.visualPrompt ?? ''} onChange={(event) => updateCard(index, { visualPrompt: event.target.value })} placeholder="배경, 그림, 그래프, 표 구도" />
-                  <input className="mt-2 h-9 w-full rounded-md border border-slate-200 px-3 text-xs font-bold outline-none focus:border-indigo-400" value={(card.visualItems ?? []).join(', ')} onChange={(event) => updateCard(index, { visualItems: event.target.value.split(',').map((item) => item.trim()).filter(Boolean) })} placeholder="시각 요소, 쉼표로 구분" />
+                  <div className="mb-2 text-xs font-semibold text-slate-500">제작 연출</div>
+                  <textarea className="min-h-24 w-full resize-y rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold leading-6 outline-none focus:border-slate-400" value={card.visualPrompt ?? ''} onChange={(event) => updateCard(index, { visualPrompt: event.target.value })} placeholder="배경, 그림, 그래프, 표 구도" />
+                  <input className="mt-2 h-9 w-full rounded-md border border-slate-200 px-3 text-xs font-bold outline-none focus:border-slate-400" value={(card.visualItems ?? []).join(', ')} onChange={(event) => updateCard(index, { visualItems: event.target.value.split(',').map((item) => item.trim()).filter(Boolean) })} placeholder="시각 요소, 쉼표로 구분" />
+                  <VisualBriefFields card={card} update={(visualBrief) => updateCard(index, { visualBrief })} />
                   <VerifiedDataPanel data={card.visualData} compact />
                 </div>
               </div>
@@ -546,6 +1015,18 @@ function DesignControls({ plan, updatePlan }) {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function VisualBriefFields({ card, update }) {
+  const brief = card.visualBrief ?? {};
+  const set = (key) => (event) => update({ ...brief, [key]: event.target.value });
+  return (
+    <div className="mt-2 grid gap-2 rounded-md border border-slate-100 bg-slate-50 p-2">
+      <input className="h-8 rounded-md border border-slate-200 px-2 text-xs font-bold outline-none focus:border-slate-400" value={brief.scenario ?? ''} onChange={set('scenario')} placeholder="장면 시나리오" />
+      <input className="h-8 rounded-md border border-slate-200 px-2 text-xs font-bold outline-none focus:border-slate-400" value={brief.pexelsQuery ?? brief.pexels?.query ?? ''} onChange={set('pexelsQuery')} placeholder="Pexels 검색어" />
+      <textarea className="min-h-16 resize-y rounded-md border border-slate-200 px-2 py-1.5 text-xs font-semibold leading-5 outline-none focus:border-slate-400" value={brief.backgroundPrompt ?? ''} onChange={set('backgroundPrompt')} placeholder="배경 생성 프롬프트" />
+    </div>
   );
 }
 
@@ -577,9 +1058,9 @@ function PublishPackage({ plan }) {
         <CardTitle>게시 문구 패키지</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        {plan.captionFirstLine ? <div className="rounded-lg border bg-white p-3"><span className="text-xs font-black text-slate-500">첫 줄</span><strong className="mt-1 block">{plan.captionFirstLine}</strong></div> : null}
+        {plan.captionFirstLine ? <div className="rounded-lg border bg-white p-3"><span className="text-xs font-semibold text-slate-500">첫 줄</span><strong className="mt-1 block">{plan.captionFirstLine}</strong></div> : null}
         {plan.captionBody ? <div className="whitespace-pre-line rounded-lg border bg-slate-50 p-3 text-sm font-semibold leading-6 text-slate-700">{plan.captionBody}</div> : null}
-        {plan.captionCTA ? <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-3 text-sm font-black text-indigo-700">{plan.captionCTA}</div> : null}
+        {plan.captionCTA ? <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-semibold text-slate-600">{plan.captionCTA}</div> : null}
         {plan.hashtags?.length ? <div className="flex flex-wrap gap-1.5">{plan.hashtags.map((tag) => <Badge key={tag} variant="outline">{tag}</Badge>)}</div> : null}
       </CardContent>
     </Card>
@@ -597,9 +1078,10 @@ function CardPreview({ cards }) {
               <div className="flex flex-wrap items-center gap-1.5">
                 <Badge variant="outline">카드 {card.page}</Badge>
               </div>
-              <strong className="mt-5 block text-2xl font-black leading-tight tracking-normal">{card.title}</strong>
+              <strong className="mt-5 block text-2xl font-semibold leading-tight tracking-normal">{card.title}</strong>
               <p className="mt-5 whitespace-pre-line text-[15px] font-semibold leading-6 text-slate-700">{formatCardText(card.body)}</p>
               {card.visualPrompt ? <p className="mt-4 rounded-md bg-white/80 p-2 text-[11px] font-bold leading-4 text-slate-500">{card.visualPrompt}</p> : null}
+              {card.visualBrief?.pexelsQuery ? <p className="mt-2 rounded-md bg-slate-50 p-2 text-[11px] font-semibold leading-4 text-slate-600">Pexels: {card.visualBrief.pexelsQuery}</p> : null}
               <VerifiedDataPanel data={card.visualData} compact />
             </div>
           </div>
@@ -618,23 +1100,97 @@ function ReferenceData({ plan }) {
     ...(plan.cards ?? []).flatMap((card, index) => [
       card.sourceLine ? { label: `카드 ${index + 1} 출처`, value: card.sourceLine } : null,
       card.dataPoint ? { label: `카드 ${index + 1} 참고`, value: card.dataPoint } : null,
+      card.visualBrief?.scenario ? { label: `카드 ${index + 1} 장면`, value: card.visualBrief.scenario } : null,
+      card.visualBrief?.pexelsQuery ? { label: `카드 ${index + 1} Pexels`, value: card.visualBrief.pexelsQuery } : null,
       card.visualData ? { label: `카드 ${index + 1} 검증 데이터`, value: summarizeVisualData(card.visualData) } : null
     ]).filter(Boolean)
   ].filter((item) => item?.value);
   if (!items.length) return null;
   return (
     <details className="rounded-lg border bg-white p-4 text-sm">
-      <summary className="cursor-pointer font-black text-slate-600">참고 데이터</summary>
+      <summary className="cursor-pointer font-semibold text-slate-600">참고 데이터</summary>
       <div className="mt-3 grid gap-2">
         {items.slice(0, 12).map((item, index) => (
           <div key={`${item.label}-${index}`} className="rounded-md bg-slate-50 px-3 py-2">
-            <span className="text-xs font-black text-slate-400">{item.label}</span>
+            <span className="text-xs font-semibold text-slate-400">{item.label}</span>
             <p className="mt-1 break-words text-xs font-semibold leading-5 text-slate-600">{item.value}</p>
           </div>
         ))}
       </div>
     </details>
   );
+}
+
+function uniqueProductCandidates(cards = []) {
+  const seen = new Set();
+  return cards
+    .flatMap((card) => card.visualBrief?.productCandidates ?? [])
+    .map((item) => ({
+      name: `${item?.name ?? ''}`.trim(),
+      role: `${item?.role ?? ''}`.trim(),
+      imageUsePolicy: `${item?.imageUsePolicy ?? ''}`.trim()
+    }))
+    .filter((item) => {
+      if (!item.name || seen.has(item.name)) return false;
+      seen.add(item.name);
+      return true;
+    })
+    .slice(0, 8);
+}
+
+function uniqueQueries(plan = {}) {
+  const queries = [
+    ...(plan.productionBrief?.pexelsStrategy?.globalQueries ?? []),
+    ...(plan.cards ?? []).map((card) => card.visualBrief?.pexelsQuery)
+  ]
+    .map((item) => `${item ?? ''}`.trim())
+    .filter(Boolean);
+  return [...new Set(queries)].slice(0, 10);
+}
+
+function makeProductionPackageText(plan = {}, productCandidates = uniqueProductCandidates(plan.cards), pexelsQueries = uniqueQueries(plan)) {
+  const brief = plan.productionBrief ?? {};
+  const cards = plan.cards ?? [];
+  return [
+    `[카드뉴스 제작 패키지]`,
+    `주제: ${plan.primaryTopic ?? plan.selectedHookTitle ?? ''}`,
+    `핵심 각도: ${plan.coreAngle ?? ''}`,
+    ``,
+    `디자인 방향`,
+    `- 콘셉트: ${brief.designConcept ?? ''}`,
+    `- 무드: ${(brief.moodKeywords ?? []).join(', ')}`,
+    `- 컬러: ${(brief.palette ?? []).join(', ')}`,
+    `- 통일감: ${brief.visualConsistency ?? ''}`,
+    ``,
+    `이미지 전략`,
+    `- ${brief.assetStrategy ?? ''}`,
+    `- Pexels: ${pexelsQueries.join(' / ')}`,
+    ``,
+    productCandidates.length ? `제품/이미지 후보\n${productCandidates.map((item) => `- ${item.name}${item.role ? `: ${item.role}` : ''}${item.imageUsePolicy ? ` (${item.imageUsePolicy})` : ''}`).join('\n')}` : '',
+    ``,
+    `카드별 구성`,
+    cards.map((card, index) => [
+      `${index + 1}. ${card.title}`,
+      `본문: ${formatCardText(card.body).replace(/\n/g, ' / ')}`,
+      `장면: ${card.visualBrief?.scenario ?? card.visualPrompt ?? ''}`,
+      `Pexels: ${card.visualBrief?.pexelsQuery ?? ''}`,
+      `배경 프롬프트: ${card.visualBrief?.backgroundPrompt ?? ''}`
+    ].join('\n')).join('\n\n')
+  ].filter((line) => line !== '').join('\n');
+}
+
+function categoryLabel(value) {
+  return {
+    beauty: '화장품/뷰티',
+    parenting_product: '육아용품',
+    automotive: '자동차',
+    food: '식품/음료',
+    tech: '테크/기기',
+    pet: '펫용품',
+    finance: '금융/투자',
+    real_estate: '부동산',
+    general: '일반'
+  }[value] ?? value;
 }
 
 function VerifiedDataPanel({ data, compact = false }) {
@@ -644,10 +1200,10 @@ function VerifiedDataPanel({ data, compact = false }) {
   return (
     <div className={`mt-3 rounded-md border border-emerald-100 bg-emerald-50 p-2 ${compact ? 'text-[11px]' : 'text-xs'}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <strong className="font-black text-emerald-800">검증 데이터</strong>
-        <span className="rounded-full bg-white px-2 py-0.5 font-black text-emerald-700">{data.type === 'bar_chart' ? '그래프 SVG' : '표 SVG'}</span>
+        <strong className="font-semibold text-emerald-800">검증 데이터</strong>
+        <span className="rounded-full bg-white px-2 py-0.5 font-semibold text-emerald-700">{data.type === 'bar_chart' ? '그래프 SVG' : '표 SVG'}</span>
       </div>
-      <p className="mt-1 font-black leading-4 text-slate-800">{data.title}</p>
+      <p className="mt-1 font-semibold leading-4 text-slate-800">{data.title}</p>
       {data.subtitle ? <p className="mt-0.5 font-semibold leading-4 text-emerald-700">{data.subtitle}</p> : null}
       {rows.length ? (
         <div className="mt-2 grid gap-1">
@@ -724,11 +1280,11 @@ function Blueprint({ items }) {
   if (!items?.length) return null;
   return (
     <div>
-      <div className="mb-1 text-xs font-black text-slate-500">카드 흐름</div>
+      <div className="mb-1 text-xs font-semibold text-slate-500">카드 흐름</div>
       <div className="grid gap-1.5">
         {items.slice(0, 9).map((item, index) => (
           <div key={`${index}-${item}`} className="flex gap-2 rounded-md bg-slate-50 px-2 py-1.5 text-xs font-semibold text-slate-600">
-            <span className="shrink-0 font-black text-slate-400">{String(index + 1).padStart(2, '0')}</span>
+            <span className="shrink-0 font-semibold text-slate-400">{String(index + 1).padStart(2, '0')}</span>
             <span>{item}</span>
           </div>
         ))}
@@ -739,7 +1295,7 @@ function Blueprint({ items }) {
 
 function NoteList({ title, items }) {
   if (!items?.length) return null;
-  return <div><div className="mb-1 text-xs font-black text-slate-500">{title}</div><div className="flex flex-wrap gap-1.5">{items.slice(0, 5).map((item, index) => <Badge key={`${title}-${index}`} variant="outline">{item}</Badge>)}</div></div>;
+  return <div><div className="mb-1 text-xs font-semibold text-slate-500">{title}</div><div className="flex flex-wrap gap-1.5">{items.slice(0, 5).map((item, index) => <Badge key={`${title}-${index}`} variant="outline">{item}</Badge>)}</div></div>;
 }
 
 function LoadingBox() {
@@ -769,11 +1325,6 @@ function referenceLabel(value) {
   }[value] ?? value;
 }
 
-function normalizeChannelName(value) {
-  const text = `${value ?? ''}`.trim();
-  if (!text) return '@trlab.insight';
-  return text.startsWith('@') ? text : `@${text}`;
-}
 
 function makeTitleCandidates(studio) {
   if (!studio) return [];
